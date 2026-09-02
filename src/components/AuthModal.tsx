@@ -269,7 +269,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 ¿Olvidaste tu acceso o necesitas ayuda?
               </button>
               <div className="pt-2 text-[10px] text-gray-500">
-                Acceso demo rápido: <span className="text-[#00f2fe] font-mono">admin / adminjymmerk2</span>
               </div>
             </>
           ) : (
