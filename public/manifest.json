@@ -5,14 +5,7 @@
     {
       "src": "/app-logo.png",
       "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/app-logo.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
+      "sizes": "1473x1077"
     }
   ],
   "start_url": "/",
