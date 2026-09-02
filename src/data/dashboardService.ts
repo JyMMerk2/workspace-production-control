@@ -3,39 +3,39 @@ import { DashboardData } from '../types';
 export const INITIAL_FALLBACK_DASHBOARD: DashboardData = {
   status: 'SUCCESS',
   kpiMochilas: {
-    ordenes: 142,
-    balance: 3840,
-    captura: 3120,
-    meta: 3500,
+    ordenes: 36,
+    balance: 437,
+    captura: 15,
+    meta: 2743,
   },
   mochilas: [
-    { nombre: 'Módulo 1 (Superpack BM)', ordenes: 28, balance: 750, captura: 620, meta: 700 },
-    { nombre: 'Módulo 2 (Superpack Rolling)', ordenes: 34, balance: 920, captura: 810, meta: 850 },
-    { nombre: 'Módulo 3 (DEFCON & Ultrapack)', ordenes: 22, balance: 590, captura: 480, meta: 550 },
-    { nombre: 'Módulo 4 (Catchers Rolling)', ordenes: 19, balance: 510, captura: 410, meta: 450 },
-    { nombre: 'Módulo 5 (Diamond Duffle & Tyro)', ordenes: 24, balance: 640, captura: 520, meta: 600 },
-    { nombre: 'Módulo 6 (Player Series Custom)', ordenes: 15, balance: 430, captura: 280, meta: 350 },
+    { nombre: 'CUSTOM BAGS', ordenes: 1, balance: 1, captura: 183, meta: 538 },
+    { nombre: 'UTILITY BAG LINE 3', ordenes: 4, balance: 13, captura: 0, meta: 930 },
+    { nombre: 'BIG BAG UTILITY 1', ordenes: 6, balance: 73, captura: 1, meta: 154 },
+    { nombre: 'SPUT 1', ordenes: 7, balance: 163, captura: 6, meta: 518 },
+    { nombre: 'BIG BAG UTILITY 2', ordenes: 8, balance: 75, captura: 2, meta: 178 },
+    { nombre: 'SPUT 2', ordenes: 10, balance: 112, captura: 1, meta: 780 },
   ],
   kpiApparel: {
-    ordenes: 218,
-    balance: 5490,
-    captura: 4820,
-    meta: 5000,
+    ordenes: 23,
+    balance: 228,
+    captura: 4417,
+    meta: 8565,
   },
   apparel: [
-    { nombre: 'Módulo A1 (Jersey FD-163 Crew)', ordenes: 45, balance: 1120, captura: 990, meta: 1000, reportado: 970 },
-    { nombre: 'Módulo A2 (Jersey FD-163W Womens)', ordenes: 38, balance: 950, captura: 840, meta: 850, reportado: 830 },
-    { nombre: 'Módulo A3 (Jersey FD-163Y Youth)', ordenes: 40, balance: 1010, captura: 890, meta: 900, reportado: 880 },
-    { nombre: 'Módulo A4 (Full Button FD-105)', ordenes: 25, balance: 630, captura: 550, meta: 600, reportado: 540 },
-    { nombre: 'Módulo A5 (Hoodies FD-205)', ordenes: 22, balance: 560, captura: 490, meta: 500, reportado: 480 },
-    { nombre: 'Módulo A6 (Baseball Pants PS-4070)', ordenes: 26, balance: 670, captura: 590, meta: 600, reportado: 580 },
-    { nombre: 'Módulo A7 (Softball Pants PS-5075)', ordenes: 22, balance: 550, captura: 470, meta: 550, reportado: 460 },
+    { nombre: 'Pants 1', ordenes: 0, balance: 0, captura: 393, meta: 975, reportado: 306 },
+    { nombre: 'Hats', ordenes: 0, balance: 0, captura: 231, meta: 488, reportado: 166 },
+    { nombre: 'Pants 2', ordenes: 2, balance: 3, captura: 493, meta: 975, reportado: 362 },
+    { nombre: 'Celda 1', ordenes: 4, balance: 16, captura: 1526, meta: 2292, reportado: 1258 },
+    { nombre: 'Celda 2', ordenes: 4, balance: 97, captura: 1125, meta: 1828, reportado: 899 },
+    { nombre: 'Celda 3', ordenes: 5, balance: 112, captura: 196, meta: 707, reportado: 261 },
+    { nombre: 'Celda 4', ordenes: 8, balance: 0, captura: 453, meta: 1300, reportado: 433 },
   ],
   contenedor: {
     textoOrdenes: 'Contenedor JBHU-892104 (40ft HQ) - 1,480 cajas en nave',
-    pctShipping: 89.14,
-    pctEnCurso: 74.25,
-    pctAcumulado: 92.40,
+    pctShipping: 19.32,
+    pctEnCurso: 0.0,
+    pctAcumulado: 19.32,
   },
   lastUpdated: new Date().toLocaleTimeString(),
 };
@@ -51,7 +51,7 @@ export async function fetchLiveDashboardData(): Promise<{ data: DashboardData; i
 
     const response = await fetch(`${WEB_APP_DASHBOARD_URL}?action=getDashboard&_t=${Date.now()}`, {
       signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
+      headers: { Accept: 'application/json' },
     }).catch(() => null);
 
     clearTimeout(timeoutId);
