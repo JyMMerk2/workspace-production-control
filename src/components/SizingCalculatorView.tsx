@@ -334,7 +334,8 @@ const generatePriceCandidates = (exactPrice: number, totalPcs: number, unitRate?
 };
 
 export const SizingCalculatorView: React.FC = () => {
-  const [poGrandTotal, setPoGrandTotal] = useState<string>('1227.50');
+  // Inicialización limpia en blanco
+  const [poGrandTotal, setPoGrandTotal] = useState<string>('');
   const [samplesDiscount, setSamplesDiscount] = useState<string>('0.00');
   const [copied, setCopied] = useState<boolean>(false);
   const [ocrStatus, setOcrStatus] = useState<string>('');
@@ -345,39 +346,8 @@ export const SizingCalculatorView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Initialize with the standard 2-style sizing pack layout or 1 unified combo style
-  const [styles, setStyles] = useState<StyleBlockData[]>([
-    {
-      id: 1,
-      code: 'BM-5273Y',
-      category: 'YOUTH',
-      amount: 387.5,
-      unitRate: 15.5,
-      qtyYouth: { '22': 5, '24': 5, '26': 5, '28': 5, '30': 5 },
-      qtyAdult: {},
-      youthPcs: 25,
-      adultPcs: 0,
-      totalPcs: 25,
-      exactPrice: 15.5,
-      roundedPrice: 15.5,
-      roundNotes: 'Tarifa Youth $15.50',
-    },
-    {
-      id: 2,
-      code: 'BM-5273',
-      category: 'ADULT',
-      amount: 840.0,
-      unitRate: 35.0,
-      qtyYouth: {},
-      qtyAdult: { '30': 3, '32': 3, '34': 3, '36': 3, '38': 3, '40': 3, '42': 3, '44': 3 },
-      youthPcs: 0,
-      adultPcs: 24,
-      totalPcs: 24,
-      exactPrice: 35.0,
-      roundedPrice: 35.0,
-      roundNotes: 'Tarifa Adult $35.00',
-    },
-  ]);
+  // Inicializado con un bloque vacío
+  const [styles, setStyles] = useState<StyleBlockData[]>([]);
 
   const detectCategory = (code: string): StyleCategory => {
     if (!code) return 'ADULT';
@@ -421,7 +391,7 @@ export const SizingCalculatorView: React.FC = () => {
 
     const totalPcs = youthPcs + adultPcs;
 
-    // COMBO style logic (has separate Youth & Adult rates/prices in a single style block)
+    // COMBO style logic
     if (category === 'COMBO') {
       let yRate = typeof block.youthRate === 'number' ? block.youthRate : parseFloat(block.youthRate as string) || 0;
       let aRate = typeof block.adultRate === 'number' ? block.adultRate : parseFloat(block.adultRate as string) || 0;
@@ -462,7 +432,6 @@ export const SizingCalculatorView: React.FC = () => {
     let amountNum = typeof block.amount === 'number' ? block.amount : parseFloat(block.amount as string) || 0;
     const rateNum = typeof block.unitRate === 'number' ? block.unitRate : parseFloat(block.unitRate as string) || 0;
 
-    // If unitRate was explicitly provided and amount was either 0 or calculated from rate
     if (rateNum > 0 && totalPcs > 0 && (amountNum === 0 || block.unitRate !== undefined)) {
       amountNum = Number((rateNum * totalPcs).toFixed(2));
     }
@@ -509,7 +478,6 @@ export const SizingCalculatorView: React.FC = () => {
     };
   };
 
-  // Helper to allow the user to select any calculated price option (.00 or .50) for standard styles
   const selectStylePrice = (id: number, selectedPrice: number) => {
     setStyles((prev) =>
       prev.map((s) => {
@@ -527,7 +495,6 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // Helper to select Youth price in COMBO style
   const selectStyleYouthPrice = (id: number, selectedPrice: number) => {
     setStyles((prev) =>
       prev.map((s) => {
@@ -542,7 +509,6 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // Helper to select Adult price in COMBO style
   const selectStyleAdultPrice = (id: number, selectedPrice: number) => {
     setStyles((prev) =>
       prev.map((s) => {
@@ -557,7 +523,6 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // Helper to select a full candidate pair for COMBO style
   const selectComboCandidate = (styleId: number, candidate: ComboPriceCandidate) => {
     setStyles((prev) =>
       prev.map((s) => {
@@ -576,7 +541,6 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // Helper to auto-square COMBO style to a target amount
   const autoSquareComboStyle = (styleId: number, customTarget?: number) => {
     setStyles((prev) =>
       prev.map((s) => {
@@ -656,7 +620,6 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // Quick helper to apply a fixed unit rate ($15.50, $35.00, etc.)
   const applyPresetRate = (id: number, rate: number) => {
     setStyles((prev) =>
       prev.map((s) => {
@@ -672,7 +635,6 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // 1-Click Template: 1 Solo Estilo Combo BM-5273/5273Y
   const loadComboPreset = () => {
     setPoGrandTotal('1227.50');
     setSamplesDiscount('0.00');
@@ -699,11 +661,9 @@ export const SizingCalculatorView: React.FC = () => {
     ]);
   };
 
-  // Adapt WHATEVER PO is currently uploaded or entered to 1 Single Unified Combo Style
   const unifyCurrentPoIntoCombo = () => {
     const totalNum = parseFloat(poGrandTotal) || 0;
 
-    // Aggregate all youth and adult quantities across existing styles
     const aggregatedYouth: Record<string, number> = {};
     const aggregatedAdult: Record<string, number> = {};
     let sampleCode = '';
@@ -776,7 +736,6 @@ export const SizingCalculatorView: React.FC = () => {
     setStyles([newComboBlock]);
   };
 
-  // Split a COMBO style into 2 separate styles (Youth and Adult)
   const splitComboStyle = (styleId: number) => {
     setStyles((prev) => {
       const target = prev.find((s) => s.id === styleId);
@@ -832,7 +791,6 @@ export const SizingCalculatorView: React.FC = () => {
     });
   };
 
-  // 1-Click Template: 2 Estilos Separados BM-5273Y y BM-5273
   const loadSeparatedPreset = () => {
     setPoGrandTotal('1227.50');
     setSamplesDiscount('0.00');
@@ -870,13 +828,11 @@ export const SizingCalculatorView: React.FC = () => {
     ]);
   };
 
-  // Quick helper to distribute the entire PO Grand Total automatically across styles
   const distributePoGrandTotal = () => {
     const totalNum = parseFloat(poGrandTotal) || 0;
     if (totalNum <= 0 || styles.length === 0) return;
 
     setStyles((prev) => {
-      // Case 1: If we have 1 single style and it's COMBO
       if (prev.length === 1 && prev[0].category === 'COMBO') {
         const s = prev[0];
         const youthPcs = s.youthPcs ?? Object.values(s.qtyYouth).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -902,11 +858,10 @@ export const SizingCalculatorView: React.FC = () => {
       const adultStyles = prev.filter((s) => s.category !== 'YOUTH' && s.category !== 'COMBO');
       const comboStyles = prev.filter((s) => s.category === 'COMBO');
 
-      // If only separate Youth and Adult styles
       if (youthStyles.length > 0 && adultStyles.length > 0 && comboStyles.length === 0) {
         let youthAllocated = 0;
         const updatedYouth = youthStyles.map((ys) => {
-          const rate = 15.5; // standard youth sizing pack rate
+          const rate = 15.5;
           const amount = ys.totalPcs > 0 ? Number((ys.totalPcs * rate).toFixed(2)) : 0;
           youthAllocated += amount;
           return calculateStyle({
@@ -938,7 +893,6 @@ export const SizingCalculatorView: React.FC = () => {
         return [...updatedYouth, ...updatedAdult].sort((a, b) => a.id - b.id);
       }
 
-      // Proportional distribution across all styles
       const totalAllPcs = prev.reduce((acc, s) => acc + s.totalPcs, 0);
       return prev.map((s) => {
         let allocatedAmount = 0;
@@ -1021,7 +975,7 @@ export const SizingCalculatorView: React.FC = () => {
 
   const resetAllCalculator = () => {
     setPoGrandTotal('');
-    setSamplesDiscount('');
+    setSamplesDiscount('0.00');
     setUploadedImageSrc(null);
     setImageZoomLevel(1);
     setIsImageModalOpen(false);
@@ -1029,23 +983,9 @@ export const SizingCalculatorView: React.FC = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    setStyles([
-      calculateStyle({
-        id: 1,
-        code: '',
-        category: 'ADULT',
-        amount: '',
-        qtyYouth: {},
-        qtyAdult: {},
-        totalPcs: 0,
-        exactPrice: 0,
-        roundedPrice: 0,
-        roundNotes: '',
-      }),
-    ]);
+    setStyles([]);
   };
 
-  // Helper to extract sizes and quantities from text description or range
   const expandRange = (
     start: string,
     end: string,
@@ -1081,7 +1021,6 @@ export const SizingCalculatorView: React.FC = () => {
       return { qtyYouth, qtyAdult };
     }
 
-    // Check numeric pants range (e.g. 18 to 30 for youth, 28 to 48 for adult)
     const numStart = parseInt(normStart, 10);
     const numEnd = parseInt(normEnd, 10);
     if (!isNaN(numStart) && !isNaN(numEnd) && numStart <= numEnd) {
@@ -1106,13 +1045,11 @@ export const SizingCalculatorView: React.FC = () => {
     return { qtyYouth, qtyAdult };
   };
 
-  // Deep OCR size extractor supporting composite (Youth + Adult) and single ranges
   const extractSizesFromDescription = (text: string, packQty: number = 1, categoryHint?: StyleCategory) => {
     let qtyYouth: Record<string, number> = {};
     let qtyAdult: Record<string, number> = {};
     const clean = text.toUpperCase();
 
-    // 1. Composite Numeric Range: e.g. "Youth: 22"-30" Adult: 30"-44"" or "Youth: 20-33 Adult: 30-44"
     const youthNumMatch = clean.match(/YOUTH:?\s*\(?(?:SIZES:?\s*)?(\d{2})["”″]?\s*(?:-|–|—|TO)\s*(\d{2})["”″]?\)?/i);
     const adultNumMatch = clean.match(/ADULT:?\s*\(?(?:SIZES:?\s*)?(\d{2})["”″]?\s*(?:-|–|—|TO)\s*(\d{2})["”″]?\)?/i);
 
@@ -1128,14 +1065,11 @@ export const SizingCalculatorView: React.FC = () => {
       return { qtyYouth, qtyAdult };
     }
 
-    // 2. Standalone Numeric Range: e.g. "22"-30"", "20-44", "28"-42"", "30"-44""
     const standaloneNumMatch = clean.match(/\b(\d{2})["”″]?\s*(?:-|–|—|TO)\s*(\d{2})["”″]?\b/i);
     if (standaloneNumMatch) {
-      const res = expandRange(standaloneNumMatch[1], standaloneNumMatch[2], packQty, categoryHint);
-      return res;
+      return expandRange(standaloneNumMatch[1], standaloneNumMatch[2], packQty, categoryHint);
     }
 
-    // 3. Explicit Letter Ranges
     const youthRangeMatch = clean.match(/(YXXS|YXS|YS|YM|YL|YXL)\s*(?:-|–|—|TO)\s*(Y2XL|YXL|YL)/i);
     if (youthRangeMatch) {
       return expandRange(youthRangeMatch[1], youthRangeMatch[2], packQty, 'YOUTH');
@@ -1146,7 +1080,6 @@ export const SizingCalculatorView: React.FC = () => {
       return expandRange(adultRangeMatch[1], adultRangeMatch[2], packQty, categoryHint || 'ADULT');
     }
 
-    // 4. Keyword Fallback Checks
     const lower = text.toLowerCase();
     if (lower.includes('yxs') && (lower.includes('y2xl') || lower.includes('yxl'))) {
       return expandRange('YXS', 'Y2XL', packQty, 'YOUTH');
@@ -1173,7 +1106,6 @@ export const SizingCalculatorView: React.FC = () => {
     return { qtyYouth, qtyAdult };
   };
 
-  // Helper to auto-fill the correct sizes for a specific style based on its category and code
   const autoFillStyle = (
     styleId: number,
     mode: 'auto' | 'pants' | 'letters' = 'auto',
@@ -1186,7 +1118,6 @@ export const SizingCalculatorView: React.FC = () => {
         const cat = s.category || detectCategory(s.code);
         const codeUpper = s.code.toUpperCase();
 
-        // If an explicit multiplier was passed, use it; otherwise detect or default to 5
         let detectedQty = explicitMultiplier || 5;
         if (!explicitMultiplier) {
           const youthVals = Object.values(s.qtyYouth) as number[];
@@ -1226,7 +1157,6 @@ export const SizingCalculatorView: React.FC = () => {
         } else if (cat === 'WOMENS' || codeUpper.endsWith('W')) {
           res = expandRange('XXS', '3XL', detectedQty, 'WOMENS');
         } else {
-          // Default Adult
           res = expandRange('S', '5XL', detectedQty, 'ADULT');
         }
 
@@ -1252,11 +1182,9 @@ export const SizingCalculatorView: React.FC = () => {
     );
   };
 
-  // OCR Processing with Tesseract
   const processImageFile = async (file: File) => {
     if (!file) return;
 
-    // Create persistent preview URL
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
@@ -1276,7 +1204,6 @@ export const SizingCalculatorView: React.FC = () => {
       const text = ret.data.text;
       setOcrStatus('✓ ¡Imagen analizada! Extrayendo todos los estilos y montos...');
 
-      // 1. Find PO Grand Total (e.g. Total $1,929.00 or $1929.00 or Total 1,929.00)
       const totalMatch = text.match(/Total\s*\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2}))/i);
       if (totalMatch && totalMatch[1]) {
         setPoGrandTotal(totalMatch[1].replace(/,/g, ''));
@@ -1293,7 +1220,6 @@ export const SizingCalculatorView: React.FC = () => {
         }
       }
 
-      // 2. Parse lines to extract ALL style items with full context
       const rawLines = text.split('\n');
       interface ExtractedLineItem {
         code: string;
@@ -1304,23 +1230,15 @@ export const SizingCalculatorView: React.FC = () => {
       }
       const extractedItems: ExtractedLineItem[] = [];
 
-      // Split the document into item chunks by item markers (BAU-, FD-, BM-, PS-, MID:, SIZING PACK)
       const itemBlocks = text.split(/(?=BAU-|FD-|BM-|PS-|MID:|SIZING PACK|[0-9]{12})/gi);
 
       for (const block of itemBlocks) {
         if (!block || block.trim().length < 10) continue;
 
-        // Find Style Code from MID or Item:
-        // Case 1: MID with slash (e.g. "MID: BM-5273/5273Y" or "MID: BM-5273 / BM-5273Y")
         const midSlashMatch = block.match(/MID:\s*([A-Za-z]{1,4}-[0-9]{3,4}[A-Za-z]?)\s*\/\s*([A-Za-z0-9_-]+)/i);
-        
-        // Case 2: Standard MID (e.g. "MID: BM-5273", "MID: FD-6112W", "MID: PS-401")
         const midMatch = block.match(/MID:\s*([A-Za-z0-9_-]+)/i);
-        
-        // Case 3: Code from item column (e.g. "BM-5273", "FD-6073Y")
         const codeMatch = block.match(/([FBP][A-Z0-9]{1,5}-[A-Za-z0-9_-]+)/i);
 
-        // Determine style code(s)
         let resolvedCodes: string[] = [];
         if (midSlashMatch) {
           const prefix = midSlashMatch[1].split('-')[0] || 'BM';
@@ -1339,7 +1257,6 @@ export const SizingCalculatorView: React.FC = () => {
 
         if (resolvedCodes.length === 0) continue;
 
-        // Find decimal amounts & rates in this block (including comma formats like 1,227.50)
         const rawMatches = block.match(/\b([0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2})\b/g) || [];
         const decimalNumbers = rawMatches
           .map((str) => parseFloat(str.replace(/,/g, '')))
@@ -1347,12 +1264,12 @@ export const SizingCalculatorView: React.FC = () => {
 
         let foundAmount = 0;
         let foundRate = 0;
-        let packQty = 2; // sensible default for sizing packs
+        let packQty = 2;
 
         if (decimalNumbers.length >= 2) {
           const sorted = [...decimalNumbers].sort((a, b) => b - a);
-          foundAmount = sorted[0]; // highest is total amount (e.g. 1227.50)
-          foundRate = sorted[1];   // second highest is rate (e.g. 245.50)
+          foundAmount = sorted[0];
+          foundRate = sorted[1];
           if (foundRate > 0 && foundAmount >= foundRate) {
             const calculatedQty = Math.round(foundAmount / foundRate);
             if (calculatedQty >= 1 && calculatedQty <= 30) {
@@ -1363,7 +1280,6 @@ export const SizingCalculatorView: React.FC = () => {
           foundAmount = decimalNumbers[0];
         }
 
-        // Look for explicit Quantity column (e.g. "Quantity: 5", " 5  245.50  1,227.50 ")
         const explicitQtyMatch = block.match(/(?:Quantity\s*[:\s]?\s*|\b)([1-9][0-9]?)\s+[0-9]{1,3}(?:,[0-9]{3})*\.[0-9]{2}/i);
         if (explicitQtyMatch) {
           const parsedQty = parseInt(explicitQtyMatch[1], 10);
@@ -1372,7 +1288,6 @@ export const SizingCalculatorView: React.FC = () => {
           }
         }
 
-        // Smart Allocation for Composite Styles (e.g. BM-5273/5273Y with Youth 22-30 @ $15.50 and Adult 30-44 @ $35.00)
         const hasYouthCode = resolvedCodes.some((c) => detectCategory(c) === 'YOUTH');
         const hasAdultCode = resolvedCodes.some((c) => detectCategory(c) === 'ADULT');
         const isCompositeSizingPack = hasYouthCode && hasAdultCode && (block.toUpperCase().includes('SIZING PACK') || block.toUpperCase().includes('PANT') || block.toUpperCase().includes('BASEBALL'));
@@ -1384,12 +1299,10 @@ export const SizingCalculatorView: React.FC = () => {
           let itemAmount = foundAmount;
           if (isCompositeSizingPack) {
             if (codeCat === 'YOUTH') {
-              // Youth sizing pack 22-30 (5 sizes * packQty, standard $15.50 rate)
               const youthPcs = 5 * (packQty || 5);
               const youthAmount = youthPcs * 15.5;
               itemAmount = foundAmount >= youthAmount ? youthAmount : Number((foundAmount * 0.31568).toFixed(2));
             } else {
-              // Adult sizing pack takes remainder
               const youthPcs = 5 * (packQty || 5);
               const youthAmount = youthPcs * 15.5;
               itemAmount = foundAmount > youthAmount ? Number((foundAmount - youthAmount).toFixed(2)) : Number((foundAmount * 0.68432).toFixed(2));
@@ -1408,7 +1321,6 @@ export const SizingCalculatorView: React.FC = () => {
         }
       }
 
-      // Fallback: If chunk split didn't find codes, use global regex
       if (extractedItems.length === 0) {
         const stylePattern = /(?:MID:\s*)?([FBP][A-Z0-9]{1,5}-[A-Za-z0-9_-]+)/gi;
         const allFoundCodes: string[] = [];
@@ -1450,13 +1362,11 @@ export const SizingCalculatorView: React.FC = () => {
         }
       }
 
-      // 3. Populate ALL extracted styles in state with exact sizes
       if (extractedItems.length > 0) {
         const newStyleBlocks: StyleBlockData[] = extractedItems.map((item, index) => {
           const category = detectCategory(item.code);
           let { qtyYouth, qtyAdult } = extractSizesFromDescription(item.description, item.packQty, category);
 
-          // If sizes could not be extracted directly from text, apply category smart defaults
           const hasSizes = Object.values(qtyYouth).some((v) => v > 0) || Object.values(qtyAdult).some((v) => v > 0);
           if (!hasSizes) {
             if (item.code.includes('BASEBALL') || item.code.includes('PANT') || item.code.startsWith('PS-') || item.code.startsWith('BM-')) {
@@ -1478,20 +1388,16 @@ export const SizingCalculatorView: React.FC = () => {
               qtyYouth = res.qtyYouth;
               qtyAdult = res.qtyAdult;
             } else {
-              // Default Adult S - 5XL
               const res = expandRange('S', '5XL', item.packQty, 'ADULT');
               qtyYouth = res.qtyYouth;
               qtyAdult = res.qtyAdult;
             }
           } else {
-            // If composite extracted both youth and adult sizes, keep only relevant category for this style
             if (category === 'YOUTH' && Object.keys(qtyAdult).length > 0) {
               qtyAdult = {};
             } else if (category === 'ADULT' && Object.keys(qtyYouth).length > 0) {
               qtyYouth = {};
-              // For Adult 30-44 in sizing pack where adult amount is 840, if total pieces target is 24 pcs:
               if (item.amount === 840 || Math.abs(item.amount - 840) < 1) {
-                // 3 of each of the 8 sizes (30, 32, 34, 36, 38, 40, 42, 44) = 24 pcs @ $35.00
                 ADULT_NUMERIC_SIZES.forEach((sz) => {
                   const val = parseInt(sz, 10);
                   if (val >= 30 && val <= 44) {
@@ -1530,7 +1436,6 @@ export const SizingCalculatorView: React.FC = () => {
     }
   };
 
-  // Global Clipboard Paste Listener
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -1551,7 +1456,6 @@ export const SizingCalculatorView: React.FC = () => {
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
 
-  // Aggregate stats
   const totalCombinedPcs = styles.reduce((acc, s) => acc + s.totalPcs, 0);
   const totalStylesAmount = styles.reduce(
     (acc, s) => acc + (typeof s.amount === 'number' ? s.amount : parseFloat(s.amount) || 0),
