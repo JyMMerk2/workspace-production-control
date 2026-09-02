@@ -1,0 +1,6 @@
+{
+  "name": "Workspace Production Control",
+  "description": "Sistema de Control de Producción y Dashboard Neón con monitoreo en vivo de módulos, buscador de planos técnicos y calculadora multi-estilo de Sizing Packs con OCR.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
