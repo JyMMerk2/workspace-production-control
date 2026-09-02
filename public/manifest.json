@@ -3,9 +3,14 @@
   "name": "Control de Producción - Boombah",
   "icons": [
     {
-      "src": "/app-logo.png",
+      "src": "/web-app-manifest-192x192.png",
       "type": "image/png",
-      "sizes": "1473x1077"
+      "sizes": "192x192"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
   ],
   "start_url": "/",
