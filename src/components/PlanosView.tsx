@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, ZoomIn, X, Upload, Filter, Tag, CheckCircle, Sliders, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { Search, ZoomIn, X, Upload, Filter, Image as ImageIcon } from 'lucide-react';
 import { BlueprintItem } from '../types';
 import { INITIAL_BLUEPRINTS } from '../data/blueprintsData';
 
@@ -7,8 +7,8 @@ export const PlanosView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [blueprints, setBlueprints] = useState<BlueprintItem[]>(INITIAL_BLUEPRINTS);
-  
-  // Magnifier / Zoom Modal State
+
+  // Inspector State
   const [zoomItem, setZoomItem] = useState<BlueprintItem | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(2.5);
   const [lupaActive, setLupaActive] = useState<boolean>(true);
@@ -33,9 +33,7 @@ export const PlanosView: React.FC = () => {
         b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.modelFamily.toLowerCase().includes(searchTerm.toLowerCase()) ||
         b.description.toLowerCase().includes(searchTerm.toLowerCase());
-
       const matchCategory = selectedCategory === 'Todos' || b.category === selectedCategory;
-
       return matchSearch && matchCategory;
     });
   }, [blueprints, searchTerm, selectedCategory]);
@@ -73,17 +71,15 @@ export const PlanosView: React.FC = () => {
     const rect = zoomContainerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
     const relX = Math.max(0, Math.min(100, (x / rect.width) * 100));
     const relY = Math.max(0, Math.min(100, (y / rect.height) * 100));
-
     setMousePos({ x, y, relX, relY });
   };
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     setZoomLevel((prev) => {
-      if (e.deltaY < 0) return Math.min(prev + 0.3, 5);
+      if (e.deltaY < 0) return Math.min(prev + 0.3, 6);
       return Math.max(prev - 0.3, 1.5);
     });
   };
@@ -121,7 +117,6 @@ export const PlanosView: React.FC = () => {
               </button>
             )}
           </div>
-
           <div className="flex items-center gap-2">
             <input
               type="file"
@@ -166,117 +161,99 @@ export const PlanosView: React.FC = () => {
 
       {/* Blueprints Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredBlueprints.map((item) => {
-          return (
-            <div
-              key={item.id}
-              className="bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-[0_8px_25px_rgba(0,0,0,0.3)] hover:border-[#00f2fe]/50 hover:shadow-[0_10px_30px_rgba(0,242,254,0.2)] transition-all flex flex-col group"
-            >
-              {/* Card Header */}
-              <div className="p-4 border-b border-white/5 flex items-center justify-between bg-[#0d1017]">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-[#00f2fe]/15 border border-[#00f2fe]/40 text-[#00f2fe] font-black text-xs">
-                    {item.code}
-                  </span>
-                  <span className="text-xs font-bold text-gray-200 truncate max-w-[180px]">
-                    {item.modelFamily}
-                  </span>
-                </div>
-                <span className="text-[10px] uppercase font-extrabold text-[#8f9ba8] px-2 py-0.5 rounded bg-white/5">
-                  {item.category}
+        {filteredBlueprints.map((item) => (
+          <div
+            key={item.id}
+            className="bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-[0_8px_25px_rgba(0,0,0,0.3)] hover:border-[#00f2fe]/50 hover:shadow-[0_10px_30px_rgba(0,242,254,0.2)] transition-all flex flex-col group"
+          >
+            {/* Card Header */}
+            <div className="p-4 border-b border-white/5 flex items-center justify-between bg-[#0d1017]">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-[#00f2fe]/15 border border-[#00f2fe]/40 text-[#00f2fe] font-black text-xs">
+                  {item.code}
+                </span>
+                <span className="text-xs font-bold text-gray-200 truncate max-w-[180px]">
+                  {item.modelFamily}
                 </span>
               </div>
+              <span className="text-[10px] uppercase font-extrabold text-[#8f9ba8] px-2 py-0.5 rounded bg-white/5">
+                {item.category}
+              </span>
+            </div>
 
-              {/* Blueprint Schematic Preview Box */}
-              <div
-                onClick={() => setZoomItem(item)}
-                className="relative h-48 bg-[#0a0d13] flex items-center justify-center p-4 cursor-pointer overflow-hidden group-hover:bg-[#07090e] transition-colors border-b border-white/5"
-              >
-                {item.imageUrl ? (
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  /* High Quality Blueprint Vector Rendering */
-                  <div className="w-full h-full relative flex items-center justify-center bg-[#07090e] rounded-lg border border-[#00f2fe]/20 p-2 select-none">
-                    {/* Grid Background */}
-                    <div
-                      className="absolute inset-0 opacity-15"
-                      style={{
-                        backgroundImage: `linear-gradient(to right, #00f2fe 1px, transparent 1px), linear-gradient(to bottom, #00f2fe 1px, transparent 1px)`,
-                        backgroundSize: '16px 16px',
-                      }}
-                    ></div>
-
-                    {/* Vector Schematic Graphic */}
-                    <div className="relative z-10 flex flex-col items-center justify-center text-center">
-                      <div className="w-24 h-24 rounded-lg border-2 border-dashed border-[#00f2fe]/70 flex flex-col items-center justify-center p-2 bg-[#00f2fe]/5 mb-1 group-hover:border-[#00f2fe] group-hover:bg-[#00f2fe]/10 transition-all">
-                        <ImageIcon className="w-8 h-8 text-[#00f2fe] mb-1" />
-                        <span className="text-[10px] font-black text-white">{item.id}</span>
-                        <span className="text-[8px] font-mono text-[#00f2fe]">CAD SCHEMATIC</span>
-                      </div>
-                      <span className="text-[10px] text-gray-400 font-mono tracking-wider">
-                        PLANO TÉCNICO OFICIAL
-                      </span>
+            {/* Blueprint Schematic Preview Box */}
+            <div
+              onClick={() => setZoomItem(item)}
+              className="relative h-48 bg-[#0a0d13] flex items-center justify-center p-4 cursor-pointer overflow-hidden group-hover:bg-[#07090e] transition-colors border-b border-white/5"
+            >
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt={item.title}
+                  className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full relative flex items-center justify-center bg-[#07090e] rounded-lg border border-[#00f2fe]/20 p-2 select-none">
+                  <div
+                    className="absolute inset-0 opacity-15"
+                    style={{
+                      backgroundImage: `linear-gradient(to right, #00f2fe 1px, transparent 1px), linear-gradient(to bottom, #00f2fe 1px, transparent 1px)`,
+                      backgroundSize: '16px 16px',
+                    }}
+                  ></div>
+                  <div className="relative z-10 flex flex-col items-center justify-center text-center">
+                    <div className="w-24 h-24 rounded-lg border-2 border-dashed border-[#00f2fe]/70 flex flex-col items-center justify-center p-2 bg-[#00f2fe]/5 mb-1 group-hover:border-[#00f2fe] group-hover:bg-[#00f2fe]/10 transition-all">
+                      <ImageIcon className="w-8 h-8 text-[#00f2fe] mb-1" />
+                      <span className="text-[10px] font-black text-white">{item.id}</span>
+                      <span className="text-[8px] font-mono text-[#00f2fe]">CAD SCHEMATIC</span>
                     </div>
-
-                    {/* Technical Dimension Marks */}
-                    <span className="absolute top-1.5 left-2 text-[9px] font-mono text-[#00f2fe]/60">
-                      ID: {item.id}
-                    </span>
-                    <span className="absolute bottom-1.5 right-2 text-[9px] font-mono text-[#39ff14]/70">
-                      BOOMBAH QC PASS
+                    <span className="text-[10px] text-gray-400 font-mono tracking-wider">
+                      PLANO TÉCNICO OFICIAL
                     </span>
                   </div>
-                )}
-
-                {/* Hover overlay hint */}
-                <div className="absolute inset-0 bg-[#00f2fe]/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs">
-                  <ZoomIn className="w-4 h-4 text-[#00f2fe]" />
-                  <span className="bg-[#12161f]/90 px-3 py-1.5 rounded-full border border-[#00f2fe]/50 shadow-lg text-[#00f2fe]">
-                    Abrir Lupa y Zoom 🔍
-                  </span>
                 </div>
-              </div>
-
-              {/* Card Body */}
-              <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                <div>
-                  <h3 className="text-sm font-bold text-white mb-1 group-hover:text-[#00f2fe] transition-colors">
-                    {item.title}
-                  </h3>
-                  <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
-                    {item.description}
-                  </p>
-                </div>
-
-                {/* Specs bullets */}
-                <div className="space-y-1 bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
-                  <span className="text-[10px] font-bold text-[#8f9ba8] uppercase block">
-                    Especificaciones Clave:
-                  </span>
-                  {item.specs.slice(0, 2).map((sp, sIdx) => (
-                    <div key={sIdx} className="flex items-center gap-1.5 text-[11px] text-gray-300">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#00f2fe]"></span>
-                      <span className="truncate">{sp}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Card Action */}
-                <button
-                  onClick={() => setZoomItem(item)}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_8px_rgba(0,242,254,0.15)]"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                  <span>Inspeccionar Plano (Lupa)</span>
-                </button>
+              )}
+              <div className="absolute inset-0 bg-[#00f2fe]/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs">
+                <ZoomIn className="w-4 h-4 text-[#00f2fe]" />
+                <span className="bg-[#12161f]/90 px-3 py-1.5 rounded-full border border-[#00f2fe]/50 shadow-lg text-[#00f2fe]">
+                  Abrir Lupa e Inspeccionar
+                </span>
               </div>
             </div>
-          );
-        })}
+
+            {/* Card Body */}
+            <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-white mb-1 group-hover:text-[#00f2fe] transition-colors">
+                  {item.title}
+                </h3>
+                <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
+                  {item.description}
+                </p>
+              </div>
+
+              <div className="space-y-1 bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
+                <span className="text-[10px] font-bold text-[#8f9ba8] uppercase block">
+                  Especificaciones Clave:
+                </span>
+                {item.specs.slice(0, 2).map((sp, sIdx) => (
+                  <div key={sIdx} className="flex items-center gap-1.5 text-[11px] text-gray-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00f2fe]"></span>
+                    <span className="truncate">{sp}</span>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setZoomItem(item)}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_8px_rgba(0,242,254,0.15)]"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+                <span>Inspeccionar Plano (Pantalla Completa)</span>
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {filteredBlueprints.length === 0 && (
@@ -298,11 +275,11 @@ export const PlanosView: React.FC = () => {
         </div>
       )}
 
-      {/* Interactive Magnifier (Lupa) Fullscreen Modal */}
+      {/* FULLSCREEN Interactive Magnifier Modal */}
       {zoomItem && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col">
-          {/* Top Bar */}
-          <div className="h-16 px-6 bg-[#12161f]/90 border-b border-white/10 flex items-center justify-between z-10">
+        <div className="fixed inset-0 z-50 bg-black backdrop-blur-md flex flex-col w-screen h-screen">
+          {/* Top Control Bar */}
+          <div className="h-14 px-6 bg-[#12161f] border-b border-white/10 flex items-center justify-between shrink-0 z-20">
             <div className="flex items-center gap-3">
               <span className="px-2.5 py-1 rounded bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] font-black text-sm">
                 {zoomItem.code}
@@ -313,14 +290,13 @@ export const PlanosView: React.FC = () => {
               </div>
             </div>
 
-            {/* Controls */}
             <div className="flex items-center gap-4">
               <div className="hidden sm:flex items-center gap-2 bg-[#0d1017] px-3 py-1.5 rounded-lg border border-white/10">
                 <span className="text-xs text-gray-400 font-bold">Zoom: {zoomLevel.toFixed(1)}x</span>
                 <input
                   type="range"
                   min="1.5"
-                  max="5"
+                  max="6"
                   step="0.1"
                   value={zoomLevel}
                   onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
@@ -341,7 +317,7 @@ export const PlanosView: React.FC = () => {
 
               <button
                 onClick={() => setZoomItem(null)}
-                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-[#ff007f] text-white text-xs font-black hover:bg-[#ff007f]/80 transition-all cursor-pointer shadow-[0_0_15px_rgba(255,0,127,0.5)]"
+                className="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-[#ff007f] text-white text-xs font-black hover:bg-[#ff007f]/80 transition-all cursor-pointer shadow-[0_0_15px_rgba(255,0,127,0.5)]"
               >
                 <X className="w-4 h-4" />
                 <span>CERRAR [ESC]</span>
@@ -349,12 +325,13 @@ export const PlanosView: React.FC = () => {
             </div>
           </div>
 
-          {/* Interactive Zoom Stage */}
+          {/* Fullscreen Stage */}
           <div
             ref={zoomContainerRef}
+            onClick={() => setLupaActive(!lupaActive)}
             onMouseMove={handleMouseMove}
             onWheel={handleWheel}
-            className="flex-1 relative overflow-hidden flex items-center justify-center p-8 cursor-crosshair select-none bg-[#080a0f]"
+            className="flex-1 relative overflow-hidden flex items-center justify-center p-2 cursor-crosshair select-none bg-[#080a0f] w-full h-full"
           >
             {/* Background Grid */}
             <div
@@ -365,13 +342,13 @@ export const PlanosView: React.FC = () => {
               }}
             ></div>
 
-            {/* Main Image Stage */}
-            <div className="relative max-w-4xl max-h-[75vh] w-full h-full flex items-center justify-center p-6 bg-[#0e121a] rounded-2xl border-2 border-white/10 shadow-2xl">
+            {/* Image Box Maximized to Screen Limits */}
+            <div className="relative w-full h-full flex items-center justify-center p-2 bg-[#0e121a] rounded-lg border border-white/10 overflow-hidden">
               {zoomItem.imageUrl ? (
                 <img
                   src={zoomItem.imageUrl}
                   alt={zoomItem.title}
-                  className="max-h-full max-w-full object-contain rounded-lg"
+                  className="w-full h-full object-contain rounded"
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#00f2fe]/40 rounded-xl bg-[#090c12]">
@@ -393,40 +370,26 @@ export const PlanosView: React.FC = () => {
                 </div>
               )}
 
-              {/* Magnifying Glass Lens (Lupa) */}
-              {lupaActive && (
+              {/* Direct Overlay Magnifying Lens */}
+              {lupaActive && zoomItem.imageUrl && (
                 <div
                   className="absolute pointer-events-none rounded-full border-3 border-white shadow-[0_0_30px_rgba(0,0,0,0.9)] overflow-hidden bg-[#07090e] z-30"
                   style={{
-                    width: '240px',
-                    height: '240px',
-                    left: `${mousePos.x - 120}px`,
-                    top: `${mousePos.y - 120}px`,
+                    width: '260px',
+                    height: '260px',
+                    left: `${mousePos.x - 130}px`,
+                    top: `${mousePos.y - 130}px`,
                   }}
                 >
                   <div
                     className="w-full h-full relative"
                     style={{
-                      backgroundImage: zoomItem.imageUrl
-                        ? `url('${zoomItem.imageUrl}')`
-                        : undefined,
+                      backgroundImage: `url('${zoomItem.imageUrl}')`,
                       backgroundRepeat: 'no-repeat',
                       backgroundSize: `${zoomLevel * 100}%`,
                       backgroundPosition: `${mousePos.relX}% ${mousePos.relY}%`,
                     }}
                   >
-                    {!zoomItem.imageUrl && (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-[#07090e] text-center p-4">
-                        <span className="text-xs font-mono font-bold text-[#00f2fe]">
-                          {zoomItem.id}
-                        </span>
-                        <span className="text-[10px] text-[#39ff14] font-mono">
-                          X:{mousePos.relX.toFixed(0)}% Y:{mousePos.relY.toFixed(0)}%
-                        </span>
-                        <span className="text-[9px] text-gray-400">Detalle Vector</span>
-                      </div>
-                    )}
-                    {/* Reticle / Crosshair in Center */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
                       <div className="w-full h-[1px] bg-[#00f2fe]"></div>
                       <div className="h-full w-[1px] bg-[#00f2fe] absolute"></div>
@@ -436,10 +399,10 @@ export const PlanosView: React.FC = () => {
               )}
             </div>
 
-            {/* Bottom info banner */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#12161f]/90 border border-white/10 px-4 py-2 rounded-full text-xs text-gray-300 shadow-xl flex items-center gap-3">
-              <span>💡 Mueva el mouse para explorar con la lupa</span>
-              <span>• Rueda del mouse para cambiar aumento ({zoomLevel.toFixed(1)}x)</span>
+            {/* Bottom floating guide banner */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#12161f]/90 border border-white/10 px-5 py-2 rounded-full text-xs text-gray-300 shadow-xl flex items-center gap-4 z-30">
+              <span>💡 Haz clic en el plano para Activar/Desactivar Lupa</span>
+              <span>• Rueda del mouse para Zoom ({zoomLevel.toFixed(1)}x)</span>
             </div>
           </div>
         </div>
