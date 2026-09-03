@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Lock, User, Mail, CheckCircle2, AlertCircle, Shield, KeyRound, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, User, Mail, CheckCircle2, AlertCircle, KeyRound, ArrowLeft, Check, X, ShieldAlert } from 'lucide-react';
 
 interface AuthModalProps {
   onLoginSuccess: (username: string) => void;
@@ -7,8 +7,25 @@ interface AuthModalProps {
 
 type AuthMode = 'LOGIN' | 'REGISTRO' | 'RECUPERAR' | 'CAMBIAR_PASS';
 
+interface PendingUser {
+  id: string;
+  username: string;
+  email: string | null;
+  status: string;
+  created_at: string;
+}
+
 const ADMIN_USER_MASTER = 'admin';
 const ADMIN_PASS_MASTER = 'adminjymmerk2';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://qpozgkdzcixjkjblntd.supabase.co';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_2jVZPRxNFdkbdG6MDXR5DQ_64Rgsq1o';
+
+const headers = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
+};
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
@@ -21,49 +38,135 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
     text: '',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
+  const [isAdminView, setIsAdminView] = useState(false);
+
+  const fetchPendingUsers = async () => {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?status=eq.PENDIENTE&select=*`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingUsers(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminView) {
+      fetchPendingUsers();
+    }
+  }, [isAdminView]);
+
+  const handleApprove = async (id: string, newStatus: 'APROBADO' | 'RECHAZADO') => {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?id=eq.${id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        setPendingUsers((prev) => prev.filter((u) => u.id !== id));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatusMsg({ type: 'info', text: 'Verificando con el servidor...' });
     setIsLoading(true);
 
-    // 1. MASTER LOGIN CHECK
+    // 1. LOGIN
     if (mode === 'LOGIN') {
+      // Local Master Fallback
       if (
         (user.toLowerCase() === ADMIN_USER_MASTER.toLowerCase() && pass === ADMIN_PASS_MASTER) ||
         (user.toLowerCase() === 'jmercado' && pass === '123456') ||
         (user.toLowerCase() === 'supervisor' && pass === 'boombah2026')
       ) {
-        setTimeout(() => {
-          setIsLoading(false);
-          onLoginSuccess(user || 'admin');
-        }, 500);
+        setIsLoading(false);
+        onLoginSuccess(user || 'admin');
         return;
       }
+
+      // Query Supabase DB
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/app_users?username=eq.${encodeURIComponent(user)}&password=eq.${encodeURIComponent(pass)}&select=*`,
+          { headers }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.length > 0) {
+            const foundUser = data[0];
+            if (foundUser.status === 'APROBADO') {
+              setIsLoading(false);
+              onLoginSuccess(foundUser.username);
+              return;
+            } else if (foundUser.status === 'PENDIENTE') {
+              setIsLoading(false);
+              setStatusMsg({ type: 'error', text: 'Tu cuenta está pendiente de aprobación por el Administrador.' });
+              return;
+            } else {
+              setIsLoading(false);
+              setStatusMsg({ type: 'error', text: 'Tu solicitud de acceso fue rechazada.' });
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+
+      setIsLoading(false);
+      setStatusMsg({ type: 'error', text: 'Credenciales inválidas. Verifica usuario y contraseña.' });
+      return;
     }
 
-    // 2. REGISTRATION
+    // 2. REGISTRO
     if (mode === 'REGISTRO') {
       if (pass !== passConfirm) {
         setIsLoading(false);
         setStatusMsg({ type: 'error', text: 'Las contraseñas no coinciden. Por favor verifique.' });
         return;
       }
-      setTimeout(() => {
-        setIsLoading(false);
-        setStatusMsg({
-          type: 'success',
-          text: '¡Solicitud enviada al Administrador de Boombah! Se le notificará cuando su cuenta sea aprobada.',
+
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            username: user,
+            password: pass,
+            email: email || null,
+            status: 'PENDIENTE',
+          }),
         });
-        setUser('');
-        setPass('');
-        setPassConfirm('');
-        setEmail('');
-      }, 700);
+
+        setIsLoading(false);
+        if (res.ok) {
+          setStatusMsg({
+            type: 'success',
+            text: '¡Solicitud enviada al Administrador de Boombah! Podrá ser aprobada desde el panel.',
+          });
+          setUser('');
+          setPass('');
+          setPassConfirm('');
+          setEmail('');
+        } else {
+          setStatusMsg({ type: 'error', text: 'El usuario ya existe o hubo un problema al registrar.' });
+        }
+      } catch (err) {
+        setIsLoading(false);
+        setStatusMsg({ type: 'error', text: 'Error de conexión con la base de datos.' });
+      }
       return;
     }
 
-    // 3. RECOVERY
+    // 3. RECUPERAR ACCESO
     if (mode === 'RECUPERAR') {
       setTimeout(() => {
         setIsLoading(false);
@@ -75,7 +178,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // 4. CHANGE PASS
+    // 4. CAMBIAR CONTRASEÑA
     if (mode === 'CAMBIAR_PASS') {
       if (pass !== passConfirm) {
         setIsLoading(false);
@@ -88,146 +191,172 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       }, 600);
       return;
     }
-
-    // Fallback login validation
-    setTimeout(() => {
-      setIsLoading(false);
-      if (pass.length >= 4) {
-        onLoginSuccess(user);
-      } else {
-        setStatusMsg({
-          type: 'error',
-          text: 'Credenciales inválidas. Ingrese con admin / adminjymmerk2 o solicite registro.',
-        });
-      }
-    }, 800);
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0b0e14] flex items-center justify-center p-4">
-      {/* Background Neon Glow Rings */}
       <div className="absolute w-[500px] h-[500px] bg-[#00f2fe]/5 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute w-[400px] h-[400px] bg-[#ff007f]/5 rounded-full blur-3xl pointer-events-none"></div>
 
       <div className="relative w-full max-w-sm bg-[#12161f] border border-[#00f2fe] rounded-2xl p-7 shadow-[0_0_35px_rgba(0,242,254,0.25)] text-center">
-        {/* Brand Icon */}
         <div className="mx-auto w-14 h-14 rounded-xl bg-gradient-to-br from-[#00f2fe]/20 to-[#ff007f]/20 border border-[#00f2fe] flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.4)] mb-4">
           <span className="text-2xl font-black italic tracking-tighter text-[#00f2fe]">B</span>
         </div>
 
         <h2 className="text-xs font-black uppercase tracking-widest text-[#00f2fe] mb-1">
-          {mode === 'LOGIN' && 'CONTROL DE PRODUCCIÓN'}
-          {mode === 'REGISTRO' && 'SOLICITAR REGISTRO'}
-          {mode === 'RECUPERAR' && 'RECUPERAR ACCESO'}
-          {mode === 'CAMBIAR_PASS' && 'DEFINIR NUEVA CLAVE'}
+          {isAdminView
+            ? 'PANEL DE APROBACIÓN DE ACCESOS'
+            : mode === 'LOGIN'
+            ? 'CONTROL DE PRODUCCIÓN'
+            : mode === 'REGISTRO'
+            ? 'SOLICITAR REGISTRO'
+            : mode === 'RECUPERAR'
+            ? 'RECUPERAR ACCESO'
+            : 'DEFINIR NUEVA CLAVE'}
         </h2>
         <p className="text-[11px] text-[#8f9ba8] mb-5">Boombah Sports Tech • Workspace Production</p>
 
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-left">
-          {/* USER FIELD */}
-          {(mode === 'LOGIN' || mode === 'REGISTRO' || mode === 'RECUPERAR') && (
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
-                {mode === 'REGISTRO' ? 'Usuario Deseado' : 'Usuario'}
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00f2fe]/70" />
-                <input
-                  type="text"
-                  required
-                  value={user}
-                  onChange={(e) => setUser(e.target.value)}
-                  placeholder={mode === 'REGISTRO' ? 'Ej: jmercado' : 'admin'}
-                  className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
-                />
+        {isAdminView ? (
+          <div className="space-y-3 text-left max-h-64 overflow-y-auto">
+            {pendingUsers.length === 0 ? (
+              <p className="text-xs text-center text-gray-400 py-4">No hay solicitudes pendientes.</p>
+            ) : (
+              pendingUsers.map((u) => (
+                <div key={u.id} className="p-3 bg-[#0d1017] rounded-lg border border-white/10 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-white block">{u.username}</span>
+                    <span className="text-[10px] text-gray-400 block">{u.email || 'Sin correo'}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(u.id, 'APROBADO')}
+                      className="p-1.5 bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] rounded hover:bg-[#39ff14] hover:text-black transition-all cursor-pointer"
+                      title="Aprobar"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(u.id, 'RECHAZADO')}
+                      className="p-1.5 bg-red-500/20 border border-red-500 text-red-400 rounded hover:bg-red-500 hover:text-white transition-all cursor-pointer"
+                      title="Rechazar"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+            <button
+              type="button"
+              onClick={() => setIsAdminView(false)}
+              className="w-full mt-2 py-1.5 bg-white/5 border border-white/10 text-xs font-bold text-gray-300 rounded hover:bg-white/10 cursor-pointer"
+            >
+              Volver al Login
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3.5 text-left">
+            {(mode === 'LOGIN' || mode === 'REGISTRO' || mode === 'RECUPERAR') && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
+                  {mode === 'REGISTRO' ? 'Usuario Deseado' : 'Usuario'}
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00f2fe]/70" />
+                  <input
+                    type="text"
+                    required
+                    value={user}
+                    onChange={(e) => setUser(e.target.value)}
+                    placeholder={mode === 'REGISTRO' ? 'Ej: jmercado' : 'admin'}
+                    className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* EMAIL FIELD (Optional for Register / Recovery) */}
-          {(mode === 'REGISTRO' || mode === 'RECUPERAR') && (
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
-                Correo Electrónico (Opcional)
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00f2fe]/70" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@boombah.com"
-                  className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe]"
-                />
+            {(mode === 'REGISTRO' || mode === 'RECUPERAR') && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
+                  Correo Electrónico (Opcional)
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00f2fe]/70" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ejemplo@boombah.com"
+                    className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe]"
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* PASSWORD FIELD */}
-          {(mode === 'LOGIN' || mode === 'REGISTRO' || mode === 'CAMBIAR_PASS') && (
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
-                {mode === 'CAMBIAR_PASS' ? 'Nueva Contraseña' : 'Contraseña'}
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00f2fe]/70" />
-                <input
-                  type="password"
-                  required
-                  value={pass}
-                  onChange={(e) => setPass(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
-                />
+            {(mode === 'LOGIN' || mode === 'REGISTRO' || mode === 'CAMBIAR_PASS') && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
+                  {mode === 'CAMBIAR_PASS' ? 'Nueva Contraseña' : 'Contraseña'}
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#00f2fe]/70" />
+                  <input
+                    type="password"
+                    required
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* CONFIRM PASSWORD */}
-          {(mode === 'REGISTRO' || mode === 'CAMBIAR_PASS') && (
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
-                Confirmar Contraseña
-              </label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#39ff14]/70" />
-                <input
-                  type="password"
-                  required
-                  value={passConfirm}
-                  onChange={(e) => setPassConfirm(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#39ff14]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#39ff14]"
-                />
+            {(mode === 'REGISTRO' || mode === 'CAMBIAR_PASS') && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1">
+                  Confirmar Contraseña
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#39ff14]/70" />
+                  <input
+                    type="password"
+                    required
+                    value={passConfirm}
+                    onChange={(e) => setPassConfirm(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#39ff14]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#39ff14]"
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* SUBMIT BUTTON */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={`w-full py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg disabled:opacity-50 mt-2 ${
-              mode === 'REGISTRO'
-                ? 'bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] hover:bg-[#39ff14] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(57,255,20,0.3)]'
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`w-full py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg disabled:opacity-50 mt-2 ${
+                mode === 'REGISTRO'
+                  ? 'bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] hover:bg-[#39ff14] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(57,255,20,0.3)]'
+                  : mode === 'RECUPERAR'
+                  ? 'bg-[#ffe600]/20 border border-[#ffe600] text-[#ffe600] hover:bg-[#ffe600] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(255,230,0,0.3)]'
+                  : 'bg-[#00f2fe]/15 border border-[#00f2fe] text-[#00f2fe] hover:bg-[#00f2fe] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(0,242,254,0.3)]'
+              }`}
+            >
+              {isLoading
+                ? 'Procesando...'
+                : mode === 'LOGIN'
+                ? 'Iniciar Sesión'
+                : mode === 'REGISTRO'
+                ? 'Enviar Solicitud'
                 : mode === 'RECUPERAR'
-                ? 'bg-[#ffe600]/20 border border-[#ffe600] text-[#ffe600] hover:bg-[#ffe600] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(255,230,0,0.3)]'
-                : 'bg-[#00f2fe]/15 border border-[#00f2fe] text-[#00f2fe] hover:bg-[#00f2fe] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-            }`}
-          >
-            {isLoading
-              ? 'Procesando...'
-              : mode === 'LOGIN'
-              ? 'Iniciar Sesión'
-              : mode === 'REGISTRO'
-              ? 'Enviar Solicitud'
-              : mode === 'RECUPERAR'
-              ? 'Notificar al Administrador'
-              : 'Guardar Nueva Contraseña'}
-          </button>
-        </form>
+                ? 'Notificar al Administrador'
+                : 'Guardar Nueva Contraseña'}
+            </button>
+          </form>
+        )}
 
-        {/* Status Message */}
         {statusMsg.text && (
           <div
             className={`mt-3 p-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 ${
@@ -244,7 +373,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        {/* Toggle Links */}
         <div className="mt-4 pt-3 border-t border-white/5 space-y-1.5 text-[11px]">
           {mode === 'LOGIN' ? (
             <>
@@ -268,8 +396,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               >
                 ¿Olvidaste tu acceso o necesitas ayuda?
               </button>
-              <div className="pt-2 text-[10px] text-gray-500">
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsAdminView(true)}
+                className="text-[#ffe600] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold pt-1"
+              >
+                <ShieldAlert className="w-3 h-3" />
+                <span>Panel de Autorización Admin</span>
+              </button>
             </>
           ) : (
             <button
