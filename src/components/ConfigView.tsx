@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
-import { Settings, Lock, CheckCircle2, AlertCircle, RefreshCw, Shield, Server, Database } from 'lucide-react';
+import { Settings, Lock, CheckCircle2, AlertCircle, Server } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
 interface ConfigViewProps {
   authenticatedUser: string;
 }
+
+const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => {
   const [oldPass, setOldPass] = useState('');
@@ -36,17 +42,55 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
 
     setIsSubmitting(true);
 
-    // Simulate backend update with safety check
-    setTimeout(() => {
+    try {
+      // 1. Verificar si existe la combinación de usuario y clave actual en Supabase
+      const { data, error: selectError } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('username', authenticatedUser)
+        .eq('password', oldPass);
+
+      if (selectError) {
+        setIsSubmitting(false);
+        setStatusMsg({ type: 'error', text: 'Error de comunicación con el servidor.' });
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setIsSubmitting(false);
+        setStatusMsg({ type: 'error', text: 'La contraseña actual ingresada es incorrecta.' });
+        return;
+      }
+
+      // 2. Actualizar la contraseña a la nueva en Supabase
+      const { error: updateError } = await supabase
+        .from('app_users')
+        .update({ password: newPass })
+        .eq('username', authenticatedUser);
+
+      setIsSubmitting(false);
+
+      if (!updateError) {
+        setStatusMsg({
+          type: 'success',
+          text: '¡Contraseña actualizada exitosamente en Supabase!',
+        });
+        setOldPass('');
+        setNewPass('');
+        setConfirmPass('');
+      } else {
+        setStatusMsg({
+          type: 'error',
+          text: 'Error al intentar guardar la nueva contraseña.',
+        });
+      }
+    } catch (err) {
       setIsSubmitting(false);
       setStatusMsg({
-        type: 'success',
-        text: '¡Contraseña actualizada exitosamente en el servidor de Boombah!',
+        type: 'error',
+        text: 'Error inesperado en la conexión con la base de datos.',
       });
-      setOldPass('');
-      setNewPass('');
-      setConfirmPass('');
-    }, 800);
+    }
   };
 
   return (
