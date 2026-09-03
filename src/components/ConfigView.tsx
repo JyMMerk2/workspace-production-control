@@ -42,13 +42,18 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
 
     setIsSubmitting(true);
 
+    // Validar credenciales maestras locales
+    const isLocalMaster =
+      (authenticatedUser.toLowerCase() === 'jmercado' && oldPass === 'jymmerk2') ||
+      (authenticatedUser.toLowerCase() === 'admin' && oldPass === 'adminjymmerk2') ||
+      (authenticatedUser.toLowerCase() === 'supervisor' && oldPass === 'boombah2026');
+
     try {
-      // 1. Verificar si existe la combinación de usuario y clave actual en Supabase
+      // Buscar el usuario en Supabase
       const { data, error: selectError } = await supabase
         .from('app_users')
         .select('*')
-        .eq('username', authenticatedUser)
-        .eq('password', oldPass);
+        .ilike('username', authenticatedUser);
 
       if (selectError) {
         setIsSubmitting(false);
@@ -56,34 +61,59 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
         return;
       }
 
-      if (!data || data.length === 0) {
-        setIsSubmitting(false);
-        setStatusMsg({ type: 'error', text: 'La contraseña actual ingresada es incorrecta.' });
-        return;
-      }
+      if (data && data.length > 0) {
+        // Usuario existente en Supabase: validar contraseña actual
+        if (data[0].password !== oldPass) {
+          setIsSubmitting(false);
+          setStatusMsg({ type: 'error', text: 'La contraseña actual ingresada es incorrecta.' });
+          return;
+        }
 
-      // 2. Actualizar la contraseña a la nueva en Supabase
-      const { error: updateError } = await supabase
-        .from('app_users')
-        .update({ password: newPass })
-        .eq('username', authenticatedUser);
+        // Actualizar contraseña del registro en Supabase
+        const { error: updateError } = await supabase
+          .from('app_users')
+          .update({ password: newPass })
+          .eq('id', data[0].id);
+
+        if (updateError) {
+          setIsSubmitting(false);
+          setStatusMsg({ type: 'error', text: 'Error al actualizar la contraseña.' });
+          return;
+        }
+      } else {
+        // Si no está en Supabase, verificar contra lista maestra
+        if (!isLocalMaster) {
+          setIsSubmitting(false);
+          setStatusMsg({ type: 'error', text: 'La contraseña actual ingresada es incorrecta.' });
+          return;
+        }
+
+        // Crear/sincronizar el usuario maestro en Supabase con la nueva clave
+        const { error: insertError } = await supabase
+          .from('app_users')
+          .insert([
+            {
+              username: authenticatedUser,
+              password: newPass,
+              status: 'APROBADO',
+            },
+          ]);
+
+        if (insertError) {
+          setIsSubmitting(false);
+          setStatusMsg({ type: 'error', text: 'Error al sincronizar el usuario en Supabase.' });
+          return;
+        }
+      }
 
       setIsSubmitting(false);
-
-      if (!updateError) {
-        setStatusMsg({
-          type: 'success',
-          text: '¡Contraseña actualizada exitosamente en Supabase!',
-        });
-        setOldPass('');
-        setNewPass('');
-        setConfirmPass('');
-      } else {
-        setStatusMsg({
-          type: 'error',
-          text: 'Error al intentar guardar la nueva contraseña.',
-        });
-      }
+      setStatusMsg({
+        type: 'success',
+        text: '¡Contraseña actualizada e impactada exitosamente en Supabase!',
+      });
+      setOldPass('');
+      setNewPass('');
+      setConfirmPass('');
     } catch (err) {
       setIsSubmitting(false);
       setStatusMsg({
