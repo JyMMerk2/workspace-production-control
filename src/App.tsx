@@ -24,19 +24,42 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [headerVisible, setHeaderVisible] = useState<boolean>(true);
 
-  const [dashboardData, setDashboardData] = useState<DashboardData>(INITIAL_FALLBACK_DASHBOARD);
+  // 1. Inicializar con datos guardados en caché si existen para evitar reseteos a ceros al iniciar
+  const [dashboardData, setDashboardData] = useState<DashboardData>(() => {
+    const cached = localStorage.getItem('boombah_dashboard_cached_data');
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        console.error('Error parseando cache:', e);
+      }
+    }
+    return INITIAL_FALLBACK_DASHBOARD;
+  });
+
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Synchronize dashboard
+  // Synchronize dashboard con protección anti-reseteo
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const { data, isLive } = await fetchLiveDashboardData();
-      setDashboardData(data);
-      setIsLiveConnection(isLive);
+
+      // VALIDACIÓN CLAVE: Solo sobrescribir el estado si la respuesta contiene datos de producción reales válidos
+      if (
+        data &&
+        data.kpiApparel &&
+        data.kpiApparel.captura !== undefined &&
+        data.kpiApparel.captura > 0
+      ) {
+        setDashboardData(data);
+        setIsLiveConnection(isLive);
+        localStorage.setItem('boombah_dashboard_cached_data', JSON.stringify(data));
+      }
     } catch (err) {
-      console.warn('Dashboard sync fallback used:', err);
+      console.warn('Dashboard sync fallback mantenido:', err);
+      // En caso de falla de red/timeout, NO actualiza estado: la interfaz permanece congelada con los últimos datos buenos
     } finally {
       setIsRefreshing(false);
     }
