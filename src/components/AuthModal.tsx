@@ -50,7 +50,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         setPendingUsers(data);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error cargando solicitudes:', e);
     }
   };
 
@@ -71,7 +71,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         setPendingUsers((prev) => prev.filter((u) => u.id !== id));
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error al actualizar estado:', e);
     }
   };
 
@@ -114,7 +114,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           }
         }
       } catch (err) {
-        console.error(err);
+        console.error('Error al iniciar sesión:', err);
       }
 
       setIsLoading(false);
@@ -152,11 +152,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           setPassConfirm('');
           setEmail('');
         } else {
-          setStatusMsg({ type: 'error', text: 'El usuario ya existe o hubo un problema al registrar.' });
+          const errData = await res.json();
+          const detail = errData.message || 'El usuario ya existe o hubo un problema al registrar.';
+          setStatusMsg({ type: 'error', text: detail });
         }
       } catch (err) {
         setIsLoading(false);
-        setStatusMsg({ type: 'error', text: 'Error de conexión con la base de datos.' });
+        setStatusMsg({ type: 'error', text: 'Error de red. Revisa la conexión al servidor.' });
       }
       return;
     }
