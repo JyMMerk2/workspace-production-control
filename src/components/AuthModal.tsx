@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, Mail, CheckCircle2, AlertCircle, KeyRound, ArrowLeft, Check, X, ShieldAlert } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 
 interface AuthModalProps {
   onLoginSuccess: (username: string) => void;
@@ -22,7 +21,12 @@ const ADMIN_PASS_MASTER = 'adminjymmerk2';
 const SUPABASE_URL = 'https://qpozgkdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const headers = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
+  'Prefer': 'return=representation',
+};
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
@@ -40,12 +44,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
   const fetchPendingUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('app_users')
-        .select('*')
-        .eq('status', 'PENDIENTE');
-
-      if (!error && data) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?status=eq.PENDIENTE&select=*`, { headers });
+      if (res.ok) {
+        const data = await res.json();
         setPendingUsers(data);
       }
     } catch (e) {
@@ -61,12 +62,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
   const handleApprove = async (id: string, newStatus: 'APROBADO' | 'RECHAZADO') => {
     try {
-      const { error } = await supabase
-        .from('app_users')
-        .update({ status: newStatus })
-        .eq('id', id);
-
-      if (!error) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?id=eq.${id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
         setPendingUsers((prev) => prev.filter((u) => u.id !== id));
       }
     } catch (e) {
@@ -91,24 +92,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       }
 
       try {
-        const { data, error } = await supabase
-          .from('app_users')
-          .select('*')
-          .eq('username', user)
-          .eq('password', pass);
-
-        if (!error && data && data.length > 0) {
-          const foundUser = data[0];
-          setIsLoading(false);
-          if (foundUser.status === 'APROBADO') {
-            onLoginSuccess(foundUser.username);
-            return;
-          } else if (foundUser.status === 'PENDIENTE') {
-            setStatusMsg({ type: 'error', text: 'Tu cuenta está pendiente de aprobación por el Administrador.' });
-            return;
-          } else {
-            setStatusMsg({ type: 'error', text: 'Tu solicitud de acceso fue rechazada.' });
-            return;
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/app_users?username=eq.${encodeURIComponent(user)}&password=eq.${encodeURIComponent(pass)}&select=*`,
+          { headers }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.length > 0) {
+            const foundUser = data[0];
+            setIsLoading(false);
+            if (foundUser.status === 'APROBADO') {
+              onLoginSuccess(foundUser.username);
+              return;
+            } else if (foundUser.status === 'PENDIENTE') {
+              setStatusMsg({ type: 'error', text: 'Tu cuenta está pendiente de aprobación por el Administrador.' });
+              return;
+            } else {
+              setStatusMsg({ type: 'error', text: 'Tu solicitud de acceso fue rechazada.' });
+              return;
+            }
           }
         }
       } catch (err) {
@@ -128,19 +130,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       }
 
       try {
-        const { error } = await supabase
-          .from('app_users')
-          .insert([
-            {
-              username: user,
-              password: pass,
-              email: email || null,
-              status: 'PENDIENTE',
-            },
-          ]);
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            username: user,
+            password: pass,
+            email: email || null,
+            status: 'PENDIENTE',
+          }),
+        });
 
         setIsLoading(false);
-        if (!error) {
+        if (res.ok) {
           setStatusMsg({
             type: 'success',
             text: '¡Solicitud enviada al Administrador de Boombah! Podrá ser aprobada desde el panel.',
