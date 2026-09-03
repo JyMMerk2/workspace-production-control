@@ -21,7 +21,6 @@ const ADMIN_PASS_MASTER = 'adminjymmerk2';
 
 const SUPABASE_URL = 'https://qpozgkdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna2R6Y2l4amtqYmxudGQiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4ODQ0MDMyMSwiZXhwIjoyMTA0MDE2MzIxfQ.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
