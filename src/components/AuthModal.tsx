@@ -21,6 +21,7 @@ const ADMIN_PASS_MASTER = 'adminjymmerk2';
 
 const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
@@ -29,6 +30,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [pass, setPass] = useState('');
   const [passConfirm, setPassConfirm] = useState('');
   const [email, setEmail] = useState('');
+  const [adminPin, setAdminPin] = useState('');
+  const [showAdminPinPrompt, setShowAdminPinPrompt] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'error' | 'success' | 'info' | ''; text: string }>({
     type: '',
     text: '',
@@ -70,6 +73,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleVerifyAdminAccess = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPin === ADMIN_PASS_MASTER) {
+      setShowAdminPinPrompt(false);
+      setIsAdminView(true);
+      setAdminPin('');
+      setStatusMsg({ type: '', text: '' });
+    } else {
+      setStatusMsg({ type: 'error', text: 'Contraseña de Administrador incorrecta.' });
     }
   };
 
@@ -194,7 +209,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         </div>
 
         <h2 className="text-xs font-black uppercase tracking-widest text-[#00f2fe] mb-1">
-          {isAdminView
+          {showAdminPinPrompt
+            ? 'AUTENTICACIÓN REQUERIDA'
+            : isAdminView
             ? 'PANEL DE APROBACIÓN DE ACCESOS'
             : mode === 'LOGIN'
             ? 'CONTROL DE PRODUCCIÓN'
@@ -206,7 +223,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         </h2>
         <p className="text-[11px] text-[#8f9ba8] mb-5">Boombah Sports Tech • Workspace Production</p>
 
-        {isAdminView ? (
+        {showAdminPinPrompt ? (
+          <form onSubmit={handleVerifyAdminAccess} className="space-y-3.5 text-left">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#ffe600] mb-1">
+                Contraseña Maestro de Administrador
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#ffe600]/70" />
+                <input
+                  type="password"
+                  required
+                  autoFocus
+                  value={adminPin}
+                  onChange={(e) => setAdminPin(e.target.value)}
+                  placeholder="Ingrese contraseña maestra"
+                  className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#ffe600]/40 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#ffe600]"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-lg text-xs font-black uppercase tracking-wider bg-[#ffe600]/20 border border-[#ffe600] text-[#ffe600] hover:bg-[#ffe600] hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_15px_rgba(255,230,0,0.3)] mt-2"
+            >
+              Acceder al Panel Admin
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowAdminPinPrompt(false);
+                setStatusMsg({ type: '', text: '' });
+              }}
+              className="w-full py-1.5 text-xs text-[#8f9ba8] hover:text-white text-center block cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </form>
+        ) : isAdminView ? (
           <div className="space-y-3 text-left max-h-64 overflow-y-auto">
             {pendingUsers.length === 0 ? (
               <p className="text-xs text-center text-gray-400 py-4">No hay solicitudes pendientes.</p>
@@ -241,7 +296,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             <button
               type="button"
               onClick={() => setIsAdminView(false)}
-              className="w-full mt-2 py-1.5 bg-white/5 border border-white/10 text-xs font-bold text-gray-300 rounded hover:bg-white/10 cursor-pointer"
+              className="w-full mt-2 py-1.5 bg-white/5 border border-white/10 text-xs font-bold text-gray-300 rounded hover:bg-white/10 cursor-pointer text-center"
             >
               Volver al Login
             </button>
@@ -363,52 +418,58 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        <div className="mt-4 pt-3 border-t border-white/5 space-y-1.5 text-[11px]">
-          {mode === 'LOGIN' ? (
-            <>
+        {!showAdminPinPrompt && (
+          <div className="mt-4 pt-3 border-t border-white/5 space-y-1.5 text-[11px]">
+            {mode === 'LOGIN' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('REGISTRO');
+                    setStatusMsg({ type: '', text: '' });
+                  }}
+                  className="text-[#8f9ba8] hover:text-[#00f2fe] underline block mx-auto cursor-pointer"
+                >
+                  ¿No tienes usuario? Solicita registro aquí
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('RECUPERAR');
+                    setStatusMsg({ type: '', text: '' });
+                  }}
+                  className="text-[#ff9e00] hover:text-white underline block mx-auto cursor-pointer"
+                >
+                  ¿Olvidaste tu acceso o necesitas ayuda?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAdminPinPrompt(true);
+                    setStatusMsg({ type: '', text: '' });
+                  }}
+                  className="text-[#ffe600] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold pt-1"
+                >
+                  <ShieldAlert className="w-3 h-3" />
+                  <span>Panel de Autorización Admin</span>
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
                 onClick={() => {
-                  setMode('REGISTRO');
+                  setMode('LOGIN');
+                  setIsAdminView(false);
                   setStatusMsg({ type: '', text: '' });
                 }}
-                className="text-[#8f9ba8] hover:text-[#00f2fe] underline block mx-auto cursor-pointer"
+                className="text-[#00f2fe] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold"
               >
-                ¿No tienes usuario? Solicita registro aquí
+                <ArrowLeft className="w-3 h-3" />
+                <span>Volver a inicio de sesión</span>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('RECUPERAR');
-                  setStatusMsg({ type: '', text: '' });
-                }}
-                className="text-[#ff9e00] hover:text-white underline block mx-auto cursor-pointer"
-              >
-                ¿Olvidaste tu acceso o necesitas ayuda?
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAdminView(true)}
-                className="text-[#ffe600] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold pt-1"
-              >
-                <ShieldAlert className="w-3 h-3" />
-                <span>Panel de Autorización Admin</span>
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setMode('LOGIN');
-                setStatusMsg({ type: '', text: '' });
-              }}
-              className="text-[#00f2fe] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              <span>Volver a inicio de sesión</span>
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
