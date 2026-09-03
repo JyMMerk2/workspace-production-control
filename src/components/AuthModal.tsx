@@ -19,13 +19,7 @@ const ADMIN_USER_MASTER = 'admin';
 const ADMIN_PASS_MASTER = 'adminjymmerk2';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://qpozgkdzcixjkjblntd.supabase.co';
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_2jVZPRxNFdkbdG6MDXR5DQ_64Rgsq1o';
-
-const headers = {
-  'apikey': SUPABASE_KEY,
-  'Authorization': `Bearer ${SUPABASE_KEY}`,
-  'Content-Type': 'application/json',
-};
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna2R6Y2l4amtqYmxudGQiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTczODU4OTY0NSwiZXhwIjoyMDU0MTY1NjQ1fQ.X_X_placeholder_token_for_supabase_fetch';
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
@@ -41,9 +35,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [isAdminView, setIsAdminView] = useState(false);
 
+  const getHeaders = () => {
+    const key = import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_KEY;
+    return {
+      'apikey': key,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
+  };
+
   const fetchPendingUsers = async () => {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?status=eq.PENDIENTE&select=*`, { headers });
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?status=eq.PENDIENTE&select=*`, { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         setPendingUsers(data);
@@ -63,7 +67,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users?id=eq.${id}`, {
         method: 'PATCH',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ status: newStatus }),
       });
       if (res.ok) {
@@ -79,9 +83,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
     setStatusMsg({ type: 'info', text: 'Verificando con el servidor...' });
     setIsLoading(true);
 
-    // 1. LOGIN
     if (mode === 'LOGIN') {
-      // Local Master Fallback
       if (
         (user.toLowerCase() === ADMIN_USER_MASTER.toLowerCase() && pass === ADMIN_PASS_MASTER) ||
         (user.toLowerCase() === 'jmercado' && pass === '123456') ||
@@ -92,11 +94,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         return;
       }
 
-      // Query Supabase DB
       try {
         const res = await fetch(
           `${SUPABASE_URL}/rest/v1/app_users?username=eq.${encodeURIComponent(user)}&password=eq.${encodeURIComponent(pass)}&select=*`,
-          { headers }
+          { headers: getHeaders() }
         );
         if (res.ok) {
           const data = await res.json();
@@ -126,7 +127,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // 2. REGISTRO
     if (mode === 'REGISTRO') {
       if (pass !== passConfirm) {
         setIsLoading(false);
@@ -137,7 +137,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       try {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/app_users`, {
           method: 'POST',
-          headers,
+          headers: getHeaders(),
           body: JSON.stringify({
             username: user,
             password: pass,
@@ -166,7 +166,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // 3. RECUPERAR ACCESO
     if (mode === 'RECUPERAR') {
       setTimeout(() => {
         setIsLoading(false);
@@ -178,7 +177,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       return;
     }
 
-    // 4. CAMBIAR CONTRASEÑA
     if (mode === 'CAMBIAR_PASS') {
       if (pass !== passConfirm) {
         setIsLoading(false);
