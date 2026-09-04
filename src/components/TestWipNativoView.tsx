@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link } from 'lucide-react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link, CheckSquare, Square } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
@@ -73,7 +73,6 @@ export const TestWipNativoView: React.FC = () => {
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
-      // Cargar Capturas Incompletas
       const { data: dbCapturas } = await supabase
         .from('wip_incompletos')
         .select('*')
@@ -114,7 +113,6 @@ export const TestWipNativoView: React.FC = () => {
         setCapturasData(structured);
       }
 
-      // Cargar Database Máster de Contratos
       const { data: dbMaster } = await supabase
         .from('wip_master_db')
         .select('*')
@@ -162,14 +160,14 @@ export const TestWipNativoView: React.FC = () => {
     };
   }, []);
 
-  // Confirmar y Ejecutar Transferencia
+  // Confirmar y Ejecutar Transferencia a WIP Stocks & Vendidas (Pestaña "ORDENES DEL DIA")
   const confirmAndExecuteTransfer = async (contratoId: string) => {
     const { error } = await supabase
       .from('wip_stocks_vendidas')
-      .upsert([{ contrato: contratoId }], { onConflict: 'contrato' });
+      .upsert([{ contrato: contratoId, status: 'CAPTURADO COMPLETO', despachado: 'DESPACHADO' }], { onConflict: 'contrato' });
 
     if (!error) {
-      alert(`✅ Contrato ${contratoId} transferido a "WIP Stocks & Vendidas" (Columna A).`);
+      alert(`✅ Contrato ${contratoId} transferido correctamente a "WIP Stocks & Vendidas".`);
     } else {
       alert('Error al transferir contrato: ' + error.message);
     }
@@ -191,7 +189,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Limpiar únicamente registros marcados como Cerrados (CE)
   const handleCleanCE = async () => {
     if (window.confirm('¿Desea eliminar de la tabla de Incompletas únicamente los registros con estado Cerrado (CE)?')) {
       const { error } = await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
@@ -203,7 +200,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Agregar nuevo PO en Columna A
+  // Agregar nuevo PO en Columna A (SE GUARDA EN PARCIAL Y DESMARCADO POR DEFECTO)
   const handleAddPoCaptura = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const poClean = inputPo.trim().toUpperCase();
@@ -220,8 +217,8 @@ export const TestWipNativoView: React.FC = () => {
       contrato: match?.contrato || contratoExtracted,
       estilo: match?.estilo || 'PENDIENTE DB',
       qty: match?.qty || 0,
-      completado: true,
-      estado_captura: 'CAPTURADO COMPLETO',
+      completado: false, // Inicia desmarcado por defecto
+      estado_captura: 'CAPTURADO PARCIAL', // Inicia en PARCIAL
       estado_general: match?.estadoGeneral || 'AB',
       modificado_por: activeUser,
       updated_at: new Date().toISOString(),
@@ -236,7 +233,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Toggle Checkbox
+  // Toggle Checkbox de Verificación (Marcar/Desmarcar)
   const toggleStatus = async (row: WipCapturaRow) => {
     const nextCompletado = !row.completado;
     const nextEstadoCaptura = nextCompletado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL';
@@ -268,7 +265,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Cargar Database Máster de Contratos
   const parseAndSaveMasterDb = async (rawMatrix: any[][]) => {
     const rowsToUpsert: any[] = [];
 
@@ -311,7 +307,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Procesar importación desde enlace público de Google Sheets
   const handleFetchGoogleSheets = async () => {
     if (!sheetsUrl.trim()) return;
     try {
@@ -346,7 +341,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Cálculos R3, R4, R6
   const capturadoR3 = capturasData.filter((c) => c.completado).length;
   const restaR6 = Math.max(0, totalOrdenesDiaR4 - capturadoR3);
 
@@ -473,6 +467,7 @@ export const TestWipNativoView: React.FC = () => {
                     <th className="p-3">ESTILO</th>
                     <th className="p-3 text-center">QTY</th>
                     <th className="p-3 text-center text-[#39ff14]">PIEZAS</th>
+                    <th className="p-3 text-center">CAPTURA (CHECK)</th>
                     <th className="p-3 text-center">ESTADO</th>
                     <th className="p-3 text-center">ESTATUS GENERAL</th>
                   </tr>
@@ -480,7 +475,7 @@ export const TestWipNativoView: React.FC = () => {
                 <tbody className="divide-y divide-white/5">
                   {filteredCapturas.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-gray-400 font-mono">
+                      <td colSpan={9} className="p-8 text-center text-gray-400 font-mono">
                         No hay capturas activas. Escanea o digita un PO en la casilla superior para empezar.
                       </td>
                     </tr>
@@ -496,17 +491,32 @@ export const TestWipNativoView: React.FC = () => {
                           {row.piezasTotal !== null ? row.piezasTotal : ''}
                         </td>
 
+                        {/* Casilla de Verificación (Checkbox) */}
                         <td className="p-3 text-center">
                           <button
                             onClick={() => toggleStatus(row)}
-                            className={`px-3 py-1 rounded text-[10px] font-black border cursor-pointer ${
+                            className="p-1 hover:scale-110 transition-transform cursor-pointer inline-flex items-center justify-center"
+                            title={row.completado ? 'Marcar como Parcial' : 'Marcar como Completo'}
+                          >
+                            {row.completado ? (
+                              <CheckSquare className="w-5 h-5 text-[#39ff14]" />
+                            ) : (
+                              <Square className="w-5 h-5 text-gray-500 hover:text-white" />
+                            )}
+                          </button>
+                        </td>
+
+                        {/* Estado Dinámico */}
+                        <td className="p-3 text-center">
+                          <span
+                            className={`px-3 py-1 rounded text-[10px] font-black border ${
                               row.completado
                                 ? 'bg-[#39ff14] text-black border-[#39ff14] shadow-[0_0_8px_rgba(57,255,20,0.4)]'
                                 : 'bg-[#ffe600]/20 text-[#ffe600] border-[#ffe600]'
                             }`}
                           >
                             {row.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'}
-                          </button>
+                          </span>
                         </td>
 
                         <td className="p-3 text-center">
@@ -585,7 +595,7 @@ export const TestWipNativoView: React.FC = () => {
               <h3 className="text-base font-bold uppercase">Confirmar Transferencia</h3>
             </div>
             <p className="text-xs text-gray-300 leading-relaxed">
-              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea enviarlo a <strong className="text-white">"WIP STOCKS & VENDIDAS"</strong> (Columna A)?
+              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea enviarlo a <strong className="text-white">"WIP STOCKS & VENDIDAS"</strong>?
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -605,7 +615,7 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Cargar Database con soporte multi-origen */}
+      {/* Modal Cargar Database */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-xl p-6 max-w-xl w-full space-y-4 shadow-2xl">
@@ -613,7 +623,6 @@ export const TestWipNativoView: React.FC = () => {
               <Upload className="w-5 h-5" /> Importar Database de Contratos
             </h3>
 
-            {/* Opción A: Google Sheets URL */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
                 <Link className="w-3.5 h-3.5 text-[#00f2fe]" /> Importar desde Enlace Google Sheets (CSV Publicado)
@@ -633,7 +642,6 @@ export const TestWipNativoView: React.FC = () => {
               <div className="h-px bg-white/10 flex-1"></div>
             </div>
 
-            {/* Opción B: Subir Excel */}
             <div
               onClick={() => fileInputRef.current?.click()}
               className="border-2 border-dashed border-[#00f2fe]/40 hover:border-[#00f2fe] rounded-xl p-3 text-center bg-[#0d1017]/60 cursor-pointer transition-all flex flex-col items-center justify-center gap-1"
@@ -663,7 +671,6 @@ export const TestWipNativoView: React.FC = () => {
               <div className="h-px bg-white/10 flex-1"></div>
             </div>
 
-            {/* Opción C: Pegado Manual */}
             <textarea
               rows={3}
               value={pastedData}
