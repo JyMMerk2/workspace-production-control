@@ -33,7 +33,8 @@ export const TestWipNativoView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Estados de datos
-  const [masterDb, setMasterDb] = useState<Record<string, MasterDbItem>>({});
+  const [masterDbList, setMasterDbList] = useState<MasterDbItem[]>([]);
+  const [masterDbLookup, setMasterDbLookup] = useState<Record<string, MasterDbItem>>({});
   const [capturasData, setCapturasData] = useState<WipCapturaRow[]>([]);
   
   // Entrada para captura rápida (Columna A)
@@ -52,16 +53,17 @@ export const TestWipNativoView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUser = sessionStorage.getItem('authenticated_user') || 'JMERCADO';
 
-  // 1. Cargar datos de Supabase
+  // 1. Cargar datos de Supabase (Capturas e Importación de Database Máster)
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
-      const { data: dbCapturas, error: errCapturas } = await supabase
+      // Cargar Capturas Incompletas
+      const { data: dbCapturas } = await supabase
         .from('wip_incompletos')
         .select('*')
         .order('updated_at', { ascending: false });
 
-      if (!errCapturas && dbCapturas) {
+      if (dbCapturas) {
         const grouped: Record<string, WipCapturaRow[]> = {};
 
         const mapped: WipCapturaRow[] = dbCapturas.map((item: any) => ({
@@ -95,6 +97,32 @@ export const TestWipNativoView: React.FC = () => {
 
         setCapturasData(structured);
       }
+
+      // Cargar Database Máster de Contratos
+      const { data: dbMaster } = await supabase
+        .from('wip_master_db')
+        .select('*')
+        .order('po', { ascending: true });
+
+      if (dbMaster) {
+        const lookup: Record<string, MasterDbItem> = {};
+        const list: MasterDbItem[] = dbMaster.map((item: any) => {
+          const formatted = {
+            id: item.id,
+            po: item.po,
+            part: item.part,
+            contrato: item.contrato,
+            estilo: item.estilo || '',
+            qty: item.qty || 0,
+            estadoGeneral: (item.estado_general as 'AB' | 'CE') || 'AB',
+          };
+          lookup[item.po.toLowerCase()] = formatted;
+          return formatted;
+        });
+
+        setMasterDbList(list);
+        setMasterDbLookup(lookup);
+      }
     } catch (err) {
       console.error('Error cargando Supabase:', err);
     } finally {
@@ -106,10 +134,9 @@ export const TestWipNativoView: React.FC = () => {
     fetchSupabaseData();
 
     const channel = supabase
-      .channel('public:wip_incompletos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_incompletos' }, () => {
-        fetchSupabaseData();
-      })
+      .channel('public:wip_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_incompletos' }, () => fetchSupabaseData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_master_db' }, () => fetchSupabaseData())
       .subscribe((status) => {
         setIsLiveConnected(status === 'SUBSCRIBED');
       });
@@ -133,12 +160,10 @@ export const TestWipNativoView: React.FC = () => {
     setPendingTransferContract(null);
   };
 
-  // Revertir Transferencia
   const revertTransferIfIncomplete = async (contratoId: string) => {
     await supabase.from('wip_stocks_vendidas').delete().eq('contrato', contratoId);
   };
 
-  // Evaluador de estado de contrato
   const evaluateContractCompletion = (contratoId: string, dataset: WipCapturaRow[]) => {
     const sameContractRows = dataset.filter((r) => r.contrato === contratoId);
     const allCompleted = sameContractRows.length > 0 && sameContractRows.every((r) => r.completado);
@@ -150,13 +175,13 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Agregar nuevo PO (Captura Rápida en Columna A)
+  // Agregar nuevo PO a Incompletas (Consultando la Master DB)
   const handleAddPoCaptura = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const poClean = inputPo.trim().toUpperCase();
     if (!poClean) return;
 
-    const match = masterDb[poClean.toLowerCase()];
+    const match = masterDbLookup[poClean.toLowerCase()];
 
     const partExtracted = poClean.replace(/[^a-zA-Z]/g, '');
     const contratoExtracted = poClean.replace(/[a-zA-Z]/g, '');
@@ -215,9 +240,9 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Carga de la Master DB
+  // Guardar Excel DIRECTAMENTE en la Pestaña DATABASE DE CONTRATOS (`wip_master_db`)
   const parseAndSaveMasterDb = async (rawMatrix: any[][]) => {
-    const dbLookup: Record<string, MasterDbItem> = {};
+    const rowsToUpsert: any[] = [];
 
     rawMatrix.forEach((cols) => {
       if (!cols || cols.length < 2) return;
@@ -229,20 +254,33 @@ export const TestWipNativoView: React.FC = () => {
         const qtyVal = parseInt(String(cols[11] || cols[4] || 0).trim(), 10) || 0;
         const estadoGenVal = (String(cols[9] || '').trim() as 'AB' | 'CE') || 'AB';
 
-        dbLookup[poFull.toLowerCase()] = {
+        rowsToUpsert.push({
           po: poFull,
           part: partExtracted || 'A',
           contrato: contratoExtracted,
           estilo: estiloVal,
           qty: qtyVal,
-          estadoGeneral: estadoGenVal,
-        };
+          estado_general: estadoGenVal,
+          updated_at: new Date().toISOString(),
+        });
       }
     });
 
-    setMasterDb(dbLookup);
-    alert(`✅ Base de datos máster actualizada con ${Object.keys(dbLookup).length} contratos.`);
-    setShowImportModal(false);
+    if (rowsToUpsert.length > 0) {
+      // Guardar en la tabla wip_master_db
+      const { error } = await supabase.from('wip_master_db').upsert(rowsToUpsert, { onConflict: 'po' });
+      if (!error) {
+        alert(`✅ Base de datos máster guardada correctamente con ${rowsToUpsert.length} contratos.`);
+        setShowImportModal(false);
+        setSelectedFile(null);
+        setPastedData('');
+        fetchSupabaseData();
+      } else {
+        alert('Error al guardar en Database Máster: ' + error.message);
+      }
+    } else {
+      alert('No se detectaron filas válidas de NewSoft.');
+    }
   };
 
   const handleProcessImport = async () => {
@@ -269,6 +307,13 @@ export const TestWipNativoView: React.FC = () => {
       c.po.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.contrato.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.estilo.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredMasterList = masterDbList.filter(
+    (m) =>
+      m.po.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      m.contrato.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      m.estilo.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -313,7 +358,6 @@ export const TestWipNativoView: React.FC = () => {
       {/* PESTAÑA 1: INCOMPLETAS */}
       {activeTab === 'INCOMPLETAS' && (
         <div className="space-y-4">
-          {/* Header KPI Banderola Azul */}
           <div className="bg-gradient-to-r from-[#1d2756] via-[#151c3d] to-[#0d1017] border border-[#00f2fe]/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
             <div className="text-center md:text-left">
               <h2 className="text-lg font-black text-white tracking-wide">
@@ -337,7 +381,6 @@ export const TestWipNativoView: React.FC = () => {
             </form>
           </div>
 
-          {/* Tabla Incompletas (Encabezados limpios sin COL E / COL F) */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -392,13 +435,23 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       )}
 
-      {/* PESTAÑA 2: DATABASE DE CONTRATOS */}
+      {/* PESTAÑA 2: DATABASE DE CONTRATOS (AHORA PERSISTENTE DESDE SUPABASE) */}
       {activeTab === 'DATABASE' && (
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-sm font-extrabold text-[#00f2fe] uppercase">
-              Base de Datos Master de Contratos (NewSoft) — Total cargados: {Object.keys(masterDb).length}
+              Base de Datos Master de Contratos (NewSoft) — Total cargados: {masterDbList.length}
             </h3>
+            <div className="relative w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar en Database..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-[#0d1017] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#00f2fe]"
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto border border-white/10 rounded-lg">
@@ -414,7 +467,7 @@ export const TestWipNativoView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 font-mono">
-                {Object.values(masterDb).map((item, idx) => (
+                {filteredMasterList.map((item, idx) => (
                   <tr key={idx} className="hover:bg-white/5">
                     <td className="p-2.5 font-bold text-white">{item.po}</td>
                     <td className="p-2.5 text-center text-gray-400">{item.part}</td>
@@ -471,7 +524,7 @@ export const TestWipNativoView: React.FC = () => {
               <Upload className="w-5 h-5" /> Importar Database de Contratos
             </h3>
             <p className="text-xs text-[#8f9ba8]">
-              Sube el archivo <strong className="text-white">database de contratos.xls</strong> o pega el contenido para actualizar la base máster.
+              Sube el archivo <strong className="text-white">database de contratos.xls</strong> o pega el contenido. Se guardará directamente en la pestaña <strong className="text-[#00f2fe]">DATABASE DE CONTRATOS</strong>.
             </p>
 
             <div
