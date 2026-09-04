@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle } from 'lucide-react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
@@ -39,7 +39,13 @@ export const TestWipNativoView: React.FC = () => {
   
   // Entrada para captura rápida (Columna A)
   const [inputPo, setInputPo] = useState('');
-  const [ordenesDelDia, setOrdenesDelDia] = useState<number>(128);
+  
+  // R4: Total Ordenes del Dia, R3: Capturado, R6: Resta
+  const [totalOrdenesDiaR4, setTotalOrdenesDiaR4] = useState<number>(() => {
+    return parseInt(localStorage.getItem('wip_r4_meta') || '128', 10);
+  });
+  const [isEditingR4, setIsEditingR4] = useState(false);
+  const [tempR4, setTempR4] = useState(totalOrdenesDiaR4.toString());
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -53,7 +59,16 @@ export const TestWipNativoView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUser = sessionStorage.getItem('authenticated_user') || 'JMERCADO';
 
-  // 1. Cargar datos de Supabase (Capturas e Importación de Database Máster)
+  const handleSaveR4 = () => {
+    const parsed = parseInt(tempR4, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setTotalOrdenesDiaR4(parsed);
+      localStorage.setItem('wip_r4_meta', parsed.toString());
+    }
+    setIsEditingR4(false);
+  };
+
+  // 1. Cargar datos de Supabase
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
@@ -134,7 +149,7 @@ export const TestWipNativoView: React.FC = () => {
     fetchSupabaseData();
 
     const channel = supabase
-      .channel('public:wip_realtime')
+      .channel('public:wip_realtime_channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_incompletos' }, () => fetchSupabaseData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_master_db' }, () => fetchSupabaseData())
       .subscribe((status) => {
@@ -175,7 +190,19 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Agregar nuevo PO a Incompletas (Consultando la Master DB)
+  // Limpiar/Eliminar únicamente los registros marcados como Cerrados (CE)
+  const handleCleanCE = async () => {
+    if (window.confirm('¿Desea eliminar de la tabla de Incompletas únicamente los registros con estado Cerrado (CE)?')) {
+      const { error } = await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
+      if (!error) {
+        fetchSupabaseData();
+      } else {
+        alert('Error al limpiar registros CE: ' + error.message);
+      }
+    }
+  };
+
+  // Agregar nuevo PO en Columna A
   const handleAddPoCaptura = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const poClean = inputPo.trim().toUpperCase();
@@ -240,7 +267,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Guardar Excel DIRECTAMENTE en la Pestaña DATABASE DE CONTRATOS (`wip_master_db`)
+  // Cargar Database Máster de Contratos desde Excel
   const parseAndSaveMasterDb = async (rawMatrix: any[][]) => {
     const rowsToUpsert: any[] = [];
 
@@ -267,13 +294,13 @@ export const TestWipNativoView: React.FC = () => {
     });
 
     if (rowsToUpsert.length > 0) {
-      // Guardar en la tabla wip_master_db
       const { error } = await supabase.from('wip_master_db').upsert(rowsToUpsert, { onConflict: 'po' });
       if (!error) {
-        alert(`✅ Base de datos máster guardada correctamente con ${rowsToUpsert.length} contratos.`);
+        alert(`✅ Base de datos máster guardada con ${rowsToUpsert.length} contratos en "DATABASE DE CONTRATOS".`);
         setShowImportModal(false);
         setSelectedFile(null);
         setPastedData('');
+        setActiveTab('DATABASE');
         fetchSupabaseData();
       } else {
         alert('Error al guardar en Database Máster: ' + error.message);
@@ -299,8 +326,9 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  const totalCapturados = capturasData.filter((c) => c.completado).length;
-  const restaCalculada = Math.max(0, ordenesDelDia - totalCapturados);
+  // Cálculos R3, R4, R6
+  const capturadoR3 = capturasData.filter((c) => c.completado).length;
+  const restaR6 = Math.max(0, totalOrdenesDiaR4 - capturadoR3);
 
   const filteredCapturas = capturasData.filter(
     (c) =>
@@ -318,8 +346,8 @@ export const TestWipNativoView: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto font-sans text-white p-2 md:p-4">
-      {/* Selector de Pestañas */}
-      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+      {/* Selector de Pestañas y Acciones */}
+      <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-2 gap-2">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveTab('INCOMPLETAS')}
@@ -346,24 +374,58 @@ export const TestWipNativoView: React.FC = () => {
           </button>
         </div>
 
-        <button
-          onClick={() => setShowImportModal(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-[#39ff14]/15 border border-[#39ff14] text-[#39ff14] rounded-lg text-xs font-bold hover:bg-[#39ff14] hover:text-black transition-all cursor-pointer"
-        >
-          <Upload className="w-3.5 h-3.5" />
-          <span>Cargar Database</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCleanCE}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[#ff007f]/15 border border-[#ff007f] text-[#ff007f] rounded-lg text-xs font-bold hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer"
+            title="Borrar únicamente registros cerrados (CE) de Incompletas"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Limpiar CE</span>
+          </button>
+
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[#39ff14]/15 border border-[#39ff14] text-[#39ff14] rounded-lg text-xs font-bold hover:bg-[#39ff14] hover:text-black transition-all cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Cargar Database</span>
+          </button>
+        </div>
       </div>
 
       {/* PESTAÑA 1: INCOMPLETAS */}
       {activeTab === 'INCOMPLETAS' && (
         <div className="space-y-4">
+          {/* Banderola Azul de Banderas Identica a Google Sheets */}
           <div className="bg-gradient-to-r from-[#1d2756] via-[#151c3d] to-[#0d1017] border border-[#00f2fe]/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
             <div className="text-center md:text-left">
-              <h2 className="text-lg font-black text-white tracking-wide">
-                Órdenes del día: <span className="text-[#00f2fe]">{ordenesDelDia}</span> / CAPTURADO:{' '}
-                <span className="text-[#39ff14]">{totalCapturados}</span> / RESTA:{' '}
-                <span className="text-[#ff007f]">{restaCalculada}</span>
+              <h2 className="text-lg font-black text-white tracking-wide flex items-center gap-2 flex-wrap">
+                <span>Ordenes del día:</span>{' '}
+                {isEditingR4 ? (
+                  <input
+                    type="number"
+                    value={tempR4}
+                    onChange={(e) => setTempR4(e.target.value)}
+                    onBlur={handleSaveR4}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveR4()}
+                    className="w-20 px-2 py-0.5 bg-[#0d1017] border border-[#00f2fe] text-[#00f2fe] font-mono text-base rounded outline-none"
+                    autoFocus
+                  />
+                ) : (
+                  <span
+                    className="text-[#00f2fe] cursor-pointer hover:underline flex items-center gap-1"
+                    onClick={() => {
+                      setTempR4(totalOrdenesDiaR4.toString());
+                      setIsEditingR4(true);
+                    }}
+                    title="Haz clic para modificar la meta del día (R4)"
+                  >
+                    {totalOrdenesDiaR4} <Edit2 className="w-3.5 h-3.5 text-gray-400" />
+                  </span>
+                )}
+                <span>/ CAPTURADO:</span> <span className="text-[#39ff14]">{capturadoR3}</span>
+                <span>/ RESTA:</span> <span className="text-[#ff007f]">{restaR6}</span>
               </h2>
             </div>
 
@@ -375,7 +437,7 @@ export const TestWipNativoView: React.FC = () => {
                 onChange={(e) => setInputPo(e.target.value)}
                 className="px-3 py-2 bg-[#0d1017] border border-[#00f2fe]/50 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-[#00f2fe] w-full md:w-64"
               />
-              <button type="submit" className="px-3 py-2 bg-[#00f2fe] text-black font-extrabold text-xs rounded-lg flex items-center gap-1">
+              <button type="submit" className="px-3 py-2 bg-[#00f2fe] text-black font-extrabold text-xs rounded-lg flex items-center gap-1 cursor-pointer">
                 <Plus className="w-4 h-4" /> Agregar
               </button>
             </form>
@@ -397,37 +459,45 @@ export const TestWipNativoView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {filteredCapturas.map((row) => (
-                    <tr key={row.id} className="hover:bg-white/5 transition-colors">
-                      <td className="p-3 font-mono font-bold text-white">{row.po}</td>
-                      <td className="p-3 text-center font-bold text-gray-400">{row.part}</td>
-                      <td className="p-3 text-center font-mono font-bold text-[#00f2fe]">{row.contrato}</td>
-                      <td className="p-3 font-bold text-gray-200">{row.estilo}</td>
-                      <td className="p-3 text-center font-bold text-gray-300">{row.qty}</td>
-                      <td className="p-3 text-center font-black text-[#39ff14] text-sm">
-                        {row.piezasTotal !== null ? row.piezasTotal : ''}
-                      </td>
-
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => toggleStatus(row)}
-                          className={`px-3 py-1 rounded text-[10px] font-black border cursor-pointer ${
-                            row.completado
-                              ? 'bg-[#39ff14] text-black border-[#39ff14] shadow-[0_0_8px_rgba(57,255,20,0.4)]'
-                              : 'bg-[#ffe600]/20 text-[#ffe600] border-[#ffe600]'
-                          }`}
-                        >
-                          {row.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'}
-                        </button>
-                      </td>
-
-                      <td className="p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.estadoGeneral === 'AB' ? 'bg-[#00f2fe]/20 text-[#00f2fe]' : 'bg-red-500/20 text-red-400'}`}>
-                          {row.estadoGeneral}
-                        </span>
+                  {filteredCapturas.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-gray-400 font-mono">
+                        No hay capturas activas. Escanea o digita un PO en la casilla superior para empezar.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredCapturas.map((row) => (
+                      <tr key={row.id} className="hover:bg-white/5 transition-colors">
+                        <td className="p-3 font-mono font-bold text-white">{row.po}</td>
+                        <td className="p-3 text-center font-bold text-gray-400">{row.part}</td>
+                        <td className="p-3 text-center font-mono font-bold text-[#00f2fe]">{row.contrato}</td>
+                        <td className="p-3 font-bold text-gray-200">{row.estilo}</td>
+                        <td className="p-3 text-center font-bold text-gray-300">{row.qty}</td>
+                        <td className="p-3 text-center font-black text-[#39ff14] text-sm">
+                          {row.piezasTotal !== null ? row.piezasTotal : ''}
+                        </td>
+
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => toggleStatus(row)}
+                            className={`px-3 py-1 rounded text-[10px] font-black border cursor-pointer ${
+                              row.completado
+                                ? 'bg-[#39ff14] text-black border-[#39ff14] shadow-[0_0_8px_rgba(57,255,20,0.4)]'
+                                : 'bg-[#ffe600]/20 text-[#ffe600] border-[#ffe600]'
+                            }`}
+                          >
+                            {row.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'}
+                          </button>
+                        </td>
+
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.estadoGeneral === 'AB' ? 'bg-[#00f2fe]/20 text-[#00f2fe]' : 'bg-red-500/20 text-red-400'}`}>
+                            {row.estadoGeneral}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -435,7 +505,7 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       )}
 
-      {/* PESTAÑA 2: DATABASE DE CONTRATOS (AHORA PERSISTENTE DESDE SUPABASE) */}
+      {/* PESTAÑA 2: DATABASE DE CONTRATOS */}
       {activeTab === 'DATABASE' && (
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 space-y-4">
           <div className="flex justify-between items-center">
@@ -487,7 +557,7 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Pregunta Confirmación Transferencia */}
+      {/* Modal Confirmación Transferencia */}
       {pendingTransferContract && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/50 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
@@ -561,7 +631,7 @@ export const TestWipNativoView: React.FC = () => {
               >
                 Cancelar
               </button>
-              <button onClick={handleProcessImport} className="px-4 py-2 bg-[#00f2fe] text-black rounded-lg text-xs font-extrabold hover:brightness-110">
+              <button onClick={handleProcessImport} className="px-4 py-2 bg-[#00f2fe] text-black rounded-lg text-xs font-extrabold hover:brightness-110 cursor-pointer">
                 Guardar Database
               </button>
             </div>
