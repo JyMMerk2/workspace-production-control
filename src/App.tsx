@@ -8,6 +8,7 @@ import { SizingCalculatorView } from './components/SizingCalculatorView';
 import { SheetsView } from './components/SheetsView';
 import { ManualView } from './components/ManualView';
 import { ConfigView } from './components/ConfigView';
+import { TestWipNativoView } from './components/TestWipNativoView';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
 import { INITIAL_FALLBACK_DASHBOARD, fetchLiveDashboardData } from './data/dashboardService';
@@ -163,6 +164,9 @@ export default function App() {
 
           {/* TAB 3: Sizing Packs Multi-Style Calculator with OCR */}
           {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
+
+          {/* TAB DEMO: Test WIP Nativo (Prueba Segura) */}
+          {(activeTab as string) === 'wip-demo' && <TestWipNativoView />}
 
           {/* TAB 4: Embedded Google Sheets Tabs */}
           {isSheetTab && currentSheetConfig && (
