@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2 } from 'lucide-react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
@@ -51,6 +51,7 @@ export const TestWipNativoView: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pastedData, setPastedData] = useState('');
+  const [sheetsUrl, setSheetsUrl] = useState('');
   const [isLiveConnected, setIsLiveConnected] = useState(false);
 
   // Modal de confirmación para transferir a WIP Stocks & Vendidas
@@ -190,7 +191,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Limpiar/Eliminar únicamente los registros marcados como Cerrados (CE)
+  // Limpiar únicamente registros marcados como Cerrados (CE)
   const handleCleanCE = async () => {
     if (window.confirm('¿Desea eliminar de la tabla de Incompletas únicamente los registros con estado Cerrado (CE)?')) {
       const { error } = await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
@@ -267,7 +268,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Cargar Database Máster de Contratos desde Excel
+  // Cargar Database Máster de Contratos
   const parseAndSaveMasterDb = async (rawMatrix: any[][]) => {
     const rowsToUpsert: any[] = [];
 
@@ -310,7 +311,26 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
+  // Procesar importación desde enlace público de Google Sheets
+  const handleFetchGoogleSheets = async () => {
+    if (!sheetsUrl.trim()) return;
+    try {
+      const res = await fetch(sheetsUrl);
+      const textData = await res.text();
+      const lines = textData.split('\n');
+      const matrix = lines.map(line => line.split(','));
+      parseAndSaveMasterDb(matrix);
+    } catch (err: any) {
+      alert('Error descargando Google Sheets: ' + err.message);
+    }
+  };
+
   const handleProcessImport = async () => {
+    if (sheetsUrl.trim()) {
+      await handleFetchGoogleSheets();
+      return;
+    }
+
     if (selectedFile) {
       const dataBuffer = await selectedFile.arrayBuffer();
       const workbook = XLSX.read(dataBuffer, { type: 'array' });
@@ -397,7 +417,6 @@ export const TestWipNativoView: React.FC = () => {
       {/* PESTAÑA 1: INCOMPLETAS */}
       {activeTab === 'INCOMPLETAS' && (
         <div className="space-y-4">
-          {/* Banderola Azul de Banderas Identica a Google Sheets */}
           <div className="bg-gradient-to-r from-[#1d2756] via-[#151c3d] to-[#0d1017] border border-[#00f2fe]/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
             <div className="text-center md:text-left">
               <h2 className="text-lg font-black text-white tracking-wide flex items-center gap-2 flex-wrap">
@@ -586,27 +605,45 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Cargar Database */}
+      {/* Modal Cargar Database con soporte multi-origen */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-xl p-6 max-w-xl w-full space-y-4 shadow-2xl">
             <h3 className="text-base font-bold text-[#00f2fe] flex items-center gap-2">
               <Upload className="w-5 h-5" /> Importar Database de Contratos
             </h3>
-            <p className="text-xs text-[#8f9ba8]">
-              Sube el archivo <strong className="text-white">database de contratos.xls</strong> o pega el contenido. Se guardará directamente en la pestaña <strong className="text-[#00f2fe]">DATABASE DE CONTRATOS</strong>.
-            </p>
 
+            {/* Opción A: Google Sheets URL */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                <Link className="w-3.5 h-3.5 text-[#00f2fe]" /> Importar desde Enlace Google Sheets (CSV Publicado)
+              </label>
+              <input
+                type="text"
+                placeholder="Pega aquí el enlace de Google Sheets (Publicado como CSV)..."
+                value={sheetsUrl}
+                onChange={(e) => setSheetsUrl(e.target.value)}
+                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#00f2fe]"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 my-1">
+              <div className="h-px bg-white/10 flex-1"></div>
+              <span className="text-[10px] text-gray-500 uppercase font-bold">O Sube un Archivo</span>
+              <div className="h-px bg-white/10 flex-1"></div>
+            </div>
+
+            {/* Opción B: Subir Excel */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-[#00f2fe]/40 hover:border-[#00f2fe] rounded-xl p-4 text-center bg-[#0d1017]/60 cursor-pointer transition-all flex flex-col items-center justify-center gap-2"
+              className="border-2 border-dashed border-[#00f2fe]/40 hover:border-[#00f2fe] rounded-xl p-3 text-center bg-[#0d1017]/60 cursor-pointer transition-all flex flex-col items-center justify-center gap-1"
             >
-              <FileSpreadsheet className="w-8 h-8 text-[#00f2fe]" />
+              <FileSpreadsheet className="w-6 h-6 text-[#00f2fe]" />
               <p className="text-xs text-gray-200">
                 {selectedFile ? (
-                  <span className="text-[#39ff14] font-bold">Archivo seleccionado: {selectedFile.name}</span>
+                  <span className="text-[#39ff14] font-bold">Archivo: {selectedFile.name}</span>
                 ) : (
-                  <>Haz clic para <span className="text-[#00f2fe] underline font-bold">Seleccionar Archivo Excel (.xls, .xlsx, .csv)</span></>
+                  <>Seleccionar Archivo Excel (.xls, .xlsx, .csv)</>
                 )}
               </p>
               <input
@@ -620,14 +657,30 @@ export const TestWipNativoView: React.FC = () => {
               />
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex items-center gap-2 my-1">
+              <div className="h-px bg-white/10 flex-1"></div>
+              <span className="text-[10px] text-gray-500 uppercase font-bold">O Pega Celdas</span>
+              <div className="h-px bg-white/10 flex-1"></div>
+            </div>
+
+            {/* Opción C: Pegado Manual */}
+            <textarea
+              rows={3}
+              value={pastedData}
+              onChange={(e) => setPastedData(e.target.value)}
+              placeholder="Pega las filas copiadas de Excel o Google Sheets..."
+              className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#00f2fe]"
+            />
+
+            <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => {
                   setShowImportModal(false);
                   setSelectedFile(null);
                   setPastedData('');
+                  setSheetsUrl('');
                 }}
-                className="px-4 py-2 bg-white/5 text-gray-300 rounded-lg text-xs font-bold"
+                className="px-4 py-2 bg-white/5 text-gray-300 rounded-lg text-xs font-bold hover:bg-white/10 cursor-pointer"
               >
                 Cancelar
               </button>
