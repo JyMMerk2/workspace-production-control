@@ -398,7 +398,7 @@ export const TestWipNativoView: React.FC = () => {
                 Cancelar
               </button>
               <button onClick={handleProcessImport} className="px-4 py-2 bg-[#00f2fe] text-black rounded-lg text-xs font-extrabold">
-                Guardar en Supabase
+                Guardar Database
               </button>
             </div>
           </div>
