@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
 interface ContractDbItem {
@@ -31,12 +32,14 @@ export const TestWipNativoView: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [pastedData, setPastedData] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [auditingRow, setAuditingRow] = useState<WipRow | null>(null);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUser = sessionStorage.getItem('authenticated_user') || 'JMERCADO';
 
-  // 1. Cargar datos iniciales desde Supabase y calcular estructuras
+  // 1. Cargar datos iniciales desde Supabase
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
@@ -52,7 +55,6 @@ export const TestWipNativoView: React.FC = () => {
       }
 
       if (dbRows) {
-        // Agrupar por contrato para calcular Columna E y Columna F (PIEZAS TOTAL)
         const grouped: Record<string, WipRow[]> = {};
 
         const mapped: WipRow[] = dbRows.map((item: any) => ({
@@ -93,7 +95,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // 2. Suscripción a WebSockets para Sincronización en Tiempo Real
+  // 2. Suscripción Realtime
   useEffect(() => {
     fetchSupabaseData();
 
@@ -115,7 +117,6 @@ export const TestWipNativoView: React.FC = () => {
     };
   }, []);
 
-  // Evaluador de Transferencia a WIP Stocks & Vendidas
   const checkAndTransferContract = async (contratoId: string, dataset: WipRow[]) => {
     const sameContractRows = dataset.filter((r) => r.contrato === contratoId);
     const allCompleted = sameContractRows.length > 0 && sameContractRows.every((r) => r.completado);
@@ -131,7 +132,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Toggle de Captura con Persistencia en Supabase
   const toggleStatus = async (row: WipRow) => {
     const nextCompletado = !row.completado;
     const nextEstadoCaptura = nextCompletado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL';
@@ -163,39 +163,57 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Procesar Pegado Masivo de Excel de NewSoft
-  const handleProcessImport = async () => {
-    if (!pastedData.trim()) return;
-    const lines = pastedData.trim().split('\n');
-
+  // Mapeador de filas crudas (soporta arreglo de arreglos o tabulados)
+  const parseNewsoftRows = (rawMatrix: any[][]) => {
     const rowsToUpsert: any[] = [];
 
-    lines.forEach((line) => {
-      const cols = line.split('\t');
-      if (cols.length >= 2) {
-        const poFull = cols[1]?.trim() || cols[0]?.trim(); // Col B de NewSoft o primera celda
-        if (poFull && poFull !== 'CODIGO_') {
-          const partExtracted = poFull.replace(/[^a-zA-Z]/g, '');
-          const contratoExtracted = poFull.replace(/[a-zA-Z]/g, '');
-          const estiloVal = cols[3]?.trim() || '';
-          const qtyVal = parseInt(cols[11]?.trim(), 10) || parseInt(cols[4]?.trim(), 10) || 0;
-          const estadoGenVal = (cols[9]?.trim() as 'AB' | 'CE') || 'AB';
+    rawMatrix.forEach((cols) => {
+      if (!cols || cols.length < 2) return;
+      const poFull = String(cols[1] || cols[0] || '').trim(); // Col B (PO)
+      if (poFull && poFull !== 'CODIGO_' && poFull.toUpperCase() !== 'PO') {
+        const partExtracted = poFull.replace(/[^a-zA-Z]/g, '');
+        const contratoExtracted = poFull.replace(/[a-zA-Z]/g, '');
+        const estiloVal = String(cols[3] || '').trim(); // Col D (Estilo)
+        const qtyVal = parseInt(String(cols[11] || cols[4] || 0).trim(), 10) || 0; // Col L (QTY)
+        const estadoGenVal = (String(cols[9] || '').trim() as 'AB' | 'CE') || 'AB'; // Col J
 
-          rowsToUpsert.push({
-            po: poFull,
-            part: partExtracted || 'A',
-            contrato: contratoExtracted,
-            estilo: estiloVal,
-            qty: qtyVal,
-            completado: false,
-            estado_captura: 'CAPTURADO PARCIAL',
-            estado_general: estadoGenVal,
-            modificado_por: activeUser,
-            updated_at: new Date().toISOString(),
-          });
-        }
+        rowsToUpsert.push({
+          po: poFull,
+          part: partExtracted || 'A',
+          contrato: contratoExtracted,
+          estilo: estiloVal,
+          qty: qtyVal,
+          completado: false,
+          estado_captura: 'CAPTURADO PARCIAL',
+          estado_general: estadoGenVal,
+          modificado_por: activeUser,
+          updated_at: new Date().toISOString(),
+        });
       }
     });
+
+    return rowsToUpsert;
+  };
+
+  // Procesar Importación (Desde Archivo subido o desde Texto pegado)
+  const handleProcessImport = async () => {
+    let rowsToUpsert: any[] = [];
+
+    if (selectedFile) {
+      // Procesar archivo Excel (.xls / .xlsx / .csv)
+      const dataBuffer = await selectedFile.arrayBuffer();
+      const workbook = XLSX.read(dataBuffer, { type: 'array' });
+      const targetSheetName = workbook.SheetNames.find(s => s.toUpperCase().includes('CONTRATO')) || workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[targetSheetName];
+      const jsonMatrix: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      rowsToUpsert = parseNewsoftRows(jsonMatrix);
+    } else if (pastedData.trim()) {
+      // Procesar datos pegados
+      const lines = pastedData.trim().split('\n');
+      const matrix = lines.map(line => line.split('\t'));
+      rowsToUpsert = parseNewsoftRows(matrix);
+    }
 
     if (rowsToUpsert.length > 0) {
       const { error } = await supabase.from('wip_incompletos').insert(rowsToUpsert);
@@ -203,13 +221,15 @@ export const TestWipNativoView: React.FC = () => {
         fetchSupabaseData();
         setShowImportModal(false);
         setPastedData('');
+        setSelectedFile(null);
       } else {
         alert('Error al guardar datos en Supabase: ' + error.message);
       }
+    } else {
+      alert('No se detectaron filas válidas de NewSoft. Verifique el archivo o el texto pegado.');
     }
   };
 
-  // Limpiar / Ocultar Registros CE
   const handleCleanCE = async () => {
     if (window.confirm('¿Desea eliminar permanentemente los registros cerrados (CE) de Supabase?')) {
       const { error } = await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
@@ -273,7 +293,7 @@ export const TestWipNativoView: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 bg-[#39ff14]/15 border border-[#39ff14] text-[#39ff14] rounded-lg text-xs font-bold hover:bg-[#39ff14] hover:text-black transition-all cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Cargar Excel</span>
+            <span>Cargar Database</span>
           </button>
 
           <button
@@ -323,7 +343,6 @@ export const TestWipNativoView: React.FC = () => {
                     {row.piezasTotal !== null ? row.piezasTotal : ''}
                   </td>
 
-                  {/* Toggle Checkbox */}
                   <td className="p-3 text-center">
                     <button
                       onClick={() => toggleStatus(row)}
@@ -376,28 +395,73 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal Carga Excel */}
+      {/* Modal Importar (Subir Archivo Excel o Pegar Celdas) */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-xl p-6 max-w-xl w-full space-y-4 shadow-2xl">
             <h3 className="text-base font-bold text-[#00f2fe] flex items-center gap-2">
-              <Upload className="w-5 h-5" /> Importar Excel a Supabase
+              <Upload className="w-5 h-5" /> Importar Database de Contratos
             </h3>
             <p className="text-xs text-[#8f9ba8]">
-              Copia las celdas desde tu archivo Excel <strong className="text-white">database de contratos.xls</strong> y pégalas abajo. Se guardarán en la nube en tiempo real.
+              Sube el archivo <strong className="text-white">database de contratos.xls / .xlsx</strong> directamente desde tu equipo, o pega las celdas copiadas de Excel.
             </p>
+
+            {/* Selector de Archivo Excel */}
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-[#00f2fe]/40 hover:border-[#00f2fe] rounded-xl p-4 text-center bg-[#0d1017]/60 cursor-pointer transition-all flex flex-col items-center justify-center gap-2"
+            >
+              <FileSpreadsheet className="w-8 h-8 text-[#00f2fe]" />
+              <p className="text-xs text-gray-200">
+                {selectedFile ? (
+                  <span className="text-[#39ff14] font-bold">Archivo seleccionado: {selectedFile.name}</span>
+                ) : (
+                  <>Haz clic para <span className="text-[#00f2fe] underline font-bold">Seleccionar Archivo Excel (.xls, .xlsx, .csv)</span></>
+                )}
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xls,.xlsx,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setSelectedFile(e.target.files[0]);
+                  }
+                }}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 my-2">
+              <div className="h-px bg-white/10 flex-1"></div>
+              <span className="text-[10px] text-gray-400 uppercase font-bold">O pega celdas copiadas</span>
+              <div className="h-px bg-white/10 flex-1"></div>
+            </div>
+
+            {/* Textarea de Pegado */}
             <textarea
-              rows={8}
+              rows={5}
               value={pastedData}
-              onChange={(e) => setPastedData(e.target.value)}
-              placeholder="Pega las filas de Excel aquí..."
+              onChange={(e) => {
+                setPastedData(e.target.value);
+                if (e.target.value.trim()) setSelectedFile(null);
+              }}
+              placeholder="Pega las filas de Excel aquí si no subes el archivo..."
               className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-3 text-xs font-mono text-white focus:outline-none focus:border-[#00f2fe]"
             />
+
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 bg-white/5 text-gray-300 rounded-lg text-xs font-bold">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setSelectedFile(null);
+                  setPastedData('');
+                }}
+                className="px-4 py-2 bg-white/5 text-gray-300 rounded-lg text-xs font-bold"
+              >
                 Cancelar
               </button>
-              <button onClick={handleProcessImport} className="px-4 py-2 bg-[#00f2fe] text-black rounded-lg text-xs font-extrabold">
+              <button onClick={handleProcessImport} className="px-4 py-2 bg-[#00f2fe] text-black rounded-lg text-xs font-extrabold hover:brightness-110">
                 Guardar Database
               </button>
             </div>
