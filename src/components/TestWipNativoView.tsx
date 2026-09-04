@@ -1,24 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet } from 'lucide-react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
-interface ContractDbItem {
+interface MasterDbItem {
+  id?: string;
   po: string;
-  estilo: string;
   part: string;
+  contrato: string;
+  estilo: string;
   qty: number;
   estadoGeneral: 'AB' | 'CE';
 }
 
-interface WipRow {
+interface WipCapturaRow {
   id: string;
   po: string;
   part: string;
   contrato: string;
   estilo: string;
-  qty: number; // Columna E (Individual)
-  piezasTotal: number | null; // Columna F (Suma global en primera fila del contrato)
+  qty: number;
+  piezasTotal: number | null;
   completado: boolean;
   estadoCaptura: 'CAPTURADO COMPLETO' | 'CAPTURADO PARCIAL';
   estadoGeneral: 'AB' | 'CE';
@@ -27,37 +29,42 @@ interface WipRow {
 }
 
 export const TestWipNativoView: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<'INCOMPLETAS' | 'DATABASE'>('INCOMPLETAS');
   const [searchTerm, setSearchTerm] = useState('');
-  const [data, setData] = useState<WipRow[]>([]);
+  
+  // Estados de datos
+  const [masterDb, setMasterDb] = useState<Record<string, MasterDbItem>>({});
+  const [capturasData, setCapturasData] = useState<WipCapturaRow[]>([]);
+  
+  // Entrada para captura rápida (Columna A)
+  const [inputPo, setInputPo] = useState('');
+  const [ordenesDelDia, setOrdenesDelDia] = useState<number>(128);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [pastedData, setPastedData] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [auditingRow, setAuditingRow] = useState<WipRow | null>(null);
+  const [pastedData, setPastedData] = useState('');
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+
+  // Modal de confirmación para transferir a WIP Stocks & Vendidas
+  const [pendingTransferContract, setPendingTransferContract] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeUser = sessionStorage.getItem('authenticated_user') || 'JMERCADO';
 
-  // 1. Cargar datos iniciales desde Supabase
+  // 1. Cargar datos de Supabase
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
-      const { data: dbRows, error } = await supabase
+      const { data: dbCapturas, error: errCapturas } = await supabase
         .from('wip_incompletos')
         .select('*')
         .order('updated_at', { ascending: false });
 
-      if (error) {
-        console.error('Error cargando de Supabase:', error);
-        setIsRefreshing(false);
-        return;
-      }
+      if (!errCapturas && dbCapturas) {
+        const grouped: Record<string, WipCapturaRow[]> = {};
 
-      if (dbRows) {
-        const grouped: Record<string, WipRow[]> = {};
-
-        const mapped: WipRow[] = dbRows.map((item: any) => ({
+        const mapped: WipCapturaRow[] = dbCapturas.map((item: any) => ({
           id: item.id,
           po: item.po,
           part: item.part,
@@ -77,7 +84,7 @@ export const TestWipNativoView: React.FC = () => {
           grouped[row.contrato].push(row);
         });
 
-        const structured: WipRow[] = [];
+        const structured: WipCapturaRow[] = [];
         Object.values(grouped).forEach((group) => {
           const sumTotal = group.reduce((acc, curr) => acc + curr.qty, 0);
           group.forEach((item, index) => {
@@ -86,28 +93,23 @@ export const TestWipNativoView: React.FC = () => {
           });
         });
 
-        setData(structured);
+        setCapturasData(structured);
       }
     } catch (err) {
-      console.error('Error general:', err);
+      console.error('Error cargando Supabase:', err);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  // 2. Suscripción Realtime
   useEffect(() => {
     fetchSupabaseData();
 
     const channel = supabase
       .channel('public:wip_incompletos')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'wip_incompletos' },
-        () => {
-          fetchSupabaseData();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_incompletos' }, () => {
+        fetchSupabaseData();
+      })
       .subscribe((status) => {
         setIsLiveConnected(status === 'SUBSCRIBED');
       });
@@ -117,22 +119,72 @@ export const TestWipNativoView: React.FC = () => {
     };
   }, []);
 
-  const checkAndTransferContract = async (contratoId: string, dataset: WipRow[]) => {
+  // Confirmar y Ejecutar Transferencia
+  const confirmAndExecuteTransfer = async (contratoId: string) => {
+    const { error } = await supabase
+      .from('wip_stocks_vendidas')
+      .upsert([{ contrato: contratoId }], { onConflict: 'contrato' });
+
+    if (!error) {
+      alert(`✅ Contrato ${contratoId} transferido a "WIP Stocks & Vendidas" (Columna A).`);
+    } else {
+      alert('Error al transferir contrato: ' + error.message);
+    }
+    setPendingTransferContract(null);
+  };
+
+  // Revertir Transferencia
+  const revertTransferIfIncomplete = async (contratoId: string) => {
+    await supabase.from('wip_stocks_vendidas').delete().eq('contrato', contratoId);
+  };
+
+  // Evaluador de estado de contrato
+  const evaluateContractCompletion = (contratoId: string, dataset: WipCapturaRow[]) => {
     const sameContractRows = dataset.filter((r) => r.contrato === contratoId);
     const allCompleted = sameContractRows.length > 0 && sameContractRows.every((r) => r.completado);
 
     if (allCompleted) {
-      const { error } = await supabase
-        .from('wip_stocks_vendidas')
-        .upsert([{ contrato: contratoId }], { onConflict: 'contrato' });
-
-      if (!error) {
-        alert(`⚡ ¡CONTRATO COMPLETO! El contrato ${contratoId} completó todas sus partes y fue transferido en vivo a "WIP Stocks & Vendidas" (Columna A).`);
-      }
+      setPendingTransferContract(contratoId);
+    } else {
+      revertTransferIfIncomplete(contratoId);
     }
   };
 
-  const toggleStatus = async (row: WipRow) => {
+  // Agregar nuevo PO (Captura Rápida en Columna A)
+  const handleAddPoCaptura = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const poClean = inputPo.trim().toUpperCase();
+    if (!poClean) return;
+
+    const match = masterDb[poClean.toLowerCase()];
+
+    const partExtracted = poClean.replace(/[^a-zA-Z]/g, '');
+    const contratoExtracted = poClean.replace(/[a-zA-Z]/g, '');
+
+    const newRow = {
+      po: poClean,
+      part: match?.part || partExtracted || 'A',
+      contrato: match?.contrato || contratoExtracted,
+      estilo: match?.estilo || 'PENDIENTE DB',
+      qty: match?.qty || 0,
+      completado: true,
+      estado_captura: 'CAPTURADO COMPLETO',
+      estado_general: match?.estadoGeneral || 'AB',
+      modificado_por: activeUser,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('wip_incompletos').insert([newRow]);
+    if (!error) {
+      setInputPo('');
+      fetchSupabaseData();
+    } else {
+      alert('Error guardando captura: ' + error.message);
+    }
+  };
+
+  // Toggle Checkbox
+  const toggleStatus = async (row: WipCapturaRow) => {
     const nextCompletado = !row.completado;
     const nextEstadoCaptura = nextCompletado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL';
 
@@ -147,7 +199,7 @@ export const TestWipNativoView: React.FC = () => {
       .eq('id', row.id);
 
     if (!error) {
-      const updatedLocal = data.map((item) =>
+      const updatedLocal = capturasData.map((item) =>
         item.id === row.id
           ? {
               ...item,
@@ -158,244 +210,260 @@ export const TestWipNativoView: React.FC = () => {
             }
           : item
       );
-      setData(updatedLocal);
-      checkAndTransferContract(row.contrato, updatedLocal);
+      setCapturasData(updatedLocal);
+      evaluateContractCompletion(row.contrato, updatedLocal);
     }
   };
 
-  // Mapeador de filas crudas (soporta arreglo de arreglos o tabulados)
-  const parseNewsoftRows = (rawMatrix: any[][]) => {
-    const rowsToUpsert: any[] = [];
+  // Carga de la Master DB
+  const parseAndSaveMasterDb = async (rawMatrix: any[][]) => {
+    const dbLookup: Record<string, MasterDbItem> = {};
 
     rawMatrix.forEach((cols) => {
       if (!cols || cols.length < 2) return;
-      const poFull = String(cols[1] || cols[0] || '').trim(); // Col B (PO)
+      const poFull = String(cols[1] || cols[0] || '').trim();
       if (poFull && poFull !== 'CODIGO_' && poFull.toUpperCase() !== 'PO') {
         const partExtracted = poFull.replace(/[^a-zA-Z]/g, '');
         const contratoExtracted = poFull.replace(/[a-zA-Z]/g, '');
-        const estiloVal = String(cols[3] || '').trim(); // Col D (Estilo)
-        const qtyVal = parseInt(String(cols[11] || cols[4] || 0).trim(), 10) || 0; // Col L (QTY)
-        const estadoGenVal = (String(cols[9] || '').trim() as 'AB' | 'CE') || 'AB'; // Col J
+        const estiloVal = String(cols[3] || '').trim();
+        const qtyVal = parseInt(String(cols[11] || cols[4] || 0).trim(), 10) || 0;
+        const estadoGenVal = (String(cols[9] || '').trim() as 'AB' | 'CE') || 'AB';
 
-        rowsToUpsert.push({
+        dbLookup[poFull.toLowerCase()] = {
           po: poFull,
           part: partExtracted || 'A',
           contrato: contratoExtracted,
           estilo: estiloVal,
           qty: qtyVal,
-          completado: false,
-          estado_captura: 'CAPTURADO PARCIAL',
-          estado_general: estadoGenVal,
-          modificado_por: activeUser,
-          updated_at: new Date().toISOString(),
-        });
+          estadoGeneral: estadoGenVal,
+        };
       }
     });
 
-    return rowsToUpsert;
+    setMasterDb(dbLookup);
+    alert(`✅ Base de datos máster actualizada con ${Object.keys(dbLookup).length} contratos.`);
+    setShowImportModal(false);
   };
 
-  // Procesar Importación (Desde Archivo subido o desde Texto pegado)
   const handleProcessImport = async () => {
-    let rowsToUpsert: any[] = [];
-
     if (selectedFile) {
-      // Procesar archivo Excel (.xls / .xlsx / .csv)
       const dataBuffer = await selectedFile.arrayBuffer();
       const workbook = XLSX.read(dataBuffer, { type: 'array' });
-      const targetSheetName = workbook.SheetNames.find(s => s.toUpperCase().includes('CONTRATO')) || workbook.SheetNames[0];
+      const targetSheetName = workbook.SheetNames.find((s) => s.toUpperCase().includes('CONTRATO')) || workbook.SheetNames[0];
       const worksheet = workbook.Sheets[targetSheetName];
       const jsonMatrix: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-      rowsToUpsert = parseNewsoftRows(jsonMatrix);
+      parseAndSaveMasterDb(jsonMatrix);
     } else if (pastedData.trim()) {
-      // Procesar datos pegados
       const lines = pastedData.trim().split('\n');
-      const matrix = lines.map(line => line.split('\t'));
-      rowsToUpsert = parseNewsoftRows(matrix);
-    }
-
-    if (rowsToUpsert.length > 0) {
-      const { error } = await supabase.from('wip_incompletos').insert(rowsToUpsert);
-      if (!error) {
-        fetchSupabaseData();
-        setShowImportModal(false);
-        setPastedData('');
-        setSelectedFile(null);
-      } else {
-        alert('Error al guardar datos en Supabase: ' + error.message);
-      }
-    } else {
-      alert('No se detectaron filas válidas de NewSoft. Verifique el archivo o el texto pegado.');
+      const matrix = lines.map((line) => line.split('\t'));
+      parseAndSaveMasterDb(matrix);
     }
   };
 
-  const handleCleanCE = async () => {
-    if (window.confirm('¿Desea eliminar permanentemente los registros cerrados (CE) de Supabase?')) {
-      const { error } = await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
-      if (!error) fetchSupabaseData();
-    }
-  };
+  const totalCapturados = capturasData.filter((c) => c.completado).length;
+  const restaCalculada = Math.max(0, ordenesDelDia - totalCapturados);
 
-  const filteredData = data.filter(
-    (item) =>
-      item.contrato.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.estilo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.po.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCapturas = capturasData.filter(
+    (c) =>
+      c.po.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.contrato.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.estilo.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const totalOrdenes = data.length;
-  const completadas = data.filter((d) => d.completado).length;
-  const pendientes = totalOrdenes - completadas;
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto font-sans text-white p-2 md:p-4">
-      {/* Panel KPI */}
-      <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-xl p-4 shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/40 flex items-center justify-center text-[#00f2fe]">
-            <Database className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#00f2fe]">
-                CONTROL WIP INCOMPLETOS (SUPABASE REALTIME)
+      {/* Selector de Pestañas */}
+      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('INCOMPLETAS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+              activeTab === 'INCOMPLETAS'
+                ? 'bg-[#00f2fe] text-black shadow-[0_0_12px_rgba(0,242,254,0.4)]'
+                : 'bg-[#12161f] text-gray-400 hover:text-white border border-white/10'
+            }`}
+          >
+            <Table className="w-4 h-4" />
+            <span>INCOMPLETAS</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('DATABASE')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+              activeTab === 'DATABASE'
+                ? 'bg-[#00f2fe] text-black shadow-[0_0_12px_rgba(0,242,254,0.4)]'
+                : 'bg-[#12161f] text-gray-400 hover:text-white border border-white/10'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>DATABASE DE CONTRATOS</span>
+          </button>
+        </div>
+
+        <button
+          onClick={() => setShowImportModal(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-[#39ff14]/15 border border-[#39ff14] text-[#39ff14] rounded-lg text-xs font-bold hover:bg-[#39ff14] hover:text-black transition-all cursor-pointer"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          <span>Cargar Database</span>
+        </button>
+      </div>
+
+      {/* PESTAÑA 1: INCOMPLETAS */}
+      {activeTab === 'INCOMPLETAS' && (
+        <div className="space-y-4">
+          {/* Header KPI Banderola Azul */}
+          <div className="bg-gradient-to-r from-[#1d2756] via-[#151c3d] to-[#0d1017] border border-[#00f2fe]/40 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+            <div className="text-center md:text-left">
+              <h2 className="text-lg font-black text-white tracking-wide">
+                Órdenes del día: <span className="text-[#00f2fe]">{ordenesDelDia}</span> / CAPTURADO:{' '}
+                <span className="text-[#39ff14]">{totalCapturados}</span> / RESTA:{' '}
+                <span className="text-[#ff007f]">{restaCalculada}</span>
               </h2>
-              {isLiveConnected && (
-                <span className="flex items-center gap-1 text-[10px] bg-[#39ff14]/15 text-[#39ff14] border border-[#39ff14]/30 px-2 py-0.5 rounded-full font-mono">
-                  <Wifi className="w-3 h-3 animate-pulse" /> EN VIVO
-                </span>
-              )}
             </div>
-            <p className="text-xs text-[#8f9ba8]">
-              Órdenes del día: <span className="text-white font-bold">{totalOrdenes}</span> | Capturado:{' '}
-              <span className="text-[#39ff14] font-bold">{completadas}</span> | Resta:{' '}
-              <span className="text-[#ff007f] font-bold">{pendientes}</span>
-            </p>
-          </div>
-        </div>
 
-        {/* Acciones */}
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:w-56">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#8f9ba8]" />
-            <input
-              type="text"
-              placeholder="Buscar Contrato, Estilo o PO..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-[#0d1017] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-[#00f2fe]"
-            />
+            <form onSubmit={handleAddPoCaptura} className="flex items-center gap-2 w-full md:w-auto">
+              <input
+                type="text"
+                placeholder="Escanear o digitar PO en Col A..."
+                value={inputPo}
+                onChange={(e) => setInputPo(e.target.value)}
+                className="px-3 py-2 bg-[#0d1017] border border-[#00f2fe]/50 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-[#00f2fe] w-full md:w-64"
+              />
+              <button type="submit" className="px-3 py-2 bg-[#00f2fe] text-black font-extrabold text-xs rounded-lg flex items-center gap-1">
+                <Plus className="w-4 h-4" /> Agregar
+              </button>
+            </form>
           </div>
 
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#39ff14]/15 border border-[#39ff14] text-[#39ff14] rounded-lg text-xs font-bold hover:bg-[#39ff14] hover:text-black transition-all cursor-pointer"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Cargar Database</span>
-          </button>
+          {/* Tabla Incompletas (Encabezados limpios sin COL E / COL F) */}
+          <div className="bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-[#0d1017] text-[#00f2fe] border-b border-white/10 uppercase font-extrabold tracking-wider">
+                    <th className="p-3">PO</th>
+                    <th className="p-3 text-center">PART</th>
+                    <th className="p-3 text-center">CONTRATO</th>
+                    <th className="p-3">ESTILO</th>
+                    <th className="p-3 text-center">QTY</th>
+                    <th className="p-3 text-center text-[#39ff14]">PIEZAS</th>
+                    <th className="p-3 text-center">ESTADO</th>
+                    <th className="p-3 text-center">ESTATUS GENERAL</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filteredCapturas.map((row) => (
+                    <tr key={row.id} className="hover:bg-white/5 transition-colors">
+                      <td className="p-3 font-mono font-bold text-white">{row.po}</td>
+                      <td className="p-3 text-center font-bold text-gray-400">{row.part}</td>
+                      <td className="p-3 text-center font-mono font-bold text-[#00f2fe]">{row.contrato}</td>
+                      <td className="p-3 font-bold text-gray-200">{row.estilo}</td>
+                      <td className="p-3 text-center font-bold text-gray-300">{row.qty}</td>
+                      <td className="p-3 text-center font-black text-[#39ff14] text-sm">
+                        {row.piezasTotal !== null ? row.piezasTotal : ''}
+                      </td>
 
-          <button
-            onClick={handleCleanCE}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#ff007f]/15 border border-[#ff007f] text-[#ff007f] rounded-lg text-xs font-bold hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Limpiar CE</span>
-          </button>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => toggleStatus(row)}
+                          className={`px-3 py-1 rounded text-[10px] font-black border cursor-pointer ${
+                            row.completado
+                              ? 'bg-[#39ff14] text-black border-[#39ff14] shadow-[0_0_8px_rgba(57,255,20,0.4)]'
+                              : 'bg-[#ffe600]/20 text-[#ffe600] border-[#ffe600]'
+                          }`}
+                        >
+                          {row.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'}
+                        </button>
+                      </td>
 
-          <button
-            onClick={fetchSupabaseData}
-            className="p-2 bg-[#00f2fe]/15 border border-[#00f2fe] text-[#00f2fe] rounded-lg hover:bg-[#00f2fe] hover:text-black transition-all cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.estadoGeneral === 'AB' ? 'bg-[#00f2fe]/20 text-[#00f2fe]' : 'bg-red-500/20 text-red-400'}`}>
+                          {row.estadoGeneral}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Tabla Principal */}
-      <div className="bg-[#12161f] border border-white/10 rounded-xl shadow-[0_8px_25px_rgba(0,0,0,0.4)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-[#0d1017] text-[#00f2fe] border-b border-white/10 uppercase font-extrabold tracking-wider">
-                <th className="p-3">PO</th>
-                <th className="p-3 text-center">PART</th>
-                <th className="p-3 text-center">CONTRATO</th>
-                <th className="p-3">ESTILO</th>
-                <th className="p-3 text-center">QTY (COL E)</th>
-                <th className="p-3 text-center text-[#39ff14]">PIEZAS (COL F)</th>
-                <th className="p-3 text-center">CAPTURA</th>
-                <th className="p-3 text-center">ESTADO DE CAPTURA</th>
-                <th className="p-3 text-center">ESTADO GENERAL</th>
-                <th className="p-3 text-right">AUDITORÍA</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filteredData.map((row) => (
-                <tr key={row.id} className="hover:bg-white/5 transition-colors">
-                  <td className="p-3 font-mono font-bold text-white">{row.po}</td>
-                  <td className="p-3 text-center font-bold text-gray-400">{row.part}</td>
-                  <td className="p-3 text-center font-mono font-bold text-[#00f2fe]">{row.contrato}</td>
-                  <td className="p-3 font-bold text-gray-200">{row.estilo}</td>
-                  <td className="p-3 text-center font-bold text-gray-300">{row.qty}</td>
-                  <td className="p-3 text-center font-black text-[#39ff14] text-sm">
-                    {row.piezasTotal !== null ? row.piezasTotal : ''}
-                  </td>
+      {/* PESTAÑA 2: DATABASE DE CONTRATOS */}
+      {activeTab === 'DATABASE' && (
+        <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-extrabold text-[#00f2fe] uppercase">
+              Base de Datos Master de Contratos (NewSoft) — Total cargados: {Object.keys(masterDb).length}
+            </h3>
+          </div>
 
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => toggleStatus(row)}
-                      className={`w-6 h-6 rounded border flex items-center justify-center mx-auto transition-all cursor-pointer ${
-                        row.completado
-                          ? 'bg-[#39ff14]/20 border-[#39ff14] text-[#39ff14] shadow-[0_0_8px_rgba(57,255,20,0.4)]'
-                          : 'bg-[#0d1017] border-white/20 text-transparent hover:border-white/50'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                    </button>
-                  </td>
-
-                  <td className="p-3 text-center">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black border ${
-                        row.completado
-                          ? 'bg-[#39ff14]/15 text-[#39ff14] border-[#39ff14]/30'
-                          : 'bg-[#ffe600]/15 text-[#ffe600] border-[#ffe600]/30'
-                      }`}
-                    >
-                      {row.completado ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                      {row.estadoCaptura}
-                    </span>
-                  </td>
-
-                  <td className="p-3 text-center">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        row.estadoGeneral === 'AB' ? 'bg-[#00f2fe]/20 text-[#00f2fe]' : 'bg-red-500/20 text-red-400'
-                      }`}
-                    >
-                      {row.estadoGeneral}
-                    </span>
-                  </td>
-
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => setAuditingRow(row)}
-                      className="text-[11px] text-[#8f9ba8] hover:text-[#00f2fe] underline flex items-center justify-end gap-1 ml-auto cursor-pointer"
-                    >
-                      <UserCheck className="w-3 h-3" />
-                      <span>{row.modificadoPor}</span>
-                    </button>
-                  </td>
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto border border-white/10 rounded-lg">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="sticky top-0 bg-[#0d1017] text-[#00f2fe] border-b border-white/10 font-bold">
+                <tr>
+                  <th className="p-2.5">PO</th>
+                  <th className="p-2.5 text-center">PART</th>
+                  <th className="p-2.5 text-center">CONTRATO</th>
+                  <th className="p-2.5">ESTILO</th>
+                  <th className="p-2.5 text-center">QTY</th>
+                  <th className="p-2.5 text-center">ESTADO GENERAL</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-white/5 font-mono">
+                {Object.values(masterDb).map((item, idx) => (
+                  <tr key={idx} className="hover:bg-white/5">
+                    <td className="p-2.5 font-bold text-white">{item.po}</td>
+                    <td className="p-2.5 text-center text-gray-400">{item.part}</td>
+                    <td className="p-2.5 text-center text-[#00f2fe]">{item.contrato}</td>
+                    <td className="p-2.5 text-gray-300">{item.estilo}</td>
+                    <td className="p-2.5 text-center text-gray-200">{item.qty}</td>
+                    <td className="p-2.5 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] ${item.estadoGeneral === 'AB' ? 'bg-[#00f2fe]/20 text-[#00f2fe]' : 'bg-red-500/20 text-red-400'}`}>
+                        {item.estadoGeneral}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Modal Importar (Subir Archivo Excel o Pegar Celdas) */}
+      {/* Modal Pregunta Confirmación Transferencia */}
+      {pendingTransferContract && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#12161f] border border-[#00f2fe]/50 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-[#00f2fe]">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+              <h3 className="text-base font-bold uppercase">Confirmar Transferencia</h3>
+            </div>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea enviarlo a <strong className="text-white">"WIP STOCKS & VENDIDAS"</strong> (Columna A)?
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setPendingTransferContract(null)}
+                className="px-4 py-2 bg-white/10 text-gray-300 rounded-lg text-xs font-bold hover:bg-white/20 transition-all cursor-pointer"
+              >
+                No / Cancelar
+              </button>
+              <button
+                onClick={() => confirmAndExecuteTransfer(pendingTransferContract)}
+                className="px-4 py-2 bg-[#00f2fe] text-black font-black rounded-lg text-xs hover:brightness-110 transition-all cursor-pointer"
+              >
+                Sí, Transferir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cargar Database */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-xl p-6 max-w-xl w-full space-y-4 shadow-2xl">
@@ -403,10 +471,9 @@ export const TestWipNativoView: React.FC = () => {
               <Upload className="w-5 h-5" /> Importar Database de Contratos
             </h3>
             <p className="text-xs text-[#8f9ba8]">
-              Sube el archivo <strong className="text-white">database de contratos.xls / .xlsx</strong> directamente desde tu equipo, o pega las celdas copiadas de Excel.
+              Sube el archivo <strong className="text-white">database de contratos.xls</strong> o pega el contenido para actualizar la base máster.
             </p>
 
-            {/* Selector de Archivo Excel */}
             <div
               onClick={() => fileInputRef.current?.click()}
               className="border-2 border-dashed border-[#00f2fe]/40 hover:border-[#00f2fe] rounded-xl p-4 text-center bg-[#0d1017]/60 cursor-pointer transition-all flex flex-col items-center justify-center gap-2"
@@ -425,30 +492,10 @@ export const TestWipNativoView: React.FC = () => {
                 accept=".xls,.xlsx,.csv"
                 className="hidden"
                 onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setSelectedFile(e.target.files[0]);
-                  }
+                  if (e.target.files && e.target.files[0]) setSelectedFile(e.target.files[0]);
                 }}
               />
             </div>
-
-            <div className="flex items-center gap-2 my-2">
-              <div className="h-px bg-white/10 flex-1"></div>
-              <span className="text-[10px] text-gray-400 uppercase font-bold">O pega celdas copiadas</span>
-              <div className="h-px bg-white/10 flex-1"></div>
-            </div>
-
-            {/* Textarea de Pegado */}
-            <textarea
-              rows={5}
-              value={pastedData}
-              onChange={(e) => {
-                setPastedData(e.target.value);
-                if (e.target.value.trim()) setSelectedFile(null);
-              }}
-              placeholder="Pega las filas de Excel aquí si no subes el archivo..."
-              className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-3 text-xs font-mono text-white focus:outline-none focus:border-[#00f2fe]"
-            />
 
             <div className="flex justify-end gap-3">
               <button
@@ -465,26 +512,6 @@ export const TestWipNativoView: React.FC = () => {
                 Guardar Database
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Auditoría */}
-      {auditingRow && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#12161f] border border-[#39ff14]/40 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="text-sm font-bold text-[#39ff14] flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5" /> Historial de Cambios (Auditoría)
-            </h3>
-            <div className="text-xs space-y-2 bg-[#0d1017] p-3 rounded-lg font-mono">
-              <p><span className="text-[#8f9ba8]">PO:</span> {auditingRow.po}</p>
-              <p><span className="text-[#8f9ba8]">Contrato:</span> {auditingRow.contrato}</p>
-              <p><span className="text-[#8f9ba8]">Último Usuario:</span> <strong className="text-white">{auditingRow.modificadoPor}</strong></p>
-              <p><span className="text-[#8f9ba8]">Fecha / Hora:</span> {auditingRow.fechaModificacion}</p>
-            </div>
-            <button onClick={() => setAuditingRow(null)} className="w-full py-2 bg-white/10 text-white rounded-lg text-xs font-bold">
-              Cerrar
-            </button>
           </div>
         </div>
       )}
