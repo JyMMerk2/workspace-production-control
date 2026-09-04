@@ -15,6 +15,7 @@ import {
   CheckSquare,
   Users,
   HardHat,
+  Database,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -154,6 +155,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-4 pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-[#5f6e7d]">
           Hojas Operativas WIP & Cuadre
         </div>
+
+        {/* WIP Demo Nativo (PRUEBA SEGUIRA) */}
+        <button
+          onClick={() => onSelectTab('wip-demo' as TabType, undefined, 'CONTROL WIP (DEMO)')}
+          className={`flex items-center gap-3 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
+            activeTab === ('wip-demo' as TabType)
+              ? 'text-[#39ff14] bg-[#39ff14]/10 border-[#39ff14] shadow-[inset_0_0_12px_rgba(57,255,20,0.15)]'
+              : 'text-[#39ff14]/80 border-transparent hover:text-[#39ff14] hover:bg-white/5'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5 text-[#39ff14]" />
+          <span>⚡ CONTROL WIP (DEMO)</span>
+        </button>
 
         {/* WIP Incompletos */}
         <div className="flex flex-col">
