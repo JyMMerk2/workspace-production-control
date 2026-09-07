@@ -27,7 +27,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [headerVisible, setHeaderVisible] = useState<boolean>(true);
 
-  // Modo Día / Modo Noche
+  // Selector de Modo Claro / Modo Oscuro
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_mode') !== 'light';
   });
@@ -38,14 +38,14 @@ export default function App() {
     localStorage.setItem('theme_mode', nextMode ? 'dark' : 'light');
   };
 
-  // 1. Inicializar con datos guardados en caché si existen
+  // Inicializar con datos en caché para evitar reseteos a ceros
   const [dashboardData, setDashboardData] = useState<DashboardData>(() => {
     const cached = localStorage.getItem('boombah_dashboard_cached_data');
     if (cached) {
       try {
         return JSON.parse(cached);
       } catch (e) {
-        console.error('Error parseando cache:', e);
+        console.error('Error al leer caché del dashboard:', e);
       }
     }
     return INITIAL_FALLBACK_DASHBOARD;
@@ -54,7 +54,7 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Sincronizar dashboard con protección anti-reseteo
+  // Sincronizar Dashboard con protección de datos
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -71,13 +71,13 @@ export default function App() {
         localStorage.setItem('boombah_dashboard_cached_data', JSON.stringify(data));
       }
     } catch (err) {
-      console.warn('Dashboard sync fallback mantenido:', err);
+      console.warn('Falla temporal de red. Se conservan datos previos:', err);
     } finally {
       setIsRefreshing(false);
     }
   }, []);
 
-  // Carga inicial e intervalo
+  // Intervalo de refresco en segundo plano (30 segundos)
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
@@ -95,7 +95,7 @@ export default function App() {
       document.title = `${customTitle} - Boombah Workspace`;
     } else {
       const sheet = SHEETS_CONFIG[tab];
-      const title = sheet ? sheet.title : tab.toUpperCase();
+      const title = sheet ? sheet.title : String(tab).toUpperCase();
       setCurrentTabTitle(title);
       document.title = `${title} - Boombah Workspace`;
     }
@@ -124,8 +124,12 @@ export default function App() {
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-[#0b0e14] text-[#e1e6ed]' : 'bg-slate-100 text-slate-900'} flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}>
-      {/* Encabezado Principal */}
+    <div
+      className={`min-h-screen ${
+        darkMode ? 'bg-[#0b0e14] text-[#e1e6ed]' : 'bg-slate-100 text-slate-900'
+      } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
+    >
+      {/* Encabezado Superior */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
@@ -142,9 +146,9 @@ export default function App() {
         onToggleTheme={toggleTheme}
       />
 
-      {/* Contenedor Principal */}
+      {/* Contenedor de Layout */}
       <div className={`flex flex-1 ${headerVisible ? 'mt-15' : 'mt-0'} transition-all duration-300`}>
-        {/* Menú Lateral (Sidebar) */}
+        {/* Menú Navegador Lateral */}
         <Sidebar
           activeTab={activeTab}
           activeSubTabGid={activeSubTabGid}
@@ -154,17 +158,17 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Área de Contenido */}
+        {/* Área Principal de Trabajo */}
         <main
           className={`flex-1 transition-all duration-300 ${
             sidebarOpen ? 'lg:ml-65 w-full lg:w-[calc(100%-16.25rem)]' : 'ml-0 w-full'
           }`}
         >
-          {/* Barra de Control de Producción */}
+          {/* Barra Flotante Global de Control de Producción */}
           <ProductionControlToolbar />
 
           <div className="p-4 md:p-6">
-            {/* TAB 1: Live Neón Dashboard */}
+            {/* 1. Dashboard en Vivo */}
             {activeTab === 'dashboard-live' && (
               <DashboardView
                 data={dashboardData}
@@ -174,19 +178,19 @@ export default function App() {
               />
             )}
 
-            {/* TAB: WIP Stocks & Vendidas (Vista Nativa) */}
+            {/* 2. Módulo Completo Nativo: WIP Stocks & Vendidas */}
             {(activeTab as string) === 'wip-stocks-vendidas' && <WipStocksVendidasView />}
 
-            {/* TAB 2: Planos & Technical Blueprints Explorer */}
-            {activeTab === 'planos' && <PlanosView />}
-
-            {/* TAB 3: Sizing Packs Multi-Style Calculator */}
-            {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
-
-            {/* TAB DEMO: Test WIP Nativo */}
+            {/* 3. Módulo DEMO Existente (Preservado intacto) */}
             {(activeTab as string) === 'wip-demo' && <TestWipNativoView />}
 
-            {/* TAB 4: Embedded Google Sheets Tabs */}
+            {/* 4. Buscador de Planos */}
+            {activeTab === 'planos' && <PlanosView />}
+
+            {/* 5. Calculadora de Sizing Packs */}
+            {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
+
+            {/* 6. Hojas Google Sheets Embebidas */}
             {isSheetTab && currentSheetConfig && (
               <SheetsView
                 config={currentSheetConfig}
@@ -198,11 +202,13 @@ export default function App() {
               />
             )}
 
-            {/* TAB 5: Production Control Manual */}
+            {/* 7. Manual de Operaciones */}
             {activeTab === 'manual' && <ManualView />}
 
-            {/* TAB 6: Settings & Configuration */}
-            {activeTab === 'configuracion' && <ConfigView authenticatedUser={authenticatedUser} />}
+            {/* 8. Configuración del Sistema */}
+            {activeTab === 'configuracion' && (
+              <ConfigView authenticatedUser={authenticatedUser} />
+            )}
           </div>
         </main>
       </div>
