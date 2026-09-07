@@ -16,7 +16,6 @@ import {
   Users,
   HardHat,
   Database,
-  BarChart2,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -30,7 +29,6 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-// Enlaces Apps Script originales para leer sub-pestañas dinámicas de Google Sheets
 const APPS_SCRIPT_URLS: Record<string, string> = {
   'cuadre-fd': 'https://script.google.com/macros/s/AKfycbwv25duzkoZzhFv1jFXm3IvWxvCCHp2Rien6ELGGh-phzWDXVOJon37SRQ2itdGPGLnew/exec',
   'cuadre-mochilas': 'https://script.google.com/macros/s/AKfycbxEat8pLxn28Jlkq9gHIbw4ilGtXk51St54JuxThXOtA7ZmQ2501rsaQ0LO3vFyWsmI/exec',
@@ -56,7 +54,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const [dynamicSubTabs, setDynamicSubTabs] = useState<Record<string, { nombre: string; gid: string }[]>>({});
 
-  // Carga las sub-pestañas reales desde Google Sheets mediante Apps Script
   useEffect(() => {
     Object.entries(APPS_SCRIPT_URLS).forEach(([tabKey, url]) => {
       fetch(url)
@@ -166,11 +163,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               : 'text-[#39ff14]/80 border-transparent hover:text-[#39ff14] hover:bg-white/5'
           }`}
         >
-          <BarChart2 className="w-3.5 h-3.5 text-[#39ff14]" />
+          <Database className="w-3.5 h-3.5 text-[#39ff14]" />
           <span>📊 WIP STOCKS & VENDIDAS</span>
         </button>
 
-        {/* WIP Demo Nativo (PRUEBA SEGUIRA) */}
+        {/* WIP Demo Nativo (PRUEBA SEGURA) */}
         <button
           onClick={() => onSelectTab('wip-demo', undefined, 'CONTROL WIP (DEMO)')}
           className={`flex items-center gap-3 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
