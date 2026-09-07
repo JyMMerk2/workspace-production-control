@@ -185,12 +185,14 @@ export const WipStocksVendidasView: React.FC = () => {
   }, [queueResults, filasOrdenesDia]);
 
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
-  const todasOrdenes = Object.values(activeTablas).flat();
+  const todasOrdenesTablas = Object.values(activeTablas).flat();
 
+  // Contratos anotados explícitamente en la Columna A de la hoja Órdenes del Día
   const contratosAnotadosColA = filasOrdenesDia
     .map(f => f.colA_Anotar.replace(/[A-Za-z]/g, '').trim())
     .filter(c => c !== '');
 
+  // Lógica de Evaluación Jerárquica para las Tablas de BP y FD
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const estaEnOrdenesDelDiaLocal = contratosAnotadosColA.includes(item.contrato);
 
@@ -233,31 +235,47 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
+  // Cálculo para cada fila en la sub-pestaña Órdenes del Día
   const calcularFormulasFilaOrdenDia = (fila: FilaOrdenDia) => {
     const poContrato = fila.po.replace(/[A-Za-z]/g, '').trim();
     const colA_Limpia = fila.colA_Anotar.replace(/[A-Za-z]/g, '').trim();
 
-    let statusB = '';
+    // Revisa si esa PO está capturada en alguna de las tablas activas de BP o FD
+    const capturadaEnTablas = todasOrdenesTablas.some(
+      o => o.contrato === poContrato && (o.checkCaptura || calcularEstadoFormulaJerarquica(o).checkAuto)
+    );
+
+    let statusB = 'FALTA CAPTURA';
     let despuesCapturaC = 'NO ENTREGADO';
 
-    if (colA_Limpia && (colA_Limpia === poContrato || contratosAnotadosColA.includes(poContrato))) {
+    if (colA_Limpia !== '' || capturadaEnTablas) {
       statusB = 'CAPTURADO COMPLETO';
       despuesCapturaC = 'CONTEO';
-    } else {
-      statusB = 'FALTA CAPTURA';
     }
 
     return { statusB, despuesCapturaC };
   };
 
-  const totalOrders = todasOrdenes.length;
-  const ctmOrders = todasOrdenes.filter(o => o.tipo === 'CUSTOM').length;
-  const stockOrders = todasOrdenes.filter(o => o.tipo === 'STOCK').length;
-  const capturados = todasOrdenes.filter(o => {
+  // MÉTIRICAS REALES BASADAS EN ÓRDENES DEL DÍA (HOY)
+  const ordenesHoyEnDia = filasOrdenesDia.filter(f => f.esHoy);
+  const totalOrdenesHoy = ordenesHoyEnDia.length;
+
+  const capturadosHoyCount = ordenesHoyEnDia.filter(f => {
+    const res = calcularFormulasFilaOrdenDia(f);
+    return res.statusB === 'CAPTURADO COMPLETO';
+  }).length;
+
+  const restaHoyCount = totalOrdenesHoy - capturadosHoyCount;
+
+  // Métricas de las Tablas Activas
+  const totalOrders = todasOrdenesTablas.length;
+  const ctmOrders = todasOrdenesTablas.filter(o => o.tipo === 'CUSTOM').length;
+  const stockOrders = todasOrdenesTablas.filter(o => o.tipo === 'STOCK').length;
+  const capturadosTablas = todasOrdenesTablas.filter(o => {
     const evalRes = calcularEstadoFormulaJerarquica(o);
     return o.checkCaptura || evalRes.checkAuto;
   }).length;
-  const resta = totalOrders - capturados;
+  const restaTablas = totalOrders - capturadosTablas;
 
   const confirmarYActualizarOrdenesDelDia = () => {
     if (queueResults.length === 0) {
@@ -326,7 +344,7 @@ export const WipStocksVendidasView: React.FC = () => {
       isOpen: true,
       tipo: 'info',
       titulo: 'Proceso Completado',
-      mensaje: `✅ Órdenes del Día actualizadas correctamente.\n\n• Órdenes de HOY: ${ordenesHoy.length}\n• Pendientes conservadas: ${pendientesAAnadir.length}\n• Registros de 'Team Spirit (Queued)' omitidos.`,
+      mensaje: `✅ Órdenes del Día actualizadas correctamente.\n\n• Órdenes del Día (HOY): ${ordenesHoy.length}\n• Pendientes conservadas: ${pendientesAAnadir.length}\n• Registros de 'Team Spirit (Queued)' omitidos.`,
     });
   };
 
@@ -560,7 +578,7 @@ export const WipStocksVendidasView: React.FC = () => {
         className="hidden"
       />
 
-      {/* Modal Profesional Integrado Adaptable al Tema */}
+      {/* Modal Profesional Integrado */}
       {modal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-md bg-white dark:bg-[#121826] border border-slate-300 dark:border-[#00f2fe]/40 rounded-2xl p-6 shadow-2xl space-y-4 text-slate-800 dark:text-white transition-colors duration-300">
@@ -593,7 +611,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       )}
 
-      {/* 1. Selector de Sub-pestañas Adaptables */}
+      {/* 1. Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-slate-300 dark:border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveSubTab('buscar-bp')}
@@ -685,36 +703,31 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner Adaptable de Totales */}
+      {/* 2. Banner de Totales (Consolidado) */}
       <div className="w-full bg-white dark:bg-[#121826] border border-slate-200 dark:border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4 transition-colors duration-300">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-6 flex-wrap">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-gray-400 block">TOTAL ÓRDENES</span>
-            <span className="text-xl font-black text-slate-800 dark:text-white">{totalOrders}</span>
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-gray-400 block">ÓRDENES DÍA (HOY)</span>
+            <span className="text-xl font-black text-slate-800 dark:text-white">{totalOrdenesHoy}</span>
           </div>
 
           <div className="border-l border-slate-200 dark:border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-cyan-600 dark:text-[#00f2fe] block">CTM ORDERS</span>
-            <span className="text-xl font-black text-cyan-600 dark:text-[#00f2fe]">{ctmOrders}</span>
+            <span className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-[#39ff14] block">CAPTURADO HOY</span>
+            <span className="text-xl font-black text-emerald-600 dark:text-[#39ff14]">{capturadosHoyCount}</span>
           </div>
 
           <div className="border-l border-slate-200 dark:border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 block">STOCK ORDERS</span>
-            <span className="text-xl font-black text-amber-600 dark:text-amber-400">{stockOrders}</span>
+            <span className="text-[10px] uppercase tracking-wider text-pink-600 dark:text-[#ff007f] block">RESTA HOY</span>
+            <span className="text-xl font-black text-pink-600 dark:text-[#ff007f]">{restaHoyCount}</span>
           </div>
 
           <div className="border-l border-slate-200 dark:border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-[#39ff14] block">CAPTURADO</span>
-            <span className="text-xl font-black text-emerald-600 dark:text-[#39ff14]">{capturados}</span>
+            <span className="text-[10px] uppercase tracking-wider text-cyan-600 dark:text-[#00f2fe] block">TOTAL TABLAS</span>
+            <span className="text-xl font-black text-cyan-600 dark:text-[#00f2fe]">{totalOrders}</span>
           </div>
 
           <div className="border-l border-slate-200 dark:border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-pink-600 dark:text-[#ff007f] block">RESTA</span>
-            <span className="text-xl font-black text-pink-600 dark:text-[#ff007f]">{resta}</span>
-          </div>
-
-          <div className="border-l border-slate-200 dark:border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400 block">ÓRDENES DÍA (COL A)</span>
+            <span className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400 block">ANOTACIONES COL A</span>
             <span className="text-xl font-black text-purple-600 dark:text-purple-400">{contratosAnotadosColA.length}</span>
           </div>
         </div>
