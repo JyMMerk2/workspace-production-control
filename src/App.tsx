@@ -9,6 +9,8 @@ import { SheetsView } from './components/SheetsView';
 import { ManualView } from './components/ManualView';
 import { ConfigView } from './components/ConfigView';
 import { TestWipNativoView } from './components/TestWipNativoView';
+import WipStocksVendidasView from './components/WipStocksVendidasView';
+import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
 import { INITIAL_FALLBACK_DASHBOARD, fetchLiveDashboardData } from './data/dashboardService';
@@ -25,7 +27,18 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [headerVisible, setHeaderVisible] = useState<boolean>(true);
 
-  // 1. Inicializar con datos guardados en caché si existen para evitar reseteos a ceros al iniciar
+  // Modo Día / Modo Noche
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('theme_mode') !== 'light';
+  });
+
+  const toggleTheme = () => {
+    const nextMode = !darkMode;
+    setDarkMode(nextMode);
+    localStorage.setItem('theme_mode', nextMode ? 'dark' : 'light');
+  };
+
+  // 1. Inicializar con datos guardados en caché si existen
   const [dashboardData, setDashboardData] = useState<DashboardData>(() => {
     const cached = localStorage.getItem('boombah_dashboard_cached_data');
     if (cached) {
@@ -41,13 +54,12 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Synchronize dashboard con protección anti-reseteo
+  // Sincronizar dashboard con protección anti-reseteo
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const { data, isLive } = await fetchLiveDashboardData();
 
-      // VALIDACIÓN CLAVE: Solo sobrescribir el estado si la respuesta contiene datos de producción reales válidos
       if (
         data &&
         data.kpiApparel &&
@@ -60,13 +72,12 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Dashboard sync fallback mantenido:', err);
-      // En caso de falla de red/timeout, NO actualiza estado: la interfaz permanece congelada con los últimos datos buenos
     } finally {
       setIsRefreshing(false);
     }
   }, []);
 
-  // Initial load and periodic refresh
+  // Carga inicial e intervalo
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
@@ -89,7 +100,6 @@ export default function App() {
       document.title = `${title} - Boombah Workspace`;
     }
 
-    // On mobile screens, automatically collapse sidebar
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
@@ -106,7 +116,6 @@ export default function App() {
     setAuthenticatedUser(null);
   };
 
-  // If not logged in, render authentication modal
   if (!authenticatedUser) {
     return <AuthModal onLoginSuccess={handleLoginSuccess} />;
   }
@@ -115,8 +124,8 @@ export default function App() {
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
   return (
-    <div className="min-h-screen bg-[#0b0e14] text-[#e1e6ed] flex flex-col font-sans antialiased overflow-x-hidden">
-      {/* Top Fixed Header */}
+    <div className={`min-h-screen ${darkMode ? 'bg-[#0b0e14] text-[#e1e6ed]' : 'bg-slate-100 text-slate-900'} flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}>
+      {/* Encabezado Principal */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
@@ -129,11 +138,13 @@ export default function App() {
         isLiveConnection={isLiveConnection}
         onLogout={handleLogout}
         authenticatedUser={authenticatedUser}
+        darkMode={darkMode}
+        onToggleTheme={toggleTheme}
       />
 
-      {/* Main Workspace Container */}
+      {/* Contenedor Principal */}
       <div className={`flex flex-1 ${headerVisible ? 'mt-15' : 'mt-0'} transition-all duration-300`}>
-        {/* Left Navigation Sidebar */}
+        {/* Menú Lateral (Sidebar) */}
         <Sidebar
           activeTab={activeTab}
           activeSubTabGid={activeSubTabGid}
@@ -143,48 +154,56 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Content View Area */}
+        {/* Área de Contenido */}
         <main
-          className={`flex-1 p-4 md:p-6 transition-all duration-300 ${
+          className={`flex-1 transition-all duration-300 ${
             sidebarOpen ? 'lg:ml-65 w-full lg:w-[calc(100%-16.25rem)]' : 'ml-0 w-full'
           }`}
         >
-          {/* TAB 1: Live Neón Dashboard */}
-          {activeTab === 'dashboard-live' && (
-            <DashboardView
-              data={dashboardData}
-              isLive={isLiveConnection}
-              isRefreshing={isRefreshing}
-              onRefresh={refreshDashboard}
-            />
-          )}
+          {/* Barra de Control de Producción */}
+          <ProductionControlToolbar />
 
-          {/* TAB 2: Planos & Technical Blueprints Explorer */}
-          {activeTab === 'planos' && <PlanosView />}
+          <div className="p-4 md:p-6">
+            {/* TAB 1: Live Neón Dashboard */}
+            {activeTab === 'dashboard-live' && (
+              <DashboardView
+                data={dashboardData}
+                isLive={isLiveConnection}
+                isRefreshing={isRefreshing}
+                onRefresh={refreshDashboard}
+              />
+            )}
 
-          {/* TAB 3: Sizing Packs Multi-Style Calculator with OCR */}
-          {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
+            {/* TAB: WIP Stocks & Vendidas (Vista Nativa) */}
+            {(activeTab as string) === 'wip-stocks-vendidas' && <WipStocksVendidasView />}
 
-          {/* TAB DEMO: Test WIP Nativo (Prueba Segura) */}
-          {(activeTab as string) === 'wip-demo' && <TestWipNativoView />}
+            {/* TAB 2: Planos & Technical Blueprints Explorer */}
+            {activeTab === 'planos' && <PlanosView />}
 
-          {/* TAB 4: Embedded Google Sheets Tabs */}
-          {isSheetTab && currentSheetConfig && (
-            <SheetsView
-              config={currentSheetConfig}
-              activeGid={activeSubTabGid}
-              onSelectSubTab={(gid, name) => {
-                setActiveSubTabGid(gid);
-                setCurrentTabTitle(`${currentSheetConfig.title} - ${name}`);
-              }}
-            />
-          )}
+            {/* TAB 3: Sizing Packs Multi-Style Calculator */}
+            {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
 
-          {/* TAB 5: Production Control Manual */}
-          {activeTab === 'manual' && <ManualView />}
+            {/* TAB DEMO: Test WIP Nativo */}
+            {(activeTab as string) === 'wip-demo' && <TestWipNativoView />}
 
-          {/* TAB 6: Settings & Configuration */}
-          {activeTab === 'configuracion' && <ConfigView authenticatedUser={authenticatedUser} />}
+            {/* TAB 4: Embedded Google Sheets Tabs */}
+            {isSheetTab && currentSheetConfig && (
+              <SheetsView
+                config={currentSheetConfig}
+                activeGid={activeSubTabGid}
+                onSelectSubTab={(gid, name) => {
+                  setActiveSubTabGid(gid);
+                  setCurrentTabTitle(`${currentSheetConfig.title} - ${name}`);
+                }}
+              />
+            )}
+
+            {/* TAB 5: Production Control Manual */}
+            {activeTab === 'manual' && <ManualView />}
+
+            {/* TAB 6: Settings & Configuration */}
+            {activeTab === 'configuracion' && <ConfigView authenticatedUser={authenticatedUser} />}
+          </div>
         </main>
       </div>
     </div>
