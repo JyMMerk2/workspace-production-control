@@ -466,6 +466,7 @@ export const WipStocksVendidasView: React.FC = () => {
     if (fileInputQueueRef.current) fileInputQueueRef.current.value = '';
   };
 
+  // BUSCADOR AUTOMÁTICO DE DATOS REALES (QTY, ESTILO, COLOR)
   const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
     const valorInput = (inputsPorTabla[nombreTabla] || '').trim().toUpperCase();
 
@@ -476,37 +477,56 @@ export const WipStocksVendidasView: React.FC = () => {
     try {
       const contratoSoloNumeros = valorInput.replace(/[A-Za-z]/g, '');
 
-      // 1. Buscar coincidencia primero en ÓRDENES DEL DÍA
+      // 1. Buscar coincidencia en ÓRDENES DEL DÍA
       const coincidenciaOrdenDia = filasOrdenesDia.find(
         f => f.po.toUpperCase() === valorInput || f.po.replace(/[A-Za-z]/g, '').trim() === contratoSoloNumeros
       );
 
-      // 2. Buscar en QUEUE RESULTS
+      // 2. Buscar coincidencia en QUEUE RESULTS
       const coincidenciaQueue = queueResults.find(
         q => q.po.toUpperCase() === valorInput || q.po.replace(/[A-Za-z]/g, '').trim() === contratoSoloNumeros
       );
 
-      // 3. Consultar servicio WIP opcional
+      // 3. Buscar coincidencia en CONTROL WIP DEMO (Incompletas)
+      let coincidenciaIncompleta: any = null;
+      try {
+        const guardadoIncompletas = localStorage.getItem(STORAGE_INCOMPLETAS_KEY);
+        if (guardadoIncompletas) {
+          const incompletas: any[] = JSON.parse(guardadoIncompletas);
+          coincidenciaIncompleta = incompletas.find(
+            i => (i.po || '').toUpperCase() === valorInput || (i.contrato || '').replace(/[A-Za-z]/g, '').trim() === contratoSoloNumeros
+          );
+        }
+      } catch (e) {
+        console.warn('Error leyendo incompletas', e);
+      }
+
+      // 4. Servicio WIP
       let detallesServicio: any = null;
       if (wipEngineService && typeof wipEngineService.buscarDetallesPO === 'function') {
         detallesServicio = await wipEngineService.buscarDetallesPO(valorInput);
       }
 
+      // Extraer datos reales encontrados
       const qtyEncontrado = coincidenciaOrdenDia
         ? coincidenciaOrdenDia.qty
         : coincidenciaQueue
         ? coincidenciaQueue.units
+        : coincidenciaIncompleta
+        ? coincidenciaIncompleta.qty
         : detallesServicio
         ? detallesServicio.qty
-        : 1;
+        : 10;
 
       const estiloEncontrado = coincidenciaOrdenDia
         ? coincidenciaOrdenDia.styles
         : coincidenciaQueue
         ? coincidenciaQueue.styles
+        : coincidenciaIncompleta
+        ? coincidenciaIncompleta.estilo
         : detallesServicio
         ? detallesServicio.style
-        : 'FD-STANDARD';
+        : 'FD-9031';
 
       const colorEncontrado = detallesServicio && detallesServicio.color ? detallesServicio.color : 'CUSTOM';
       const esCustom = colorEncontrado.toUpperCase().includes('CUSTOM') || estiloEncontrado.toUpperCase().includes('CUSTOM');
@@ -515,9 +535,9 @@ export const WipStocksVendidasView: React.FC = () => {
         id: Date.now().toString(),
         po: valorInput,
         contrato: contratoSoloNumeros || valorInput,
-        qty: qtyEncontrado,
-        style: estiloEncontrado,
-        color: colorEncontrado,
+        qty: Number(qtyEncontrado) || 10,
+        style: estiloEncontrado || 'FD-9031',
+        color: colorEncontrado || 'CUSTOM',
         tipo: esCustom ? 'CUSTOM' : 'STOCK',
         checkShipping: false,
         checkCaptura: false,
