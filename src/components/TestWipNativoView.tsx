@@ -54,7 +54,7 @@ export const TestWipNativoView: React.FC = () => {
   const [sheetsUrl, setSheetsUrl] = useState('');
   const [isLiveConnected, setIsLiveConnected] = useState(false);
 
-  // Modal de confirmación para transferir a WIP Stocks & Vendidas
+  // Modal de confirmación para transferir a WIP Stocks & Vendidas (Columna A)
   const [pendingTransferContract, setPendingTransferContract] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,14 +160,14 @@ export const TestWipNativoView: React.FC = () => {
     };
   }, []);
 
-  // Confirmar y Ejecutar Transferencia a WIP Stocks & Vendidas (Pestaña "ORDENES DEL DIA")
+  // Confirmar y Anotar Contrato únicamente en Columna A ("Anotar aquí ↓")
   const confirmAndExecuteTransfer = async (contratoId: string) => {
     const { error } = await supabase
       .from('wip_stocks_vendidas')
-      .upsert([{ contrato: contratoId, status: 'CAPTURADO COMPLETO', despachado: 'DESPACHADO' }], { onConflict: 'contrato' });
+      .upsert([{ contrato: contratoId }], { onConflict: 'contrato' });
 
     if (!error) {
-      alert(`✅ Contrato ${contratoId} transferido correctamente a "WIP Stocks & Vendidas".`);
+      alert(`✅ Contrato ${contratoId} anotado en "ORDENES DEL DIA" (Columna A).`);
     } else {
       alert('Error al transferir contrato: ' + error.message);
     }
@@ -200,7 +200,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Agregar nuevo PO en Columna A (SE GUARDA EN PARCIAL Y DESMARCADO POR DEFECTO)
+  // Agregar nuevo PO en Columna A (POR DEFECTO DESMARCADO Y EN PARCIAL)
   const handleAddPoCaptura = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const poClean = inputPo.trim().toUpperCase();
@@ -217,8 +217,8 @@ export const TestWipNativoView: React.FC = () => {
       contrato: match?.contrato || contratoExtracted,
       estilo: match?.estilo || 'PENDIENTE DB',
       qty: match?.qty || 0,
-      completado: false, // Inicia desmarcado por defecto
-      estado_captura: 'CAPTURADO PARCIAL', // Inicia en PARCIAL
+      completado: false, // Por defecto desmarcado (PARCIAL)
+      estado_captura: 'CAPTURADO PARCIAL',
       estado_general: match?.estadoGeneral || 'AB',
       modificado_por: activeUser,
       updated_at: new Date().toISOString(),
@@ -233,7 +233,7 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Toggle Checkbox de Verificación (Marcar/Desmarcar)
+  // Toggle Checkbox (Marcar / Desmarcar)
   const toggleStatus = async (row: WipCapturaRow) => {
     const nextCompletado = !row.completado;
     const nextEstadoCaptura = nextCompletado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL';
@@ -595,7 +595,7 @@ export const TestWipNativoView: React.FC = () => {
               <h3 className="text-base font-bold uppercase">Confirmar Transferencia</h3>
             </div>
             <p className="text-xs text-gray-300 leading-relaxed">
-              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea enviarlo a <strong className="text-white">"WIP STOCKS & VENDIDAS"</strong>?
+              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea anotarlo en <strong className="text-white">"ORDENES DEL DIA" (Columna A)</strong>?
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -632,7 +632,7 @@ export const TestWipNativoView: React.FC = () => {
                 placeholder="Pega aquí el enlace de Google Sheets (Publicado como CSV)..."
                 value={sheetsUrl}
                 onChange={(e) => setSheetsUrl(e.target.value)}
-                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#00f2fe]"
+                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-[#00f2fe] font-mono focus:outline-none focus:border-[#00f2fe]"
               />
             </div>
 
