@@ -14,15 +14,20 @@ interface OrdenItem {
   tipo: 'CUSTOM' | 'STOCK' | 'OTHER';
   checkShipping: boolean; // Casilla 1: Enviar a Shipping
   checkCaptura: boolean;  // Casilla 2: Capturado en Taller (Custom)
-  statusEspecial?: string; // Evaluado por las fórmulas BUSCARX
+}
+
+// Estructuras de la base de datos de Incompletos y Órdenes del Día
+interface RegistroIncompleto {
+  po: string;
+  completado: boolean;
+  piezasFaltantes: number;
 }
 
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  // Formulario rápido para Agregar Orden
+  // Formulario de Agregar Orden
   const [nuevaOrden, setNuevaOrden] = useState({
     tablaTarget: 'CUSTOM BAGS',
     po: '',
@@ -32,7 +37,24 @@ export const WipStocksVendidasView: React.FC = () => {
     tipo: 'CUSTOM' as 'CUSTOM' | 'STOCK' | 'OTHER',
   });
 
-  // 1. Datos iniciales para las 7 tablas de BUSCAR BP (Mochilas)
+  // Base de datos de Referencia (Incompletos)
+  const [baseIncompletos] = useState<Record<string, RegistroIncompleto>>({
+    '427713B': { po: '427713B', completado: true, piezasFaltantes: 0 },
+    '427432A': { po: '427432A', completado: true, piezasFaltantes: 0 },
+    '427797A': { po: '427797A', completado: false, piezasFaltantes: 2 },
+    '427418A': { po: '427418A', completado: true, piezasFaltantes: 0 },
+    '426281A': { po: '426281A', completado: true, piezasFaltantes: 0 },
+  });
+
+  // Lista de Contratos ya registrados en Órdenes del Día
+  const [ordenesDelDiaRegistradas] = useState<string[]>([
+    '427713',
+    '427432',
+    '427418',
+    '426281',
+  ]);
+
+  // Tablas de Mochilas (BUSCAR BP)
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>({
     'CUSTOM BAGS': [
       { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
@@ -51,36 +73,25 @@ export const WipStocksVendidasView: React.FC = () => {
     'LINEA 7 (CN)': [],
   });
 
-  // 2. Datos iniciales para las 7 tablas de BUSCAR FD (Full Dye) - YA NO SALEN VACÍAS
+  // Tablas de Full Dye (BUSCAR FD)
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>({
     'FULL DYE CELDA 1': [
       { id: 'fd-1', po: '427713', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
       { id: 'fd-2', po: '427432', contrato: '427432', qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
     ],
     'FULL DYE CELDA 2': [
-      { id: 'fd-3', po: '427797', contrato: '427797', qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
+      { id: 'fd-3', po: '427797', contrato: '427797', qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
     ],
-    'FULL DYE CELDA 3': [
-      { id: 'fd-4', po: '427418', contrato: '427418', qty: 14, style: 'FD-9006', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-    ],
-    'FULL DYE CELDA 4': [
-      { id: 'fd-5', po: '427769', contrato: '427769', qty: 1, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
-    ],
-    'PANTS LINE 1': [
-      { id: 'fd-6', po: '419211', contrato: '419211', qty: 10, style: 'PS-9100', color: 'M/O/FLE', tipo: 'STOCK', checkShipping: false, checkCaptura: false },
-    ],
-    'PANTS LINE 2': [
-      { id: 'fd-7', po: '419217', contrato: '419217', qty: 10, style: 'PS-9100', color: 'TL/N/HCR', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
-    ],
-    'HATS LINE': [
-      { id: 'fd-8', po: '427685', contrato: '427685', qty: 14, style: 'FD-9047', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
-    ],
+    'FULL DYE CELDA 3': [],
+    'FULL DYE CELDA 4': [],
+    'PANTS LINE 1': [],
+    'PANTS LINE 2': [],
+    'HATS LINE': [],
   });
 
   const lineasBPNames = Object.keys(tablasBP);
   const lineasFDNames = Object.keys(tablasFD);
 
-  // Totales
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenes = Object.values(activeTablas).flat();
   const totalOrders = todasOrdenes.length;
@@ -89,18 +100,46 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica de Fórmulas BUSCARX para Estado
-  const calcularEstadoFormula = (item: OrdenItem): { texto: string; estiloClass: string } => {
-    if (item.checkCaptura) {
-      return { texto: 'CAPTURADO COMPLETO', estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40' };
+  // Lógica de Validación Integrada
+  const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
+    const registroIncompleto = baseIncompletos[item.po];
+    const estaEnOrdenesDia = ordenesDelDiaRegistradas.includes(item.contrato);
+
+    // 1. Si no existe registro de captura en Incompletos
+    if (!registroIncompleto) {
+      return {
+        texto: 'FALTA CAPTURA',
+        estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+        checkAuto: false,
+      };
     }
-    if (item.checkShipping) {
-      return { texto: 'ENTREGADO A SHIPPING', estiloClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40' };
+
+    // 2. Si existe en Incompletos pero no está marcado como completado
+    if (!registroIncompleto.completado) {
+      return {
+        texto: 'PARCIAL / EN PROCESO',
+        estiloClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        checkAuto: false,
+      };
     }
-    return { texto: 'PARCIAL / EN PROCESO', estiloClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40' };
+
+    // 3. Está completo en Incompletos, pero falta validar en Órdenes del Día
+    if (registroIncompleto.completado && !estaEnOrdenesDia) {
+      return {
+        texto: 'REVISAR WIP E INCOMPLETOS',
+        estiloClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+        checkAuto: true,
+      };
+    }
+
+    // 4. Se cumple todo el flujo: Incompletos OK + Órdenes del Día OK
+    return {
+      texto: 'CAPTURADO COMPLETO',
+      estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40',
+      checkAuto: true,
+    };
   };
 
-  // Manejadores de Checkboxes
   const toggleShipping = (tabla: string, id: string) => {
     const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
     setter(prev => ({
@@ -121,7 +160,6 @@ export const WipStocksVendidasView: React.FC = () => {
     }));
   };
 
-  // Función Agregar Orden (Se integra en la barra superior derecha)
   const handleAgregarOrden = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nuevaOrden.po.trim()) return alert('Por favor ingresa un número de PO/Contrato');
@@ -149,7 +187,6 @@ export const WipStocksVendidasView: React.FC = () => {
     setNuevaOrden(prev => ({ ...prev, po: '', style: '' }));
   };
 
-  // Función Eliminar Orden
   const handleEliminarOrden = (tabla: string, id: string) => {
     if (confirm('¿Deseas eliminar esta orden del registro?')) {
       const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
@@ -160,14 +197,9 @@ export const WipStocksVendidasView: React.FC = () => {
     }
   };
 
-  // Obtener Lista Columna CH / CW ("PARA VALIDAR EN ORDENES DEL DIA")
-  const listaParaValidarOrdenesDia = todasOrdenes
-    .filter(o => o.tipo === 'CUSTOM' && o.qty > 0)
-    .map(o => o.contrato);
-
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* 1. Selector Superior de Sub-pestañas */}
+      {/* 1. Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => {
@@ -226,7 +258,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner de Totales y Formulario Agregar Orden integrados */}
+      {/* 2. Banner de Control y Alta de Órdenes */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -255,7 +287,6 @@ export const WipStocksVendidasView: React.FC = () => {
           </div>
         </div>
 
-        {/* Formulario de Agregar Orden */}
         <form onSubmit={handleAgregarOrden} className="flex items-center gap-2 flex-wrap">
           <select
             value={nuevaOrden.tablaTarget}
@@ -292,7 +323,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* 3. VISTA MULTI-TABLA PARA BUSCAR BP Y BUSCAR FD */}
+      {/* 3. Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
@@ -347,7 +378,9 @@ export const WipStocksVendidasView: React.FC = () => {
                       <tbody className="divide-y divide-white/5">
                         {filasFiltradas.length > 0 ? (
                           filasFiltradas.map(f => {
-                            const formulaRes = calcularEstadoFormula(f);
+                            const evalJerarquica = calcularEstadoFormulaJerarquica(f);
+                            const checkEfectivo = f.checkCaptura || evalJerarquica.checkAuto;
+
                             return (
                               <tr key={f.id} className="hover:bg-white/5 transition-colors">
                                 <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{f.po}</td>
@@ -362,7 +395,7 @@ export const WipStocksVendidasView: React.FC = () => {
                                   </span>
                                 </td>
 
-                                {/* Casilla 1: ENV (Shipping) */}
+                                {/* Casilla 1: ENV */}
                                 <td className="p-2.5 text-center bg-blue-950/20">
                                   <input
                                     type="checkbox"
@@ -372,24 +405,24 @@ export const WipStocksVendidasView: React.FC = () => {
                                   />
                                 </td>
 
-                                {/* Casilla 2: CAPTURA (Custom / Taller) */}
+                                {/* Casilla 2: CAPTURA (Sincronizada) */}
                                 <td className="p-2.5 text-center bg-emerald-950/20">
                                   <input
                                     type="checkbox"
-                                    checked={f.checkCaptura}
+                                    checked={checkEfectivo}
                                     onChange={() => toggleCaptura(nombreLinea, f.id)}
                                     className="w-4 h-4 accent-[#39ff14] cursor-pointer"
                                   />
                                 </td>
 
-                                {/* Resultado Evaluación BUSCARX */}
+                                {/* Estado Evaluado segun Jerarquía */}
                                 <td className="p-2.5 text-center font-bold">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${formulaRes.estiloClass}`}>
-                                    {formulaRes.texto}
+                                  <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${evalJerarquica.estiloClass}`}>
+                                    {evalJerarquica.texto}
                                   </span>
                                 </td>
 
-                                {/* Botón Eliminar Orden */}
+                                {/* Eliminar */}
                                 <td className="p-2.5 text-center">
                                   <button
                                     onClick={() => handleEliminarOrden(nombreLinea, f.id)}
