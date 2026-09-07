@@ -22,7 +22,7 @@ export const WipStocksVendidasView: React.FC = () => {
   const [tablaTargetSelect, setTablaTargetSelect] = useState('CUSTOM BAGS');
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
-  // 1. Tablas de Mochilas (BUSCAR BP)
+  // 1. Tablas Mochilas (BUSCAR BP)
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>({
     'CUSTOM BAGS': [
       { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
@@ -41,7 +41,7 @@ export const WipStocksVendidasView: React.FC = () => {
     'LINEA 7 (CN)': [],
   });
 
-  // 2. Tablas de Full Dye (BUSCAR FD)
+  // 2. Tablas Full Dye (BUSCAR FD)
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>({
     'FULL DYE CELDA 1': [],
     'FULL DYE CELDA 2': [],
@@ -52,7 +52,6 @@ export const WipStocksVendidasView: React.FC = () => {
     'HATS LINE': [],
   });
 
-  // Pestañas / Tablas dinámicas
   const lineasBPNames = Object.keys(tablasBP);
   const lineasFDNames = Object.keys(tablasFD);
 
@@ -64,9 +63,9 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica de Evaluación Exacta descrita por ti:
+  // Lógica de Evaluación Jerárquica A Prueba de Fallos (Safe Render)
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
-    // A) Si la casilla manual fue marcada en la tabla
+    // Si la casilla fue marcada manualmente en la tabla
     if (item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
@@ -75,11 +74,22 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // B) Consultar en el servicio global del sistema (Incompletos y Órdenes del Día Reales)
-    const datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po, item.contrato);
-    const estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
+    let datosIncompletos: any = null;
+    let estaEnOrdenesDelDia = false;
 
-    // B.1) Si está en Órdenes del Día (Col A) O si está completado en la hoja de Incompletos -> CAPTURADO COMPLETO
+    // Obtención segura de datos desde el servicio
+    try {
+      if (wipEngineService && typeof wipEngineService.obtenerEstadoIncompleto === 'function') {
+        datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po, item.contrato);
+      }
+      if (wipEngineService && typeof wipEngineService.estaEnOrdenesDelDia === 'function') {
+        estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
+      }
+    } catch (e) {
+      console.warn('Servicio de evaluación no disponible de forma síncrona', e);
+    }
+
+    // 1. Si está en Órdenes del Día O si está completado en Incompletos -> CAPTURADO COMPLETO
     if (estaEnOrdenesDelDia || (datosIncompletos && datosIncompletos.completado)) {
       return {
         texto: 'CAPTURADO COMPLETO',
@@ -88,7 +98,7 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // B.2) Si SÍ está en la hoja de Incompletos pero NO está completado -> CAPTURA PARCIAL
+    // 2. Si SÍ está en Incompletos pero NO está completado -> PARCIAL / EN PROCESO
     if (datosIncompletos && !datosIncompletos.completado) {
       return {
         texto: 'PARCIAL / EN PROCESO',
@@ -97,7 +107,7 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // B.3) Si NO se encuentra en Incompletos ni en ningún otro lado -> FALTA CAPTURA
+    // 3. Por defecto si NO está en Incompletos -> FALTA CAPTURA
     return {
       texto: 'FALTA CAPTURA',
       estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
@@ -105,7 +115,7 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Agregar una orden al pulsar ENTER o Clic en botón
+  // Función para agregar PO al presionar Enter o Clic
   const ejecutarAgregarOrden = async () => {
     const poLimpia = poInput.trim().toUpperCase();
 
@@ -117,8 +127,11 @@ export const WipStocksVendidasView: React.FC = () => {
     setLoadingBusqueda(true);
 
     try {
-      // Buscar detalles de la orden en la BD
-      const detalles = await wipEngineService.buscarDetallesPO(poLimpia);
+      let detalles: any = null;
+      if (wipEngineService && typeof wipEngineService.buscarDetallesPO === 'function') {
+        detalles = await wipEngineService.buscarDetallesPO(poLimpia);
+      }
+
       const contratoCalculado = poLimpia.replace(/[A-Za-z]/g, '');
 
       const itemNuevo: OrdenItem = {
@@ -190,7 +203,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* 1. Selector de Sub-pestañas */}
+      {/* Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => {
@@ -241,7 +254,11 @@ export const WipStocksVendidasView: React.FC = () => {
           />
 
           <button
-            onClick={() => wipEngineService.limpiarFilasCompletas(activeSubTab === 'buscar-bp' ? 'BUSCAR_BP' : 'BUSCAR_FD')}
+            onClick={() => {
+              if (wipEngineService && typeof wipEngineService.limpiarFilasCompletas === 'function') {
+                wipEngineService.limpiarFilasCompletas(activeSubTab === 'buscar-bp' ? 'BUSCAR_BP' : 'BUSCAR_FD');
+              }
+            }}
             className="px-3 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
           >
             🧹 Limpiar Completas
@@ -249,7 +266,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner con Estadísticas y Barra para Agregar */}
+      {/* Banner de Control */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -307,7 +324,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* 3. Renderizado de Tablas */}
+      {/* Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
