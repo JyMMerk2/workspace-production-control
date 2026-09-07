@@ -56,6 +56,7 @@ const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
 const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
 const STORAGE_ORDENES_DIA_KEY = 'wip_ordenes_dia_filas_v1';
 const STORAGE_QUEUE_KEY = 'wip_customization_queue_v1';
+const STORAGE_INCOMPLETAS_KEY = 'wip_control_incompletas_v1';
 
 const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
   try {
@@ -187,12 +188,12 @@ export const WipStocksVendidasView: React.FC = () => {
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenesTablas = Object.values(activeTablas).flat();
 
-  // Contratos anotados explícitamente en la Columna A de la hoja Órdenes del Día
+  // Lista de Contratos Anotados explícitamente en la Columna A
   const contratosAnotadosColA = filasOrdenesDia
     .map(f => f.colA_Anotar.replace(/[A-Za-z]/g, '').trim())
     .filter(c => c !== '');
 
-  // Lógica de Evaluación Jerárquica para las Tablas de BP y FD
+  // Lógica de Evaluación Jerárquica
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const estaEnOrdenesDelDiaLocal = contratosAnotadosColA.includes(item.contrato);
 
@@ -235,28 +236,44 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Cálculo para cada fila en la sub-pestaña Órdenes del Día
+  // EVALUACIÓN COMPLETA DE COLUMNA B Y C (ÓRNDENES DEL DÍA vs COL A vs CONTROL WIP DEMO)
   const calcularFormulasFilaOrdenDia = (fila: FilaOrdenDia) => {
     const poContrato = fila.po.replace(/[A-Za-z]/g, '').trim();
     const colA_Limpia = fila.colA_Anotar.replace(/[A-Za-z]/g, '').trim();
 
-    // Revisa si esa PO está capturada en alguna de las tablas activas de BP o FD
-    const capturadaEnTablas = todasOrdenesTablas.some(
-      o => o.contrato === poContrato && (o.checkCaptura || calcularEstadoFormulaJerarquica(o).checkAuto)
-    );
-
-    let statusB = 'FALTA CAPTURA';
-    let despuesCapturaC = 'NO ENTREGADO';
-
-    if (colA_Limpia !== '' || capturadaEnTablas) {
-      statusB = 'CAPTURADO COMPLETO';
-      despuesCapturaC = 'CONTEO';
+    // 1. Verificar si existe en CONTROL WIP DEMO (Incompletas)
+    let estadoIncompleta: any = null;
+    try {
+      const guardadoIncompletas = localStorage.getItem(STORAGE_INCOMPLETAS_KEY);
+      if (guardadoIncompletas) {
+        const incompletas: any[] = JSON.parse(guardadoIncompletas);
+        estadoIncompleta = incompletas.find(i => (i.po || '').replace(/[A-Za-z]/g, '').trim() === poContrato);
+      }
+    } catch (e) {
+      console.warn('Error leyendo incompletas', e);
     }
 
-    return { statusB, despuesCapturaC };
+    // Si está en CONTROL WIP (DEMO), asigna el estado correspondiente
+    if (estadoIncompleta) {
+      if (estadoIncompleta.capturadoCheck || (estadoIncompleta.qty > 0 && estadoIncompleta.piezas >= estadoIncompleta.qty)) {
+        return { statusB: 'CAPTURADO COMPLETO', despuesCapturaC: 'CONTEO' };
+      }
+      if (estadoIncompleta.piezas > 0) {
+        return { statusB: 'PARCIAL / EN PROCESO', despuesCapturaC: 'NO ENTREGADO' };
+      }
+    }
+
+    // 2. Verificar si está anotada en Columna A
+    const estaAnotadaEnColA = colA_Limpia !== '' && (colA_Limpia === poContrato || contratosAnotadosColA.includes(poContrato));
+
+    if (estaAnotadaEnColA) {
+      return { statusB: 'CAPTURADO COMPLETO', despuesCapturaC: 'CONTEO' };
+    }
+
+    return { statusB: 'FALTA CAPTURA', despuesCapturaC: 'NO ENTREGADO' };
   };
 
-  // MÉTIRICAS REALES BASADAS EN ÓRDENES DEL DÍA (HOY)
+  // MÉTRICAS EXACTAS SOBRE EL TOTAL FIJO DE ÓRDENES DE HOY (116)
   const ordenesHoyEnDia = filasOrdenesDia.filter(f => f.esHoy);
   const totalOrdenesHoy = ordenesHoyEnDia.length;
 
@@ -267,15 +284,44 @@ export const WipStocksVendidasView: React.FC = () => {
 
   const restaHoyCount = totalOrdenesHoy - capturadosHoyCount;
 
-  // Métricas de las Tablas Activas
+  // Métricas Tablas BP / FD
   const totalOrders = todasOrdenesTablas.length;
   const ctmOrders = todasOrdenesTablas.filter(o => o.tipo === 'CUSTOM').length;
   const stockOrders = todasOrdenesTablas.filter(o => o.tipo === 'STOCK').length;
-  const capturadosTablas = todasOrdenesTablas.filter(o => {
-    const evalRes = calcularEstadoFormulaJerarquica(o);
-    return o.checkCaptura || evalRes.checkAuto;
-  }).length;
-  const restaTablas = totalOrders - capturadosTablas;
+
+  // ANOTAR EN COLUMNA A SIN DUPLICAR LA FILA DE ÓRDENES DEL DÍA
+  const handleAnotarColAManual = (e: React.FormEvent) => {
+    e.preventDefault();
+    const contratoLimpio = inputOrdenDiaManual.trim().replace(/[A-Za-z]/g, '');
+
+    if (!contratoLimpio) return;
+
+    setFilasOrdenesDia(prev => {
+      let encontrado = false;
+      const actualizadas = prev.map(fila => {
+        const poFilaLimpia = fila.po.replace(/[A-Za-z]/g, '').trim();
+        if (poFilaLimpia === contratoLimpio && !encontrado) {
+          encontrado = true;
+          return { ...fila, colA_Anotar: contratoLimpio };
+        }
+        return fila;
+      });
+
+      if (encontrado) {
+        return actualizadas;
+      }
+
+      // Si no existe en la lista de hoy, la registra en la primera posición que no tenga Col A
+      return prev.map((fila, index) => {
+        if (index === 0 && !fila.colA_Anotar) {
+          return { ...fila, colA_Anotar: contratoLimpio };
+        }
+        return fila;
+      });
+    });
+
+    setInputOrdenDiaManual('');
+  };
 
   const confirmarYActualizarOrdenesDelDia = () => {
     if (queueResults.length === 0) {
@@ -283,7 +329,7 @@ export const WipStocksVendidasView: React.FC = () => {
         isOpen: true,
         tipo: 'error',
         titulo: 'Cola Vacía',
-        mensaje: "La pestaña 'QUEUE RESULTS' no tiene registros. Por favor, sube primero el archivo CustomizationQueue2Results.xls.",
+        mensaje: "La pestaña 'QUEUE RESULTS' no tiene registros. Sube primero el archivo CustomizationQueue2Results.xls.",
       });
       return;
     }
@@ -516,32 +562,6 @@ export const WipStocksVendidasView: React.FC = () => {
     });
   };
 
-  const handleAnotarColAManual = (e: React.FormEvent) => {
-    e.preventDefault();
-    const contratoLimpio = inputOrdenDiaManual.trim().replace(/[A-Za-z]/g, '');
-
-    if (!contratoLimpio) return;
-
-    setFilasOrdenesDia(prev => [
-      {
-        id: `manual-${Date.now()}`,
-        colA_Anotar: contratoLimpio,
-        colB_Status: 'CAPTURADO COMPLETO',
-        colC_DespuesCaptura: 'CONTEO',
-        department: 'MANUAL',
-        po: contratoLimpio,
-        qty: 1,
-        styles: 'MANUAL',
-        dueDate: 'HOY',
-        memo: 'Anotación manual Col A',
-        esHoy: true
-      },
-      ...prev
-    ]);
-
-    setInputOrdenDiaManual('');
-  };
-
   const handleModificarColAInFila = (id: string, nuevoValor: string) => {
     setFilasOrdenesDia(prev =>
       prev.map(f => (f.id === id ? { ...f, colA_Anotar: nuevoValor } : f))
@@ -703,7 +723,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner de Totales (Consolidado) */}
+      {/* 2. Banner de Métricas del Día (Total Fijo 116 -> Rebaja según Captura) */}
       <div className="w-full bg-white dark:bg-[#121826] border border-slate-200 dark:border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4 transition-colors duration-300">
         <div className="flex items-center gap-6 flex-wrap">
           <div>
@@ -871,6 +891,8 @@ export const WipStocksVendidasView: React.FC = () => {
                           <span className={`px-2 py-0.5 rounded text-[10px] border ${
                             evalColBC.statusB === 'CAPTURADO COMPLETO'
                               ? 'bg-emerald-500/20 text-emerald-600 dark:text-[#39ff14] border-emerald-500/40'
+                              : evalColBC.statusB === 'PARCIAL / EN PROCESO'
+                              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40'
                               : 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/40'
                           }`}>
                             {evalColBC.statusB}
