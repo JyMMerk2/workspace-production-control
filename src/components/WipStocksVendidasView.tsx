@@ -14,14 +14,16 @@ interface OrdenReal {
   pc: number;
   fecha: string;
   checkEnv: boolean;      // Casilla L (Shipping)
-  checkCustom: boolean;   // Casilla M (Custom / Capturado)
+  checkCustom: boolean;   // Casilla M (Custom/Taller)
+  estadoTexto?: string;
 }
 
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Formulario de entrada rápida
+  // Formulario Agregar Orden
   const [nuevaOrden, setNuevaOrden] = useState({
     po: '',
     qty: 10,
@@ -29,7 +31,7 @@ export const WipStocksVendidasView: React.FC = () => {
     color: 'CUSTOM',
   });
 
-  // Datos reflejados de la hoja en vivo
+  // Datos 100% reales extraídos del Spreadsheet en vivo (Foto de la derecha)
   const [ordenesCustomBags, setOrdenesCustomBags] = useState<OrdenReal[]>([
     { id: '1', po: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', contrato: '427713B', ed: 0, pc: 20, fecha: '7-sep', checkEnv: false, checkCustom: false },
     { id: '2', po: '427432', qty: 10, style: 'FD-9010', color: 'CUSTOM', contrato: '427432A', ed: 0, pc: 10, fecha: '', checkEnv: false, checkCustom: false },
@@ -37,31 +39,30 @@ export const WipStocksVendidasView: React.FC = () => {
     { id: '4', po: '427418', qty: 14, style: 'FD-9006', color: 'CUSTOM', contrato: '427418A', ed: 0, pc: 14, fecha: '', checkEnv: false, checkCustom: false },
     { id: '5', po: '427769', qty: 1, style: 'FD-9031', color: 'CUSTOM', contrato: '427769B', ed: 0, pc: 1, fecha: '', checkEnv: false, checkCustom: false },
     { id: '6', po: '419211', qty: 10, style: 'PS-9100', color: 'M/O/FLE', contrato: '419211A', ed: 0, pc: 10, fecha: '', checkEnv: false, checkCustom: false },
-    { id: '7', po: '419217', qty: 10, style: 'PS-9100', color: 'TL/N/HCR', contrato: '419217A', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true },
+    { id: '7', po: '419217', qty: 10, style: 'PS-9100', color: 'TL/N/HCR', contrato: '419217A', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true, estadoTexto: 'ENTREGADO A SHIPPING' },
     { id: '8', po: '427685', qty: 14, style: 'FD-9047', color: 'CUSTOM', contrato: '427685A', ed: 0, pc: 14, fecha: '', checkEnv: false, checkCustom: false },
     { id: '9', po: '426281', qty: 22, style: 'FD-9031', color: 'CUSTOM', contrato: '426281A', ed: 0, pc: 22, fecha: '', checkEnv: false, checkCustom: false },
-    { id: '10', po: '419213', qty: 10, style: 'PS-9100', color: 'CB/FLPK', contrato: '419213a', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true },
-    { id: '11', po: '419216', qty: 10, style: 'PS-9100', color: 'RB/RD', contrato: '419216a', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true },
-    { id: '12', po: '419215', qty: 10, style: 'PS-9100', color: 'PU/PK/BPU', contrato: '419215a', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true },
+    { id: '10', po: '419213', qty: 10, style: 'PS-9100', color: 'CB/FLPK', contrato: '419213a', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true, estadoTexto: 'ENTREGADO A SHIPPING' },
+    { id: '11', po: '419216', qty: 10, style: 'PS-9100', color: 'RB/RD', contrato: '419216a', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true, estadoTexto: 'ENTREGADO A SHIPPING' },
+    { id: '12', po: '419215', qty: 10, style: 'PS-9100', color: 'PU/PK/BPU', contrato: '419215a', ed: 10, pc: 0, fecha: '', checkEnv: true, checkCustom: true, estadoTexto: 'ENTREGADO A SHIPPING' },
   ]);
 
-  // Lista de Columna Q (Ordenes del día)
+  // Lista lateral "Ordenes del dia" (Columna Q de la foto derecha)
   const ordenesDelDiaColQ = [
     '424191', '426846', '426847', '426850', '426773', '427383', '427828',
     '427821', '427713', '427622', '427703', '427765', '428864'
   ];
 
-  // Alternar Casilla ENV (Shipping)
+  // Alternar Casilla ENV
   const handleToggleEnv = (id: string) => {
     setOrdenesCustomBags(prev =>
       prev.map(item => {
         if (item.id === id) {
-          const nextEnv = !item.checkEnv;
+          const newEnv = !item.checkEnv;
           return {
             ...item,
-            checkEnv: nextEnv,
-            ed: nextEnv ? item.qty : 0,
-            pc: nextEnv ? 0 : item.qty,
+            checkEnv: newEnv,
+            estadoTexto: newEnv ? 'ENTREGADO A SHIPPING' : undefined
           };
         }
         return item;
@@ -106,9 +107,12 @@ export const WipStocksVendidasView: React.FC = () => {
     setOrdenesCustomBags(prev => prev.filter(o => o.id !== id));
   };
 
+  const totalPiezasOrders = ordenesCustomBags.reduce((a, b) => a + b.qty, 0);
+  const totalCustomContratos = ordenesCustomBags.length;
+
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 p-2">
-      {/* 1. Selector de Sub-pestañas */}
+      {/* Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveSubTab('buscar-bp')}
@@ -154,7 +158,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner de Control Superior */}
+      {/* Banner de Control Superior */}
       <div className="bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6 text-xs font-bold">
           <div>Ordenes del día: <span className="text-[#00f2fe]">162</span></div>
@@ -162,6 +166,7 @@ export const WipStocksVendidasView: React.FC = () => {
           <div>RESTA: <span className="text-[#ff007f]">120</span></div>
         </div>
 
+        {/* Formulario Agregar Orden */}
         <form onSubmit={handleAgregar} className="flex items-center gap-2">
           <input
             type="text"
@@ -186,24 +191,27 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* 3. Estructura de Tabla Paralela */}
+      {/* REPLICA EXACTA DEL SPREADSHEET (FOTO DERECHA) */}
       <div className="grid grid-cols-1 2xl:grid-cols-4 gap-4">
+        {/* TABLA PRINCIPAL PARALELA (3 Columnas de Ancho) */}
         <div className="2xl:col-span-3 bg-[#0d1117] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
+                {/* Fila Encabezado Azul de Secciones */}
                 <tr className="bg-blue-700 text-white font-extrabold text-[11px] uppercase tracking-wider">
                   <th className="p-2 border-r border-blue-600">Orders ({ordenesCustomBags.length})</th>
                   <th colSpan={4} className="p-2 border-r border-blue-600 text-center">
                     DATOS QUE VAN PARA EL SHIPPING
                   </th>
                   <th colSpan={4} className="p-2 border-r border-blue-600 text-center bg-blue-900">
-                    CUSTOM (94)
+                    CUSTOM ({totalCustomContratos})
                   </th>
                   <th className="p-2 text-center bg-blue-950">ENV</th>
                   <th className="p-2 text-center bg-blue-950">ACCION</th>
                 </tr>
 
+                {/* Sub-Encabezado de Columnas */}
                 <tr className="bg-[#161b22] text-gray-300 font-bold border-b border-white/10 text-[10px] uppercase">
                   <th className="p-2 text-center">#</th>
                   <th className="p-2">PO</th>
@@ -225,14 +233,14 @@ export const WipStocksVendidasView: React.FC = () => {
                 {ordenesCustomBags
                   .filter(o => o.po.includes(searchTerm) || o.contrato.toLowerCase().includes(searchTerm.toLowerCase()))
                   .map((row, idx) => {
-                    const esEntregado = row.checkEnv || row.ed > 0;
+                    const esEntregado = row.checkEnv || row.estadoTexto === 'ENTREGADO A SHIPPING';
 
                     return (
                       <tr
                         key={row.id}
                         className={`transition-colors ${
                           esEntregado
-                            ? 'bg-emerald-500/30 text-emerald-100 font-bold border-l-4 border-emerald-400'
+                            ? 'bg-emerald-500/25 text-emerald-200 font-bold border-l-4 border-emerald-400'
                             : 'hover:bg-white/5 text-gray-200'
                         }`}
                       >
@@ -242,16 +250,18 @@ export const WipStocksVendidasView: React.FC = () => {
                         <td className="p-2 font-mono text-gray-300">{row.style}</td>
                         <td className="p-2 border-r border-white/10">{row.color}</td>
 
+                        {/* Columna Derecha Custom */}
                         <td className="p-2 font-mono font-bold text-amber-300 bg-black/20">{row.contrato}</td>
-                        <td className="p-2 text-center font-mono font-bold bg-black/20">{row.ed}</td>
+                        <td className="p-2 text-center font-mono bg-black/20">{row.ed}</td>
                         <td className="p-2 text-center font-mono font-bold text-[#39ff14] bg-black/20">{row.pc}</td>
                         <td className="p-2 border-r border-white/10 text-gray-400 text-[10px] bg-black/20">
                           {row.fecha || '7-sep'}
                         </td>
 
+                        {/* Mensaje o Casillas de Acción */}
                         <td className="p-2 text-center">
                           {esEntregado ? (
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/40 text-emerald-200 font-black text-[10px] tracking-wide border border-emerald-400">
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 font-black text-[10px] tracking-wide border border-emerald-400/50">
                               ENTREGADO A SHIPPING
                             </span>
                           ) : (
@@ -279,6 +289,7 @@ export const WipStocksVendidasView: React.FC = () => {
                           )}
                         </td>
 
+                        {/* Botón Eliminar */}
                         <td className="p-2 text-center">
                           <button
                             onClick={() => handleEliminar(row.id)}
@@ -296,7 +307,7 @@ export const WipStocksVendidasView: React.FC = () => {
           </div>
         </div>
 
-        {/* Columna Q (Ordenes del día) */}
+        {/* COLUMNA LATERAL (Columna Q del Spreadsheet: VALIDAR EN ORDENES DEL DIA) */}
         <div className="bg-[#0d1117] border border-blue-600/40 rounded-xl overflow-hidden shadow-2xl flex flex-col">
           <div className="bg-blue-700 px-3 py-2 text-white font-black text-xs uppercase tracking-wider text-center">
             Ordenes del dia (Col Q)
