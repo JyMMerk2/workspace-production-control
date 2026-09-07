@@ -87,8 +87,7 @@ export const TestWipNativoView: React.FC = () => {
         estatusGeneral: 'AB',
       };
 
-      setOrdenesIncompletas(prev => [nuevaFila, ...prev]);
-      setPoInput('');
+setOrdenesIncompletas(prev => [...prev, nuevaFila]);      setPoInput('');
     } catch (err) {
       console.error(err);
     } finally {
