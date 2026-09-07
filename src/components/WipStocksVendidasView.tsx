@@ -1,20 +1,116 @@
-// Comparador Universal de Fechas a Prueba de Formatos (ISO, M/d/yyyy, YYYY-MM-DD)
+import React, { useState, useEffect, useRef } from 'react';
+import { wipEngineService } from '../services/wipEngineService';
+
+type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'queue-results';
+
+interface OrdenItem {
+  id: string;
+  po: string;
+  contrato: string;
+  qty: number;
+  style: string;
+  color: string;
+  tipo: 'CUSTOM' | 'STOCK' | 'OTHER';
+  checkShipping: boolean;
+  checkCaptura: boolean;
+}
+
+interface FilaQueue {
+  department: string;
+  po: string;
+  units: number;
+  styles: string;
+  name: string;
+  teamName: string;
+  date: string;
+  dueDate: string;
+  memo: string;
+  readyForDr: string;
+  createdFrom: string;
+  classType: string;
+}
+
+interface FilaOrdenDia {
+  id: string;
+  colA_Anotar: string;
+  colB_Status: string;
+  colC_DespuesCaptura: string;
+  department: string;
+  po: string;
+  qty: number;
+  styles: string;
+  dueDate: string;
+  memo: string;
+  esHoy: boolean;
+}
+
+const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
+const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
+const STORAGE_ORDENES_DIA_KEY = 'wip_ordenes_dia_filas_v1';
+const STORAGE_QUEUE_KEY = 'wip_customization_queue_v1';
+
+const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_BP_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando tablas BP', e);
+  }
+  return {
+    'CUSTOM BAGS': [], 'SPUT 1': [], 'SPUT 2': [],
+    'BIG BAG UTILITY 1': [], 'BIG BAG UTILITY 2': [],
+    'UTILITY BAG LINE 3': [], 'LINEA 7 (CN)': [],
+  };
+};
+
+const cargarEstadoInicialFD = (): Record<string, OrdenItem[]> => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_FD_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando tablas FD', e);
+  }
+  return {
+    'FULL DYE CELDA 1': [], 'FULL DYE CELDA 2': [], 'FULL DYE CELDA 3': [],
+    'FULL DYE CELDA 4': [], 'PANTS LINE 1': [], 'PANTS LINE 2': [], 'HATS LINE': [],
+  };
+};
+
+const cargarOrdenesDiaIniciales = (): FilaOrdenDia[] => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_ORDENES_DIA_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando órdenes del día', e);
+  }
+  return [];
+};
+
+const cargarQueueInicial = (): FilaQueue[] => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_QUEUE_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando queue', e);
+  }
+  return [];
+};
+
+// Comparador Universal de Fechas (Compara con HOY M/d/YYYY)
 const esMismaFechaHoy = (fechaTexto: string): boolean => {
   if (!fechaTexto) return false;
 
   const hoy = new Date();
   const anioHoy = hoy.getFullYear();
-  const mesHoy = hoy.getMonth() + 1; // 0-indexado
+  const mesHoy = hoy.getMonth() + 1;
   const diaHoy = hoy.getDate();
 
-  // Limpiar cadena quitando la 'T' de tiempo ISO
   let limpia = String(fechaTexto).trim();
   if (limpia.includes('T')) limpia = limpia.split('T')[0];
 
   let anio = 0, mes = 0, dia = 0;
 
   if (limpia.includes('-')) {
-    // Formato YYYY-MM-DD (ej. 2026-09-07)
     const partes = limpia.split('-');
     if (partes.length === 3) {
       anio = parseInt(partes[0], 10);
@@ -22,7 +118,6 @@ const esMismaFechaHoy = (fechaTexto: string): boolean => {
       dia = parseInt(partes[2], 10);
     }
   } else if (limpia.includes('/')) {
-    // Formato M/d/YYYY (ej. 9/7/2026)
     const partes = limpia.split('/');
     if (partes.length === 3) {
       mes = parseInt(partes[0], 10);
@@ -34,30 +129,817 @@ const esMismaFechaHoy = (fechaTexto: string): boolean => {
   return anio === anioHoy && mes === mesHoy && dia === diaHoy;
 };
 
-// Lógica Replicada Actualizar Órdenes del Día
-const ejecutarActualizarOrdenesDelDia = () => {
-  if (queueResults.length === 0) {
-    alert("Error: La hoja 'CustomizationQueue2Results' está vacía. Carga primero el archivo en la pestaña 'QUEUE RESULTS'.");
-    return;
-  }
+export const WipStocksVendidasView: React.FC = () => {
+  const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const [inputsPorTabla, setInputsPorTabla] = useState<Record<string, string>>({});
+  const [inputOrdenDiaManual, setInputOrdenDiaManual] = useState('');
+  const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
-  const contratosHoy: string[] = [];
+  const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialBP);
+  const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialFD);
+  const [filasOrdenesDia, setFilasOrdenesDia] = useState<FilaOrdenDia[]>(cargarOrdenesDiaIniciales);
+  const [queueResults, setQueueResults] = useState<FilaQueue[]>(cargarQueueInicial);
 
-  queueResults.forEach(fila => {
-    const dpto = (fila.department || '').trim().toUpperCase();
-    if (dpto === 'TEAM SPIRIT (QUEUED)') return;
+  const fileInputQueueRef = useRef<HTMLInputElement>(null);
 
-    // Validación flexible de fecha
-    const esDeHoy = esMismaFechaHoy(fila.dueDate);
-    const contratoLimpio = (fila.po || '').replace(/[A-Za-z]/g, '').trim();
+  useEffect(() => {
+    localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
+  }, [tablasBP]);
 
-    if (esDeHoy && contratoLimpio) {
-      contratosHoy.push(contratoLimpio);
+  useEffect(() => {
+    localStorage.setItem(STORAGE_FD_KEY, JSON.stringify(tablasFD));
+  }, [tablasFD]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_ORDENES_DIA_KEY, JSON.stringify(filasOrdenesDia));
+  }, [filasOrdenesDia]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_QUEUE_KEY, JSON.stringify(queueResults));
+  }, [queueResults]);
+
+  const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
+  const todasOrdenes = Object.values(activeTablas).flat();
+
+  // Lista de Contratos Anotados en Columna A
+  const contratosAnotadosColA = filasOrdenesDia
+    .map(f => f.colA_Anotar.replace(/[A-Za-z]/g, '').trim())
+    .filter(c => c !== '');
+
+  // Evaluador de Estatus Jerárquico
+  const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
+    const estaEnOrdenesDelDiaLocal = contratosAnotadosColA.includes(item.contrato);
+
+    let estaEnOrdenesDelDiaServicio = false;
+    let datosIncompletos: any = null;
+
+    try {
+      if (wipEngineService && typeof wipEngineService.estaEnOrdenesDelDia === 'function') {
+        estaEnOrdenesDelDiaServicio = wipEngineService.estaEnOrdenesDelDia(item.contrato);
+      }
+      if (wipEngineService && typeof wipEngineService.obtenerEstadoIncompleto === 'function') {
+        datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po);
+      }
+    } catch (e) {
+      console.warn('Servicio no disponible', e);
     }
-  });
 
-  const nuevosContratos = Array.from(new Set([...contratosHoy, ...ordenesDelDiaAnotadas]));
-  setOrdenesDelDiaAnotadas(nuevosContratos);
+    const registradoEnOrdenesDelDia = estaEnOrdenesDelDiaLocal || estaEnOrdenesDelDiaServicio;
 
-  alert(`✅ Órdenes del día actualizadas correctamente.\n\nContratos identificados para HOY: ${contratosHoy.length}\nOmitidos: 'Team Spirit (Queued)'.\nTotal contratos en Órdenes del Día: ${nuevosContratos.length}`);
+    if (registradoEnOrdenesDelDia || item.checkCaptura) {
+      return {
+        texto: 'CAPTURADO COMPLETO',
+        estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40',
+        checkAuto: true,
+      };
+    }
+
+    if (datosIncompletos && !datosIncompletos.completado) {
+      return {
+        texto: 'PARCIAL / EN PROCESO',
+        estiloClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        checkAuto: false,
+      };
+    }
+
+    return {
+      texto: 'FALTA CAPTURA',
+      estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      checkAuto: false,
+    };
+  };
+
+  // Cálculo de Fórmulas para Columnas B y C
+  const calcularFormulasFilaOrdenDia = (fila: FilaOrdenDia) => {
+    const poContrato = fila.po.replace(/[A-Za-z]/g, '').trim();
+    const colA_Limpia = fila.colA_Anotar.replace(/[A-Za-z]/g, '').trim();
+
+    let statusB = '';
+    let despuesCapturaC = 'NO ENTREGADO';
+
+    if (colA_Limpia && (colA_Limpia === poContrato || contratosAnotadosColA.includes(poContrato))) {
+      statusB = 'CAPTURADO COMPLETO';
+      despuesCapturaC = 'CONTEO';
+    } else {
+      statusB = 'FALTA CAPTURA';
+    }
+
+    return { statusB, despuesCapturaC };
+  };
+
+  const totalOrders = todasOrdenes.length;
+  const ctmOrders = todasOrdenes.filter(o => o.tipo === 'CUSTOM').length;
+  const stockOrders = todasOrdenes.filter(o => o.tipo === 'STOCK').length;
+  const capturados = todasOrdenes.filter(o => {
+    const evalRes = calcularEstadoFormulaJerarquica(o);
+    return o.checkCaptura || evalRes.checkAuto;
+  }).length;
+  const resta = totalOrders - capturados;
+
+  // Réplica Fiel del Script: Actualizar_Ordenes_Del_Dia() con Offset D3:P1000
+  const ejecutarActualizarOrdenesDelDia = () => {
+    if (queueResults.length === 0) {
+      alert("Error: La hoja 'CustomizationQueue2Results' está vacía. Carga primero el archivo en la pestaña 'QUEUE RESULTS'.");
+      return;
+    }
+
+    // 1. Rescatar órdenes pendientes / no despachadas de la zona superior
+    const pendientesAAnadir = filasOrdenesDia.filter(row => {
+      const dpto = (row.department || '').trim().toUpperCase();
+      const po = (row.po || '').trim();
+      const statusCaptura = (row.colB_Status || '').trim().toUpperCase();
+      const despuesCaptura = (row.colC_DespuesCaptura || '').trim().toUpperCase();
+
+      return po !== '' && dpto !== 'TEAM SPIRIT (QUEUED)' && statusCaptura !== 'CAPTURADO COMPLETO' && despuesCaptura !== 'DESPACHADO';
+    });
+
+    const ordenesHoy: FilaOrdenDia[] = [];
+    const ordenesOtrosDias: FilaOrdenDia[] = [];
+
+    // 2. Clasificar filas de la cola omitiendo "Team Spirit (Queued)" y mapeando desde Columna D
+    queueResults.forEach((item, idx) => {
+      const dpto = (item.department || '').trim().toUpperCase();
+      if (dpto === 'TEAM SPIRIT (QUEUED)') return;
+
+      const esHoy = esMismaFechaHoy(item.dueDate);
+
+      const nuevaFila: FilaOrdenDia = {
+        id: `qd-${idx}-${Date.now()}`,
+        colA_Anotar: '',
+        colB_Status: 'FALTA CAPTURA',
+        colC_DespuesCaptura: 'NO ENTREGADO',
+        department: item.department, // Col D
+        po: item.po,                 // Col E
+        qty: item.units,             // Col F
+        styles: item.styles,         // Col G
+        dueDate: item.dueDate,       // Col H
+        memo: item.memo,             // Col I
+        esHoy: esHoy
+      };
+
+      if (esHoy) {
+        ordenesHoy.push(nuevaFila);
+      } else {
+        ordenesOtrosDias.push(nuevaFila);
+      }
+    });
+
+    // 3. Escribir Bloque Superior (Órdenes HOY + Pendientes) y Bloque Inferior
+    const listaCompletaActualizada = [...ordenesHoy, ...pendientesAAnadir, ...ordenesOtrosDias];
+    setFilasOrdenesDia(listaCompletaActualizada);
+
+    alert(`✅ Órdenes del día actualizadas correctamente.\n\nÓrdenes de HOY ubicadas en bloque superior: ${ordenesHoy.length}\nPendientes conservadas: ${pendientesAAnadir.length}\nOmitidos: 'Team Spirit (Queued)'.`);
+  };
+
+  // Parser Universal para NetSuite XML SpreadsheetML y CSV
+  const handleFileUploadQueue = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const queueImportado: FilaQueue[] = [];
+
+      if (text.includes('<Workbook') || text.includes('xmlns="urn:schemas-microsoft-com:office:spreadsheet"')) {
+        try {
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(text, 'text/xml');
+          const rows = xmlDoc.getElementsByTagName('Row');
+
+          for (let i = 1; i < rows.length; i++) {
+            const cells = rows[i].getElementsByTagName('Cell');
+            const rowValues: string[] = [];
+
+            for (let j = 0; j < cells.length; j++) {
+              const dataTag = cells[j].getElementsByTagName('Data')[0];
+              rowValues.push(dataTag ? dataTag.textContent || '' : '');
+            }
+
+            if (rowValues.length >= 8) {
+              queueImportado.push({
+                department: rowValues[0] || '',
+                po: rowValues[1] || '',
+                units: Number(rowValues[2]) || 1,
+                styles: rowValues[3] || '',
+                name: rowValues[4] || '',
+                teamName: rowValues[5] || '',
+                date: rowValues[6] || '',
+                dueDate: rowValues[7] || '',
+                memo: rowValues[8] || '',
+                readyForDr: rowValues[9] || '',
+                createdFrom: rowValues[10] || '',
+                classType: rowValues[11] || '',
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Error leyendo XML NetSuite', err);
+        }
+      } else {
+        const lineas = text.split(/\r\n|\n/);
+        lineas.slice(1).forEach(linea => {
+          const cols = linea.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/);
+          if (cols.length >= 8) {
+            queueImportado.push({
+              department: cols[0]?.replace(/"/g, '').trim() || '',
+              po: cols[1]?.replace(/"/g, '').trim() || '',
+              units: Number(cols[2]) || 1,
+              styles: cols[3]?.replace(/"/g, '').trim() || '',
+              name: cols[4]?.replace(/"/g, '').trim() || '',
+              teamName: cols[5]?.replace(/"/g, '').trim() || '',
+              date: cols[6]?.replace(/"/g, '').trim() || '',
+              dueDate: cols[7]?.replace(/"/g, '').trim() || '',
+              memo: cols[8]?.replace(/"/g, '').trim() || '',
+              readyForDr: cols[9]?.replace(/"/g, '').trim() || '',
+              createdFrom: cols[10]?.replace(/"/g, '').trim() || '',
+              classType: cols[11]?.replace(/"/g, '').trim() || '',
+            });
+          }
+        });
+      }
+
+      if (queueImportado.length > 0) {
+        setQueueResults(queueImportado);
+        alert(`✅ Carga exitosa: Se procesaron correctamente ${queueImportado.length} filas de CustomizationQueue2Results.`);
+      } else {
+        alert('No se pudieron leer registros del archivo.');
+      }
+    };
+
+    reader.readAsText(file);
+    if (fileInputQueueRef.current) fileInputQueueRef.current.value = '';
+  };
+
+  const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
+    const valorInput = (inputsPorTabla[nombreTabla] || '').trim().toUpperCase();
+
+    if (!valorInput) {
+      alert('Ingresa un número de PO/Contrato válido.');
+      return;
+    }
+
+    setLoadingBusqueda(true);
+
+    try {
+      let detalles: any = null;
+
+      if (wipEngineService && typeof wipEngineService.buscarDetallesPO === 'function') {
+        detalles = await wipEngineService.buscarDetallesPO(valorInput);
+      }
+
+      const contratoSoloNumeros = valorInput.replace(/[A-Za-z]/g, '');
+
+      const itemNuevo: OrdenItem = {
+        id: Date.now().toString(),
+        po: valorInput,
+        contrato: contratoSoloNumeros || valorInput,
+        qty: detalles ? detalles.qty : 1,
+        style: detalles ? detalles.style : 'FD-STANDARD',
+        color: detalles ? detalles.color : 'CUSTOM',
+        tipo: detalles ? detalles.tipo : 'CUSTOM',
+        checkShipping: false,
+        checkCaptura: false,
+      };
+
+      if (activeSubTab === 'buscar-bp') {
+        setTablasBP(prev => ({
+          ...prev,
+          [nombreTabla]: [itemNuevo, ...(prev[nombreTabla] || [])],
+        }));
+      } else {
+        setTablasFD(prev => ({
+          ...prev,
+          [nombreTabla]: [itemNuevo, ...(prev[nombreTabla] || [])],
+        }));
+      }
+
+      setInputsPorTabla(prev => ({ ...prev, [nombreTabla]: '' }));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoadingBusqueda(false);
+    }
+  };
+
+  const toggleShipping = (tabla: string, id: string) => {
+    const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
+    setter(prev => ({
+      ...prev,
+      [tabla]: prev[tabla].map(item =>
+        item.id === id ? { ...item, checkShipping: !item.checkShipping } : item
+      ),
+    }));
+  };
+
+  const toggleCaptura = (tabla: string, id: string) => {
+    const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
+    setter(prev => ({
+      ...prev,
+      [tabla]: prev[tabla].map(item =>
+        item.id === id ? { ...item, checkCaptura: !item.checkCaptura } : item
+      ),
+    }));
+  };
+
+  const handleEliminarOrden = (tabla: string, id: string) => {
+    if (confirm('¿Deseas eliminar esta orden de la lista?')) {
+      const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
+      setter(prev => ({
+        ...prev,
+        [tabla]: prev[tabla].filter(item => item.id !== id),
+      }));
+    }
+  };
+
+  const handleAnotarColAManual = (e: React.FormEvent) => {
+    e.preventDefault();
+    const contratoLimpio = inputOrdenDiaManual.trim().replace(/[A-Za-z]/g, '');
+
+    if (!contratoLimpio) return alert('Ingresa un contrato válido.');
+
+    setFilasOrdenesDia(prev => [
+      {
+        id: `manual-${Date.now()}`,
+        colA_Anotar: contratoLimpio,
+        colB_Status: 'CAPTURADO COMPLETO',
+        colC_DespuesCaptura: 'CONTEO',
+        department: 'MANUAL',
+        po: contratoLimpio,
+        qty: 1,
+        styles: 'MANUAL',
+        dueDate: 'HOY',
+        memo: 'Anotación manual Col A',
+        esHoy: true
+      },
+      ...prev
+    ]);
+
+    setInputOrdenDiaManual('');
+  };
+
+  const handleModificarColAInFila = (id: string, nuevoValor: string) => {
+    setFilasOrdenesDia(prev =>
+      prev.map(f => (f.id === id ? { ...f, colA_Anotar: nuevoValor } : f))
+    );
+  };
+
+  return (
+    <div className="w-full space-y-4 font-sans text-slate-100 px-1">
+      <input
+        type="file"
+        ref={fileInputQueueRef}
+        onChange={handleFileUploadQueue}
+        accept=".xls, .xlsx, .csv, .xml, .txt"
+        className="hidden"
+      />
+
+      {/* 1. Selector de Sub-pestañas */}
+      <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
+        <button
+          onClick={() => setActiveSubTab('buscar-bp')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === 'buscar-bp'
+              ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
+              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+          }`}
+        >
+          🎒 TABLAS MOCHILAS
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('buscar-fd')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === 'buscar-fd'
+              ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
+              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+          }`}
+        >
+          👕 FD (FULL DYE)
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('ordenes-dia')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === 'ordenes-dia'
+              ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
+              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+          }`}
+        >
+          📋 ÓRDENES DEL DÍA ({filasOrdenesDia.length})
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('queue-results')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === 'queue-results'
+              ? 'bg-purple-500 text-white font-extrabold shadow-lg shadow-purple-500/20'
+              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+          }`}
+        >
+          📥 QUEUE RESULTS ({queueResults.length})
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={ejecutarActualizarOrdenesDelDia}
+            className="px-3 py-1.5 bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+          >
+            🔄 Actualizar Órdenes del Día
+          </button>
+
+          <input
+            type="text"
+            placeholder="Filtrar por PO, Contrato..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="bg-[#0b0e14] border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] w-56"
+          />
+
+          <button
+            onClick={() => {
+              if (confirm('¿Limpiar las tablas activas?')) {
+                if (activeSubTab === 'buscar-bp') {
+                  setTablasBP({
+                    'CUSTOM BAGS': [], 'SPUT 1': [], 'SPUT 2': [],
+                    'BIG BAG UTILITY 1': [], 'BIG BAG UTILITY 2': [],
+                    'UTILITY BAG LINE 3': [], 'LINEA 7 (CN)': []
+                  });
+                } else {
+                  setTablasFD({
+                    'FULL DYE CELDA 1': [], 'FULL DYE CELDA 2': [], 'FULL DYE CELDA 3': [],
+                    'FULL DYE CELDA 4': [], 'PANTS LINE 1': [], 'PANTS LINE 2': [], 'HATS LINE': []
+                  });
+                }
+              }
+            }}
+            className="px-3 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
+          >
+            🧹 Limpiar
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Banner de Totales */}
+      <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">TOTAL ÓRDENES</span>
+            <span className="text-xl font-black text-white">{totalOrders}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-[#00f2fe] block">CTM ORDERS</span>
+            <span className="text-xl font-black text-[#00f2fe]">{ctmOrders}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-amber-400 block">STOCK ORDERS</span>
+            <span className="text-xl font-black text-amber-400">{stockOrders}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-[#39ff14] block">CAPTURADO</span>
+            <span className="text-xl font-black text-[#39ff14]">{capturados}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-[#ff007f] block">RESTA</span>
+            <span className="text-xl font-black text-[#ff007f]">{resta}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-purple-400 block">ÓRDENES DÍA (COL A)</span>
+            <span className="text-xl font-black text-purple-400">{contratosAnotadosColA.length}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Sub-Pestaña CUSTOMIZATION QUEUE RESULTS */}
+      {activeSubTab === 'queue-results' && (
+        <div className="w-full bg-[#121826] border border-purple-500/40 rounded-xl p-6 shadow-2xl space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-lg font-black text-purple-400">📥 CustomizationQueue2Results</h2>
+              <p className="text-xs text-gray-400">
+                Sube el archivo <code>CustomizationQueue2Results.xls</code> exportado de NetSuite.
+              </p>
+            </div>
+
+            <button
+              onClick={() => fileInputQueueRef.current?.click()}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-2"
+            >
+              📂 Cargar CustomizationQueue2Results (.xls / .csv)
+            </button>
+          </div>
+
+          <div className="overflow-x-auto max-h-96 custom-scrollbar">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-[#0b0e14] text-gray-400 font-bold border-b border-white/10 uppercase text-[11px] sticky top-0">
+                  <th className="p-2.5">Department</th>
+                  <th className="p-2.5 text-[#00f2fe]">PO</th>
+                  <th className="p-2.5 text-center">Units</th>
+                  <th className="p-2.5">Styles</th>
+                  <th className="p-2.5 text-amber-300">Due Date</th>
+                  <th className="p-2.5">Memo / Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {queueResults.length > 0 ? (
+                  queueResults.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-white/5 transition-colors">
+                      <td className="p-2.5 font-bold text-gray-300">{row.department}</td>
+                      <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{row.po}</td>
+                      <td className="p-2.5 text-center font-mono">{row.units}</td>
+                      <td className="p-2.5 font-mono text-gray-400">{row.styles}</td>
+                      <td className="p-2.5 font-mono font-bold text-amber-300">{row.dueDate}</td>
+                      <td className="p-2.5 text-gray-400">{row.memo}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-gray-500 italic text-xs">
+                      No hay datos cargados. Haz clic arriba para cargar el archivo <code>CustomizationQueue2Results.xls</code>.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Sub-Pestaña ÓRDENES DEL DÍA (Estructura idéntica con Col A, B, C + D3:P1000) */}
+      {activeSubTab === 'ordenes-dia' && (
+        <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-lg font-black text-[#00f2fe]">📋 ÓRDENES DEL DÍA</h2>
+              <p className="text-xs text-gray-400">
+                Estructura exacta: <strong>Col A</strong> (Anotar aquí), <strong>Col B</strong> (Status), <strong>Col C</strong> (Después de captura), <strong>Col D3 en adelante</strong> (Departamento, PO, QTY, etc.).
+              </p>
+            </div>
+
+            <form onSubmit={handleAnotarColAManual} className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Anotar en Col A..."
+                value={inputOrdenDiaManual}
+                onChange={e => setInputOrdenDiaManual(e.target.value)}
+                className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
+              />
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+              >
+                + Anotar Col A
+              </button>
+            </form>
+          </div>
+
+          <div className="overflow-x-auto max-h-[500px] custom-scrollbar">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-[#0b0e14] text-gray-400 font-bold border-b border-white/10 uppercase text-[11px] sticky top-0 z-10">
+                  <th className="p-2.5 text-center text-[#00f2fe] bg-blue-950/40">Col A: Anotar aquí ↓</th>
+                  <th className="p-2.5 text-center bg-emerald-950/40 text-emerald-300">Col B: Status</th>
+                  <th className="p-2.5 text-center bg-purple-950/40 text-purple-300">Col C: Después de Captura</th>
+                  <th className="p-2.5 text-amber-300 border-l border-white/10">Col D: Departamento</th>
+                  <th className="p-2.5 font-bold text-[#00f2fe]">Col E: PO</th>
+                  <th className="p-2.5 text-center">Col F: QTY</th>
+                  <th className="p-2.5">Col G: STYLES</th>
+                  <th className="p-2.5 text-amber-300">Col H: DUE DATE</th>
+                  <th className="p-2.5">Col I: MEMO</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 font-mono">
+                {filasOrdenesDia.length > 0 ? (
+                  filasOrdenesDia.map(row => {
+                    const evalColBC = calcularFormulasFilaOrdenDia(row);
+
+                    return (
+                      <tr key={row.id} className="hover:bg-white/5 transition-colors">
+                        {/* Columna A: Anotar aquí */}
+                        <td className="p-2 bg-blue-950/10">
+                          <input
+                            type="text"
+                            value={row.colA_Anotar}
+                            onChange={e => handleModificarColAInFila(row.id, e.target.value)}
+                            placeholder="Digit aquí..."
+                            className="w-full bg-[#0b0e14] border border-[#00f2fe]/40 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] font-bold"
+                          />
+                        </td>
+
+                        {/* Columna B: Status */}
+                        <td className="p-2 text-center bg-emerald-950/10 font-bold">
+                          <span className={`px-2 py-0.5 rounded text-[10px] border ${
+                            evalColBC.statusB === 'CAPTURADO COMPLETO'
+                              ? 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40'
+                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          }`}>
+                            {evalColBC.statusB}
+                          </span>
+                        </td>
+
+                        {/* Columna C: Después de captura */}
+                        <td className="p-2 text-center bg-purple-950/10 font-bold text-purple-300">
+                          {evalColBC.despuesCapturaC}
+                        </td>
+
+                        {/* Columnas D a I (D3:P1000) */}
+                        <td className="p-2.5 text-amber-300 font-bold border-l border-white/10">{row.department}</td>
+                        <td className="p-2.5 font-bold text-[#00f2fe]">{row.po}</td>
+                        <td className="p-2.5 text-center text-white">{row.qty}</td>
+                        <td className="p-2.5 text-gray-300">{row.styles}</td>
+                        <td className="p-2.5 text-amber-300">{row.dueDate}</td>
+                        <td className="p-2.5 text-gray-400 max-w-xs truncate">{row.memo}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="p-8 text-center text-gray-500 italic text-xs">
+                      No hay órdenes registradas. Sube la cola en QUEUE RESULTS y presiona "Actualizar Órdenes del Día".
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Renderizado de Tablas BP y FD */}
+      {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
+        <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
+            const filasFiltradas = filas.filter(
+              f =>
+                f.po.includes(searchTerm) ||
+                f.contrato.includes(searchTerm) ||
+                f.style.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                f.color.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            const totalPiezas = filasFiltradas.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+
+            return (
+              <div
+                key={nombreLinea}
+                className="w-full bg-[#121826] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between"
+              >
+                <div>
+                  <div className="bg-[#0b0e14] px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-black text-[#39ff14] text-sm tracking-wide">
+                        📑 {nombreLinea}
+                      </h3>
+                      <span className="text-[10px] text-gray-400">
+                        {filasFiltradas.length} Órdenes | {totalPiezas} Piezas Acumuladas
+                      </span>
+                    </div>
+
+                    <form
+                      onSubmit={e => {
+                        e.preventDefault();
+                        ejecutarAgregarOrdenEnTabla(nombreLinea);
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <input
+                        type="text"
+                        placeholder="Escanear / PO..."
+                        value={inputsPorTabla[nombreLinea] || ''}
+                        onChange={e =>
+                          setInputsPorTabla({
+                            ...inputsPorTabla,
+                            [nombreLinea]: e.target.value,
+                          })
+                        }
+                        className="bg-[#121620] border border-[#00f2fe]/50 rounded-lg px-2.5 py-1 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-36 font-mono font-bold"
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={loadingBusqueda}
+                        className="px-3 py-1 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer whitespace-nowrap"
+                      >
+                        + Agregar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => alert(`🚚 Enviando datos de ${nombreLinea} a Shipping`)}
+                        className="px-2.5 py-1 bg-[#00f2fe]/10 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-bold rounded-lg transition-all cursor-pointer"
+                        title="Enviar a Shipping"
+                      >
+                        🚚 Enviar
+                      </button>
+                    </form>
+                  </div>
+
+                  <div className="p-2 overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="bg-[#0b0e14]/60 text-gray-400 border-b border-white/10 font-bold uppercase text-[11px]">
+                          <th className="p-2.5">PO / Orden</th>
+                          <th className="p-2.5 text-amber-300">Contrato</th>
+                          <th className="p-2.5 text-center">QTY</th>
+                          <th className="p-2.5">Estilo</th>
+                          <th className="p-2.5">Color</th>
+                          <th className="p-2.5 text-center">Tipo</th>
+                          <th className="p-2.5 text-center bg-blue-950/40 text-blue-300">1. ENV (Shipping)</th>
+                          <th className="p-2.5 text-center bg-emerald-950/40 text-emerald-300">2. CAPTURA (Custom)</th>
+                          <th className="p-2.5 text-center">Estatus Fórmulas</th>
+                          <th className="p-2.5 text-center">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {filasFiltradas.length > 0 ? (
+                          filasFiltradas.map(f => {
+                            const evalJerarquica = calcularEstadoFormulaJerarquica(f);
+                            const checkEfectivo = f.checkCaptura || evalJerarquica.checkAuto;
+
+                            return (
+                              <tr key={f.id} className="hover:bg-white/5 transition-colors">
+                                <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{f.po}</td>
+                                <td className="p-2.5 font-mono font-bold text-amber-300">{f.contrato}</td>
+                                <td className="p-2.5 text-center font-mono font-bold text-white">{f.qty}</td>
+                                <td className="p-2.5 font-mono text-gray-300">{f.style}</td>
+                                <td className="p-2.5 text-gray-300">{f.color}</td>
+                                <td className="p-2.5 text-center">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    f.tipo === 'CUSTOM' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                  }`}>
+                                    {f.tipo}
+                                  </span>
+                                </td>
+
+                                <td className="p-2.5 text-center bg-blue-950/20">
+                                  <input
+                                    type="checkbox"
+                                    checked={f.checkShipping}
+                                    onChange={() => toggleShipping(nombreLinea, f.id)}
+                                    className="w-4 h-4 accent-[#00f2fe] cursor-pointer"
+                                  />
+                                </td>
+
+                                <td className="p-2.5 text-center bg-emerald-950/20">
+                                  <input
+                                    type="checkbox"
+                                    checked={checkEfectivo}
+                                    onChange={() => toggleCaptura(nombreLinea, f.id)}
+                                    className="w-4 h-4 accent-[#39ff14] cursor-pointer"
+                                  />
+                                </td>
+
+                                <td className="p-2.5 text-center font-bold">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] border font-mono ${evalJerarquica.estiloClass}`}>
+                                    {evalJerarquica.texto}
+                                  </span>
+                                </td>
+
+                                <td className="p-2.5 text-center">
+                                  <button
+                                    onClick={() => handleEliminarOrden(nombreLinea, f.id)}
+                                    className="p-1 text-red-400 hover:bg-red-500/10 rounded cursor-pointer transition-all"
+                                    title="Eliminar orden de la lista"
+                                  >
+                                    🗑️
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={10} className="p-6 text-center text-gray-500 italic text-xs">
+                              Sin órdenes registradas en {nombreLinea}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="bg-[#0b0e14] px-4 py-2 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
+                  <span>Envíos Listos: <strong className="text-[#00f2fe]">{filasFiltradas.filter(f => f.checkShipping).length}</strong></span>
+                  <span>Capturados: <strong className="text-[#39ff14]">{filasFiltradas.filter(f => f.checkCaptura || calcularEstadoFormulaJerarquica(f).checkAuto).length}</strong></span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 };
+
+export default WipStocksVendidasView;
