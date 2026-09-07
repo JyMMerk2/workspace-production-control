@@ -1001,8 +1001,8 @@ export const WipStocksVendidasView: React.FC = () => {
                           <th className="p-1.5 whitespace-nowrap">ESTILO</th>
                           <th className="p-1.5 whitespace-nowrap">COLOR</th>
                           <th className="p-1.5 text-center whitespace-nowrap">TIPO</th>
-                          <th className="p-1.5 text-center bg-slate-200/60 dark:bg-blue-950/40 text-slate-800 dark:text-blue-300 whitespace-nowrap">1. ENV</th>
-                          <th className="p-1.5 text-center bg-emerald-100/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 whitespace-nowrap">2. CAPTURA</th>
+                          <th className="p-1.5 text-center bg-slate-200/60 dark:bg-blue-950/40 text-slate-800 dark:text-blue-300 whitespace-nowrap">1. ENV (SHIPPING)</th>
+                          <th className="p-1.5 text-center bg-emerald-100/60 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 whitespace-nowrap">2. CAPTURA (CUSTOM)</th>
                           <th className="p-1.5 text-center whitespace-nowrap">ESTATUS FÓRMULAS</th>
                           <th className="p-1.5 text-center whitespace-nowrap">ACCIÓN</th>
                         </tr>
@@ -1012,6 +1012,7 @@ export const WipStocksVendidasView: React.FC = () => {
                           filasFiltradas.map(f => {
                             const evalJerarquica = calcularEstadoFormulaJerarquica(f);
                             const checkEfectivo = f.checkCaptura || evalJerarquica.checkAuto;
+                            const esColorCustom = (f.color || '').trim().toUpperCase().includes('CUSTOM');
 
                             return (
                               <tr
@@ -1052,21 +1053,26 @@ export const WipStocksVendidasView: React.FC = () => {
                                   </span>
                                 </td>
 
+                                {/* Casilla 1. ENV (Shipping): Se activa/habilita SOLO SI NO ES CUSTOM */}
                                 <td className="p-1.5 text-center whitespace-nowrap">
                                   <input
                                     type="checkbox"
-                                    checked={f.checkShipping}
-                                    onChange={() => toggleShipping(nombreLinea, f.id)}
-                                    className="w-3.5 h-3.5 accent-sky-600 dark:accent-[#00f2fe] cursor-pointer"
+                                    disabled={esColorCustom}
+                                    checked={!esColorCustom && f.checkShipping}
+                                    onChange={() => !esColorCustom && toggleShipping(nombreLinea, f.id)}
+                                    className={`w-3.5 h-3.5 accent-sky-600 dark:accent-[#00f2fe] ${esColorCustom ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    title={esColorCustom ? 'Inhabilitado para órdenes CUSTOM' : '1. ENV (Shipping)'}
                                   />
                                 </td>
 
+                                {/* Casilla 2. CAPTURA (Custom): Se activa SI ES CUSTOM */}
                                 <td className="p-1.5 text-center whitespace-nowrap">
                                   <input
                                     type="checkbox"
                                     checked={checkEfectivo}
                                     onChange={() => toggleCaptura(nombreLinea, f.id)}
                                     className="w-3.5 h-3.5 accent-emerald-600 dark:accent-[#39ff14] cursor-pointer"
+                                    title="2. CAPTURA (Custom)"
                                   />
                                 </td>
 
