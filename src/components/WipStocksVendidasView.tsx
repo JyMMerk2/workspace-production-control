@@ -1,71 +1,132 @@
 import React, { useState } from 'react';
 import { wipEngineService } from '../services/wipEngineService';
 
-type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'incompletas';
+type SubPestanaWip = 'ordenes-dia' | 'buscar-bp' | 'buscar-fd' | 'database-contratos';
+
+interface OrdenItem {
+  id: string;
+  po: string;
+  part?: string;
+  contrato: string;
+  qty: number;
+  style: string;
+  color: string;
+  tipo: 'CUSTOM' | 'STOCK' | 'OTHER';
+  checkShipping: boolean;  // Casilla 1: Enviar a Shipping
+  checkCaptura: boolean;   // Casilla 2: Capturado en Taller (Custom)
+}
 
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Mapeo de las 7 líneas de BP con sus referencias originales
-  const lineasBP = [
-    { id: 1, nombre: '1. CUSTOM BAGS', rCust: 'J1:M1', rOtr: 'J2:L2' },
-    { id: 2, nombre: '2. SPUT 1', rCust: 'X1:AA1', rOtr: 'X2:Z2' },
-    { id: 3, nombre: '3. SPUT 2', rCust: 'AL1:AO1', rOtr: 'AL2:AN2' },
-    { id: 4, nombre: '4. BIG BAG UTILITY 1', rCust: 'AZ1:BC1', rOtr: 'AZ2:BB2' },
-    { id: 5, nombre: '5. BIG BAG UTILITY 2', rCust: 'BN1:BQ1', rOtr: 'BN2:BP2' },
-    { id: 6, nombre: '6. UTILITY BAG LINE 3', rCust: 'CB1:CE1', rOtr: 'CB2:CD2' },
-    { id: 7, nombre: '7. LINEA 7 (CN)', rCust: 'CB1:CE1', rOtr: 'CB2:CD2' },
-  ];
-
-  // Mapeo de las 7 celdas/líneas de FD
-  const lineasFD = [
-    { id: 1, nombre: '1. FULL DYE CELDA 1' },
-    { id: 2, nombre: '2. FULL DYE CELDA 2' },
-    { id: 3, nombre: '3. FULL DYE CELDA 3' },
-    { id: 4, nombre: '4. FULL DYE CELDA 4' },
-    { id: 5, nombre: '5. PANTS LINE 1' },
-    { id: 6, nombre: '6. PANTS LINE 2' },
-    { id: 7, nombre: '7. HATS LINE' },
-  ];
-
-  // Datos extendidos de prueba por cada tarjeta
-  const [datosBPData, setDatosBPData] = useState<Record<string, any[]>>({
-    '1. CUSTOM BAGS': [
-      { po: '398210', qty: 50, style: 'BP-9010', color: 'NAVY/WHITE', tipo: 'CUSTOM', check: false, estado: 'CAPTURADO PARCIAL' },
-      { po: '398211', qty: 25, style: 'BP-9012', color: 'BLACK', tipo: 'CUSTOM', check: true, estado: 'CAPTURADO COMPLETO' },
-    ],
-    '2. SPUT 1': [
-      { po: '412001', qty: 10, style: 'SPUT-01', color: 'RED', tipo: 'STANDARD', check: false, estado: 'CAPTURADO PARCIAL' },
-    ],
-    '3. SPUT 2': [],
-    '4. BIG BAG UTILITY 1': [
-      { po: '415090', qty: 100, style: 'BBU-100', color: 'ROYAL BLUE', tipo: 'CUSTOM', check: false, estado: 'CAPTURADO PARCIAL' },
-    ],
-    '5. BIG BAG UTILITY 2': [],
-    '6. UTILITY BAG LINE 3': [],
-    '7. LINEA 7 (CN)': [],
+  // Formulario para Agregar Nueva Orden
+  const [nuevaOrden, setNuevaOrden] = useState({
+    tablaTarget: 'CUSTOM BAGS',
+    po: '',
+    contrato: '',
+    qty: 1,
+    style: '',
+    color: 'CUSTOM',
+    tipo: 'CUSTOM' as 'CUSTOM' | 'STOCK' | 'OTHER',
   });
 
-  const handleToggleCheck = (nombreTabla: string, index: number) => {
-    setDatosBPData(prev => {
-      const lista = [...(prev[nombreTabla] || [])];
-      if (lista[index]) {
-        lista[index].check = !lista[index].check;
-        lista[index].estado = lista[index].check ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL';
-      }
-      return { ...prev, [nombreTabla]: lista };
-    });
+  // Datos reales iniciales por cada tabla
+  const [tablasData, setTablasData] = useState<Record<string, OrdenItem[]>>({
+    'CUSTOM BAGS': [
+      { id: '1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
+      { id: '2', po: '427432A', contrato: '427432', qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: true, checkCaptura: true },
+      { id: '3', po: '427797A', contrato: '427797', qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
+      { id: '4', po: '427418A', contrato: '427418', qty: 14, style: 'FD-9006', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
+      { id: '5', po: '419211A', contrato: '419211', qty: 10, style: 'PS-9100', color: 'M/O/FLE', tipo: 'STOCK', checkShipping: false, checkCaptura: false },
+    ],
+    'SPUT 1': [
+      { id: '6', po: '426281A', contrato: '426281', qty: 22, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
+    ],
+    'SPUT 2': [],
+    'BIG BAG UTILITY 1': [],
+    'BIG BAG UTILITY 2': [],
+    'UTILITY BAG LINE 3': [],
+    'LINEA 7 (CN)': [],
+  });
+
+  const lineasBP = [
+    'CUSTOM BAGS',
+    'SPUT 1',
+    'SPUT 2',
+    'BIG BAG UTILITY 1',
+    'BIG BAG UTILITY 2',
+    'UTILITY BAG LINE 3',
+    'LINEA 7 (CN)',
+  ];
+
+  // Cálculo Global de Resumen (Banner)
+  const todasLasOrdenes = Object.values(tablasData).flat();
+  const totalOrders = todasLasOrdenes.length;
+  const ctmOrders = todasLasOrdenes.filter(o => o.tipo === 'CUSTOM').length;
+  const stockOrders = todasLasOrdenes.filter(o => o.tipo === 'STOCK').length;
+  const capturados = todasLasOrdenes.filter(o => o.checkCaptura).length;
+  const resta = totalOrders - capturados;
+
+  // Manejo de Casilla 1 (Shipping)
+  const handleToggleShipping = (tabla: string, id: string) => {
+    setTablasData(prev => ({
+      ...prev,
+      [tabla]: prev[tabla].map(item =>
+        item.id === id ? { ...item, checkShipping: !item.checkShipping } : item
+      ),
+    }));
   };
 
-  const handleEnviarTabla = async (nombreTabla: string) => {
-    alert(`🚚 Procesando envío a Shipping para: ${nombreTabla}`);
+  // Manejo de Casilla 2 (Captura)
+  const handleToggleCaptura = (tabla: string, id: string) => {
+    setTablasData(prev => ({
+      ...prev,
+      [tabla]: prev[tabla].map(item =>
+        item.id === id ? { ...item, checkCaptura: !item.checkCaptura } : item
+      ),
+    }));
+  };
+
+  // Agregar Nueva Orden
+  const handleAgregarOrden = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevaOrden.po) return alert('Por favor ingresa el número de PO/Contrato');
+
+    const newItem: OrdenItem = {
+      id: Date.now().toString(),
+      po: nuevaOrden.po,
+      contrato: nuevaOrden.contrato || nuevaOrden.po,
+      qty: Number(nuevaOrden.qty) || 1,
+      style: nuevaOrden.style || 'FD-STANDARD',
+      color: nuevaOrden.color,
+      tipo: nuevaOrden.tipo,
+      checkShipping: false,
+      checkCaptura: false,
+    };
+
+    setTablasData(prev => ({
+      ...prev,
+      [nuevaOrden.tablaTarget]: [newItem, ...(prev[nuevaOrden.tablaTarget] || [])],
+    }));
+
+    setNuevaOrden(prev => ({ ...prev, po: '', contrato: '', style: '' }));
+  };
+
+  // Eliminar Orden
+  const handleEliminarOrden = (tabla: string, id: string) => {
+    if (confirm('¿Eliminar esta orden de la tabla?')) {
+      setTablasData(prev => ({
+        ...prev,
+        [tabla]: prev[tabla].filter(item => item.id !== id),
+      }));
+    }
   };
 
   return (
-    <div className="space-y-5 font-sans text-slate-100">
-      {/* 1. Sub-pestañas superiores */}
+    <div className="w-full space-y-4 font-sans text-slate-100 px-1">
+      {/* 1. Selector Superior de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveSubTab('buscar-bp')}
@@ -75,7 +136,7 @@ export const WipStocksVendidasView: React.FC = () => {
               : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
           }`}
         >
-          🎒 BUSCAR BP (7 TABLAS GRANDES)
+          🎒 BUSCAR BP (7 TABLAS MOCHILAS)
         </button>
 
         <button
@@ -86,7 +147,7 @@ export const WipStocksVendidasView: React.FC = () => {
               : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
           }`}
         >
-          👕 BUSCAR FD (7 CELDAS GRANDES)
+          👕 BUSCAR FD (FULL DYE)
         </button>
 
         <button
@@ -97,13 +158,13 @@ export const WipStocksVendidasView: React.FC = () => {
               : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
           }`}
         >
-          📋 ÓRDENES DEL DÍA
+          📋 ÓRDENES DEL DÍA ({totalOrders})
         </button>
 
         <div className="ml-auto flex items-center gap-2">
           <input
             type="text"
-            placeholder="Filtrar por PO, Estilo o Color..."
+            placeholder="Filtrar por PO, Contrato o Estilo..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="bg-[#0b0e14] border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] w-72"
@@ -118,11 +179,77 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. VISTA DETALLADA BUSCAR BP EN TARJETAS DE GRAN TAMAÑO */}
+      {/* 2. Banner Azul de Resumen con métricas idénticas a la foto original */}
+      <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <div>
+            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">TOTAL ÓRDENES</span>
+            <span className="text-xl font-black text-white">{totalOrders}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-[#00f2fe] block">CTM ORDERS</span>
+            <span className="text-xl font-black text-[#00f2fe]">{ctmOrders}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-amber-400 block">STOCK ORDERS</span>
+            <span className="text-xl font-black text-amber-400">{stockOrders}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-[#39ff14] block">CAPTURADO</span>
+            <span className="text-xl font-black text-[#39ff14]">{capturados}</span>
+          </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-[#ff007f] block">RESTA</span>
+            <span className="text-xl font-black text-[#ff007f]">{resta}</span>
+          </div>
+        </div>
+
+        {/* Formularios Rápidos para Agregar Orden */}
+        <form onSubmit={handleAgregarOrden} className="flex items-center gap-2">
+          <select
+            value={nuevaOrden.tablaTarget}
+            onChange={e => setNuevaOrden({ ...nuevaOrden, tablaTarget: e.target.value })}
+            className="bg-[#0b0e14] border border-white/20 rounded-lg px-2 py-1.5 text-xs text-white"
+          >
+            {lineasBP.map(l => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+
+          <input
+            type="text"
+            placeholder="PO / Contrato..."
+            value={nuevaOrden.po}
+            onChange={e => setNuevaOrden({ ...nuevaOrden, po: e.target.value })}
+            className="bg-[#0b0e14] border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-[#00f2fe] w-32"
+          />
+
+          <input
+            type="number"
+            placeholder="QTY"
+            value={nuevaOrden.qty}
+            onChange={e => setNuevaOrden({ ...nuevaOrden, qty: Number(e.target.value) })}
+            className="bg-[#0b0e14] border border-white/20 rounded-lg px-2 py-1.5 text-xs text-white w-16 text-center"
+          />
+
+          <button
+            type="submit"
+            className="px-3 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow-md cursor-pointer transition-all"
+          >
+            + Agregar Orden
+          </button>
+        </form>
+      </div>
+
+      {/* 3. VISTA COMPLETA 100% ANCHO CON LAS 7 TABLAS RECONFIGURADAS */}
       {activeSubTab === 'buscar-bp' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {lineasBP.map(linea => {
-            const filas = (datosBPData[linea.nombre] || []).filter(
+            const filas = (tablasData[linea] || []).filter(
               f =>
                 f.po.includes(searchTerm) ||
                 f.style.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -133,47 +260,48 @@ export const WipStocksVendidasView: React.FC = () => {
 
             return (
               <div
-                key={linea.id}
-                className="bg-[#121826] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between"
+                key={linea}
+                className="w-full bg-[#121826] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between"
               >
-                {/* Encabezado Superior de Tarjeta */}
                 <div>
+                  {/* Header de la Tabla */}
                   <div className="bg-[#0b0e14] px-4 py-3 border-b border-white/10 flex items-center justify-between">
                     <div>
-                      <h3 className="font-black text-[#39ff14] text-sm tracking-wide">
-                        {linea.nombre}
+                      <h3 className="font-black text-[#39ff14] text-sm tracking-wide flex items-center gap-2">
+                        📑 {linea}
                       </h3>
-                      <p className="text-[10px] text-gray-400">
-                        Configuración de Rango: Cust [{linea.rCust}]
-                      </p>
+                      <span className="text-[10px] text-gray-400">
+                        {filas.length} Órdenes | {totalPiezas} Piezas Acumuladas
+                      </span>
                     </div>
 
                     <button
-                      onClick={() => handleEnviarTabla(linea.nombre)}
-                      className="px-3 py-1.5 bg-[#00f2fe]/15 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/50 text-[#00f2fe] text-xs font-extrabold rounded-lg transition-all cursor-pointer shadow-md"
+                      onClick={() => alert(`🚚 Enviando tabla ${linea} a Shipping`)}
+                      className="px-3 py-1.5 bg-[#00f2fe]/15 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/50 text-[#00f2fe] text-xs font-extrabold rounded-lg transition-all cursor-pointer"
                     >
-                      🚚 Enviar Tabla a Shipping
+                      🚚 Enviar a Shipping
                     </button>
                   </div>
 
-                  {/* Tabla Principal Interna con Datos Completos */}
-                  <div className="p-3 overflow-x-auto">
+                  {/* Tabla con Doble Casilla exactas */}
+                  <div className="p-2 overflow-x-auto">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
                         <tr className="bg-[#0b0e14]/60 text-gray-400 border-b border-white/10 font-bold uppercase text-[11px]">
-                          <th className="p-2.5">PO / Orden</th>
+                          <th className="p-2.5">PO / Contrato</th>
                           <th className="p-2.5 text-center">QTY</th>
                           <th className="p-2.5">Estilo</th>
                           <th className="p-2.5">Color</th>
                           <th className="p-2.5 text-center">Tipo</th>
-                          <th className="p-2.5 text-center">Estatus</th>
-                          <th className="p-2.5 text-center">ENV</th>
+                          <th className="p-2.5 text-center bg-blue-950/40 text-blue-300">1. ENV (Shipping)</th>
+                          <th className="p-2.5 text-center bg-emerald-950/40 text-emerald-300">2. CAPTURA (Custom)</th>
+                          <th className="p-2.5 text-center">Acción</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
                         {filas.length > 0 ? (
-                          filas.map((f, idx) => (
-                            <tr key={idx} className="hover:bg-white/5 transition-colors">
+                          filas.map(f => (
+                            <tr key={f.id} className="hover:bg-white/5 transition-colors">
                               <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{f.po}</td>
                               <td className="p-2.5 text-center font-mono font-bold text-white">{f.qty}</td>
                               <td className="p-2.5 font-mono text-gray-300">{f.style}</td>
@@ -185,31 +313,43 @@ export const WipStocksVendidasView: React.FC = () => {
                                   {f.tipo}
                                 </span>
                               </td>
-                              <td className="p-2.5 text-center">
-                                {f.check ? (
-                                  <span className="px-2 py-0.5 rounded bg-[#39ff14]/20 text-[#39ff14] border border-[#39ff14]/30 text-[10px] font-bold">
-                                    COMPLETO
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                                    PARCIAL
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-2.5 text-center">
+
+                              {/* Casilla 1: ENV (Shipping) */}
+                              <td className="p-2.5 text-center bg-blue-950/20">
                                 <input
                                   type="checkbox"
-                                  checked={f.check}
-                                  onChange={() => handleToggleCheck(linea.nombre, idx)}
+                                  checked={f.checkShipping}
+                                  onChange={() => handleToggleShipping(linea, f.id)}
+                                  className="w-4 h-4 accent-[#00f2fe] cursor-pointer"
+                                />
+                              </td>
+
+                              {/* Casilla 2: CAPTURA (Custom / Taller) */}
+                              <td className="p-2.5 text-center bg-emerald-950/20">
+                                <input
+                                  type="checkbox"
+                                  checked={f.checkCaptura}
+                                  onChange={() => handleToggleCaptura(linea, f.id)}
                                   className="w-4 h-4 accent-[#39ff14] cursor-pointer"
                                 />
+                              </td>
+
+                              {/* Acción: Eliminar */}
+                              <td className="p-2.5 text-center">
+                                <button
+                                  onClick={() => handleEliminarOrden(linea, f.id)}
+                                  className="p-1 text-red-400 hover:bg-red-500/10 rounded cursor-pointer transition-all"
+                                  title="Eliminar esta orden"
+                                >
+                                  🗑️
+                                </button>
                               </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={7} className="p-6 text-center text-gray-500 italic text-xs">
-                              Sin órdenes activas en {linea.nombre}
+                            <td colSpan={8} className="p-6 text-center text-gray-500 italic text-xs">
+                              Sin órdenes registradas en {linea}
                             </td>
                           </tr>
                         )}
@@ -218,63 +358,13 @@ export const WipStocksVendidasView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Pie de la Tarjeta con Totales */}
                 <div className="bg-[#0b0e14] px-4 py-2 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
-                  <span>Órdenes: <strong className="text-white">{filas.length}</strong></span>
-                  <span>Total Piezas: <strong className="text-[#39ff14] font-mono">{totalPiezas}</strong></span>
+                  <span>Envíos Listos: <strong className="text-[#00f2fe]">{filas.filter(f => f.checkShipping).length}</strong></span>
+                  <span>Capturados: <strong className="text-[#39ff14]">{filas.filter(f => f.checkCaptura).length}</strong></span>
                 </div>
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* 3. VISTA PARA BUSCAR FD */}
-      {activeSubTab === 'buscar-fd' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {lineasFD.map(linea => (
-            <div
-              key={linea.id}
-              className="bg-[#121826] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between"
-            >
-              <div className="bg-[#0b0e14] px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                <h3 className="font-black text-[#ff007f] text-sm tracking-wide">
-                  {linea.nombre}
-                </h3>
-                <button
-                  onClick={() => handleEnviarTabla(linea.nombre)}
-                  className="px-3 py-1.5 bg-[#ff007f]/15 hover:bg-[#ff007f] hover:text-white border border-[#ff007f]/50 text-[#ff007f] text-xs font-extrabold rounded-lg transition-all cursor-pointer shadow-md"
-                >
-                  🚚 Enviar Tabla a Shipping
-                </button>
-              </div>
-
-              <div className="p-3">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead>
-                    <tr className="bg-[#0b0e14]/60 text-gray-400 border-b border-white/10 font-bold uppercase text-[11px]">
-                      <th className="p-2.5">Contrato / FD</th>
-                      <th className="p-2.5 text-center">QTY</th>
-                      <th className="p-2.5">Estilo</th>
-                      <th className="p-2.5">Color</th>
-                      <th className="p-2.5 text-center">ENV</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td colSpan={5} className="p-6 text-center text-gray-500 italic text-xs">
-                        Sin órdenes en {linea.nombre}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="bg-[#0b0e14] px-4 py-2 border-t border-white/10 text-xs text-gray-400 text-right">
-                Total Registros: <strong className="text-white">0</strong>
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </div>
