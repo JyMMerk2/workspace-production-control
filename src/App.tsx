@@ -32,7 +32,6 @@ export default function App() {
     return localStorage.getItem('theme_mode') !== 'light';
   });
 
-  // Aplicación directa del tema en el DOM (html y body)
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
@@ -56,7 +55,6 @@ export default function App() {
     setDarkMode(prevMode => !prevMode);
   };
 
-  // Inicializar con datos en caché para evitar reseteos a ceros
   const [dashboardData, setDashboardData] = useState<DashboardData>(() => {
     const cached = localStorage.getItem('boombah_dashboard_cached_data');
     if (cached) {
@@ -72,7 +70,6 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Sincronizar Dashboard con protección de datos
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -95,7 +92,6 @@ export default function App() {
     }
   }, []);
 
-  // Intervalo de refresco en segundo plano (30 segundos)
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
@@ -145,7 +141,7 @@ export default function App() {
     <div
       className={`min-h-screen ${
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
-      } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-300`}
+      } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
       {/* Encabezado Superior */}
       <Header
@@ -164,8 +160,8 @@ export default function App() {
         onToggleTheme={toggleTheme}
       />
 
-      {/* Contenedor de Layout */}
-      <div className={`flex flex-1 ${headerVisible ? 'mt-15' : 'mt-0'} transition-all duration-300`}>
+      {/* Contenedor de Layout Ajustable */}
+      <div className="flex flex-1 w-full overflow-hidden">
         {/* Menú Navegador Lateral */}
         <Sidebar
           activeTab={activeTab}
@@ -177,15 +173,11 @@ export default function App() {
         />
 
         {/* Área Principal de Trabajo */}
-        <main
-          className={`flex-1 transition-all duration-300 ${
-            sidebarOpen ? 'lg:ml-65 w-full lg:w-[calc(100%-16.25rem)]' : 'ml-0 w-full'
-          }`}
-        >
+        <main className="flex-1 min-w-0 flex flex-col overflow-y-auto custom-scrollbar">
           {/* Barra Flotante Global de Control de Producción */}
           <ProductionControlToolbar />
 
-          <div className="p-4 md:p-6">
+          <div className="p-3 md:p-5 w-full max-w-[1920px] mx-auto">
             {/* 1. Dashboard en Vivo */}
             {activeTab === 'dashboard-live' && (
               <DashboardView
