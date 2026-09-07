@@ -17,6 +17,7 @@ interface OrdenItem {
 
 const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
 const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
+const STORAGE_ORDENES_DIA_KEY = 'wip_ordenes_dia_anotadas_v1';
 
 const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
   try {
@@ -62,15 +63,27 @@ const cargarEstadoInicialFD = (): Record<string, OrdenItem[]> => {
   };
 };
 
+const cargarOrdenesDiaIniciales = (): string[] => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_ORDENES_DIA_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando órdenes del día', e);
+  }
+  return [];
+};
+
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
   
   const [inputsPorTabla, setInputsPorTabla] = useState<Record<string, string>>({});
+  const [inputOrdenDiaManual, setInputOrdenDiaManual] = useState('');
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialBP);
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialFD);
+  const [ordenesDelDiaAnotadas, setOrdenesDelDiaAnotadas] = useState<string[]>(cargarOrdenesDiaIniciales);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
@@ -80,38 +93,35 @@ export const WipStocksVendidasView: React.FC = () => {
     localStorage.setItem(STORAGE_FD_KEY, JSON.stringify(tablasFD));
   }, [tablasFD]);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_ORDENES_DIA_KEY, JSON.stringify(ordenesDelDiaAnotadas));
+  }, [ordenesDelDiaAnotadas]);
+
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenes = Object.values(activeTablas).flat();
-  const totalOrders = todasOrdenes.length;
-  const ctmOrders = todasOrdenes.filter(o => o.tipo === 'CUSTOM').length;
-  const stockOrders = todasOrdenes.filter(o => o.tipo === 'STOCK').length;
-  const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
-  const resta = totalOrders - capturados;
 
+  // Evaluación Inversa: Si el contrato está en Órdenes del Día, la orden se evalúa como Capturada Completa
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
-    if (item.checkCaptura) {
-      return {
-        texto: 'CAPTURADO COMPLETO',
-        estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40',
-        checkAuto: true,
-      };
-    }
+    const estaEnOrdenesDelDiaLocal = ordenesDelDiaAnotadas.includes(item.contrato);
 
+    let estaEnOrdenesDelDiaServicio = false;
     let datosIncompletos: any = null;
-    let estaEnOrdenesDelDia = false;
 
     try {
+      if (wipEngineService && typeof wipEngineService.estaEnOrdenesDelDia === 'function') {
+        estaEnOrdenesDelDiaServicio = wipEngineService.estaEnOrdenesDelDia(item.contrato);
+      }
       if (wipEngineService && typeof wipEngineService.obtenerEstadoIncompleto === 'function') {
         datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po);
       }
-      if (wipEngineService && typeof wipEngineService.estaEnOrdenesDelDia === 'function') {
-        estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
-      }
     } catch (e) {
-      console.warn('Servicio de evaluación no disponible', e);
+      console.warn('Servicio no disponible', e);
     }
 
-    if (estaEnOrdenesDelDia || (datosIncompletos && datosIncompletos.completado)) {
+    const registradoEnOrdenesDelDia = estaEnOrdenesDelDiaLocal || estaEnOrdenesDelDiaServicio;
+
+    // 1. REGLA CLAVE: Si la orden está en Órdenes del Día (Col A) O fue marcada manualmente -> CAPTURADO COMPLETO
+    if (registradoEnOrdenesDelDia || item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
         estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40',
@@ -119,6 +129,7 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
+    // 2. Si está en Incompletos pero aún pendiente -> PARCIAL / EN PROCESO
     if (datosIncompletos && !datosIncompletos.completado) {
       return {
         texto: 'PARCIAL / EN PROCESO',
@@ -127,12 +138,22 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
+    // 3. De lo contrario -> FALTA CAPTURA
     return {
       texto: 'FALTA CAPTURA',
       estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
       checkAuto: false,
     };
   };
+
+  const totalOrders = todasOrdenes.length;
+  const ctmOrders = todasOrdenes.filter(o => o.tipo === 'CUSTOM').length;
+  const stockOrders = todasOrdenes.filter(o => o.tipo === 'STOCK').length;
+  const capturados = todasOrdenes.filter(o => {
+    const evalRes = calcularEstadoFormulaJerarquica(o);
+    return o.checkCaptura || evalRes.checkAuto;
+  }).length;
+  const resta = totalOrders - capturados;
 
   const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
     const valorInput = (inputsPorTabla[nombreTabla] || '').trim().toUpperCase();
@@ -215,8 +236,29 @@ export const WipStocksVendidasView: React.FC = () => {
     }
   };
 
+  const handleAnotarOrdenDiaManual = (e: React.FormEvent) => {
+    e.preventDefault();
+    const contratoLimpio = inputOrdenDiaManual.trim().replace(/[A-Za-z]/g, '');
+
+    if (!contratoLimpio) {
+      alert('Ingresa un número de contrato válido.');
+      return;
+    }
+
+    if (!ordenesDelDiaAnotadas.includes(contratoLimpio)) {
+      setOrdenesDelDiaAnotadas(prev => [contratoLimpio, ...prev]);
+    }
+
+    setInputOrdenDiaManual('');
+  };
+
+  const handleEliminarOrdenDia = (contrato: string) => {
+    setOrdenesDelDiaAnotadas(prev => prev.filter(c => c !== contrato));
+  };
+
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
+      {/* Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveSubTab('buscar-bp')}
@@ -248,7 +290,7 @@ export const WipStocksVendidasView: React.FC = () => {
               : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
           }`}
         >
-          📋 ÓRDENES DEL DÍA ({totalOrders})
+          📋 ÓRDENES DEL DÍA ({ordenesDelDiaAnotadas.length})
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -284,6 +326,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
+      {/* Banner con Indicadores Generales */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -310,9 +353,88 @@ export const WipStocksVendidasView: React.FC = () => {
             <span className="text-[10px] uppercase tracking-wider text-[#ff007f] block">RESTA</span>
             <span className="text-xl font-black text-[#ff007f]">{resta}</span>
           </div>
+
+          <div className="border-l border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-purple-400 block">ÓRDENES DÍA (COL A)</span>
+            <span className="text-xl font-black text-purple-400">{ordenesDelDiaAnotadas.length}</span>
+          </div>
         </div>
       </div>
 
+      {/* Sub-Pestaña ÓRDENES DEL DÍA (Columna A de Validación) */}
+      {activeSubTab === 'ordenes-dia' && (
+        <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-lg font-black text-[#00f2fe]">📋 ÓRDENES DEL DÍA (COL A)</h2>
+              <p className="text-xs text-gray-400">
+                Escanear / anotar aquí los contratos validados. Cualesquiera órdenes en las tablas con estos contratos cambiarán automáticamente a <strong>CAPTURADO COMPLETO</strong>.
+              </p>
+            </div>
+
+            <form onSubmit={handleAnotarOrdenDiaManual} className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Anotar Contrato en Col A (ej. 427713)..."
+                value={inputOrdenDiaManual}
+                onChange={e => setInputOrdenDiaManual(e.target.value)}
+                className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-64 font-mono font-bold"
+              />
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+              >
+                + Registrar
+              </button>
+            </form>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-[#0b0e14] text-gray-400 font-bold border-b border-white/10 uppercase text-[11px]">
+                  <th className="p-3 w-16">#</th>
+                  <th className="p-3 text-amber-300">Contrato Registrado (Col A)</th>
+                  <th className="p-3 text-center">Estatus en Tablas</th>
+                  <th className="p-3 text-center w-24">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {ordenesDelDiaAnotadas.length > 0 ? (
+                  ordenesDelDiaAnotadas.map((contrato, idx) => (
+                    <tr key={contrato} className="hover:bg-white/5 transition-colors">
+                      <td className="p-3 font-mono text-gray-500">{idx + 1}</td>
+                      <td className="p-3 font-mono font-bold text-amber-300 text-sm">{contrato}</td>
+                      <td className="p-3 text-center">
+                        <span className="px-2 py-0.5 rounded text-[10px] border font-mono bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40">
+                          VALIDANDO TABLAS BP / FD
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => handleEliminarOrdenDia(contrato)}
+                          className="p-1 text-red-400 hover:bg-red-500/10 rounded cursor-pointer transition-all"
+                          title="Eliminar de la lista"
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-gray-500 italic text-xs">
+                      No hay contratos en Órdenes del Día. Escanea un número de contrato arriba para marcar automáticamente como capturadas sus órdenes correspondientes.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Renderizado de Tablas BP y FD */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
@@ -468,7 +590,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
                 <div className="bg-[#0b0e14] px-4 py-2 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
                   <span>Envíos Listos: <strong className="text-[#00f2fe]">{filasFiltradas.filter(f => f.checkShipping).length}</strong></span>
-                  <span>Capturados: <strong className="text-[#39ff14]">{filasFiltradas.filter(f => f.checkCaptura).length}</strong></span>
+                  <span>Capturados: <strong className="text-[#39ff14]">{filasFiltradas.filter(f => f.checkCaptura || calcularEstadoFormulaJerarquica(f).checkAuto).length}</strong></span>
                 </div>
               </div>
             );
