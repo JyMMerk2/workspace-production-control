@@ -32,17 +32,23 @@ export default function App() {
     return localStorage.getItem('theme_mode') !== 'light';
   });
 
-  // Sincronización del tema global con Tailwind (Elemento Raíz HTML)
+  // Aplicación directa del tema en el DOM (html y body)
   useEffect(() => {
     const root = document.documentElement;
+    const body = document.body;
+
     localStorage.setItem('theme_mode', darkMode ? 'dark' : 'light');
-    
+
     if (darkMode) {
       root.classList.add('dark');
       root.classList.remove('light');
+      body.classList.add('dark');
+      body.classList.remove('light');
     } else {
-      root.classList.remove('dark');
       root.classList.add('light');
+      root.classList.remove('dark');
+      body.classList.add('light');
+      body.classList.remove('dark');
     }
   }, [darkMode]);
 
