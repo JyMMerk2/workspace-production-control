@@ -65,8 +65,8 @@ const cargarEstadoInicialFD = (): Record<string, OrdenItem[]> => {
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
-  const [poInput, setPoInput] = useState('');
-  const [tablaTargetSelect, setTablaTargetSelect] = useState('CUSTOM BAGS');
+  
+  const [inputsPorTabla, setInputsPorTabla] = useState<Record<string, string>>({});
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialBP);
@@ -80,9 +80,6 @@ export const WipStocksVendidasView: React.FC = () => {
     localStorage.setItem(STORAGE_FD_KEY, JSON.stringify(tablasFD));
   }, [tablasFD]);
 
-  const lineasBPNames = Object.keys(tablasBP);
-  const lineasFDNames = Object.keys(tablasFD);
-
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenes = Object.values(activeTablas).flat();
   const totalOrders = todasOrdenes.length;
@@ -91,7 +88,6 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica de Evaluación Jerárquica
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     if (item.checkCaptura) {
       return {
@@ -105,12 +101,9 @@ export const WipStocksVendidasView: React.FC = () => {
     let estaEnOrdenesDelDia = false;
 
     try {
-      // 1. Incompletas busca usando la PO CON LETRA (item.po)
       if (wipEngineService && typeof wipEngineService.obtenerEstadoIncompleto === 'function') {
         datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po);
       }
-
-      // 2. Órdenes del Día busca usando ÚNICAMENTE EL CONTRATO SIN LETRA (item.contrato)
       if (wipEngineService && typeof wipEngineService.estaEnOrdenesDelDia === 'function') {
         estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
       }
@@ -141,11 +134,10 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Agregar Orden: Consulta BD usando PO CON LETRA y extrae el CONTRATO SIN LETRA para Órdenes del Día
-  const ejecutarAgregarOrden = async () => {
-    const poCompleta = poInput.trim().toUpperCase();
+  const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
+    const valorInput = (inputsPorTabla[nombreTabla] || '').trim().toUpperCase();
 
-    if (!poCompleta) {
+    if (!valorInput) {
       alert('Ingresa un número de PO/Contrato válido.');
       return;
     }
@@ -155,18 +147,16 @@ export const WipStocksVendidasView: React.FC = () => {
     try {
       let detalles: any = null;
 
-      // Consulta en BD con la PO COMPLETA CON LETRA
       if (wipEngineService && typeof wipEngineService.buscarDetallesPO === 'function') {
-        detalles = await wipEngineService.buscarDetallesPO(poCompleta);
+        detalles = await wipEngineService.buscarDetallesPO(valorInput);
       }
 
-      // Contrato es estrictamente numérico (SIN LETRA)
-      const contratoSoloNumeros = poCompleta.replace(/[A-Za-z]/g, '');
+      const contratoSoloNumeros = valorInput.replace(/[A-Za-z]/g, '');
 
       const itemNuevo: OrdenItem = {
         id: Date.now().toString(),
-        po: poCompleta,
-        contrato: contratoSoloNumeros || poCompleta,
+        po: valorInput,
+        contrato: contratoSoloNumeros || valorInput,
         qty: detalles ? detalles.qty : 1,
         style: detalles ? detalles.style : 'FD-STANDARD',
         color: detalles ? detalles.color : 'CUSTOM',
@@ -178,26 +168,21 @@ export const WipStocksVendidasView: React.FC = () => {
       if (activeSubTab === 'buscar-bp') {
         setTablasBP(prev => ({
           ...prev,
-          [tablaTargetSelect]: [itemNuevo, ...(prev[tablaTargetSelect] || [])],
+          [nombreTabla]: [itemNuevo, ...(prev[nombreTabla] || [])],
         }));
       } else {
         setTablasFD(prev => ({
           ...prev,
-          [tablaTargetSelect]: [itemNuevo, ...(prev[tablaTargetSelect] || [])],
+          [nombreTabla]: [itemNuevo, ...(prev[nombreTabla] || [])],
         }));
       }
 
-      setPoInput('');
+      setInputsPorTabla(prev => ({ ...prev, [nombreTabla]: '' }));
     } catch (error) {
       console.error(error);
     } finally {
       setLoadingBusqueda(false);
     }
-  };
-
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    ejecutarAgregarOrden();
   };
 
   const toggleShipping = (tabla: string, id: string) => {
@@ -232,13 +217,9 @@ export const WipStocksVendidasView: React.FC = () => {
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
-          onClick={() => {
-            setActiveSubTab('buscar-bp');
-            setTablaTargetSelect('CUSTOM BAGS');
-          }}
+          onClick={() => setActiveSubTab('buscar-bp')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'buscar-bp'
               ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
@@ -249,10 +230,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => {
-            setActiveSubTab('buscar-fd');
-            setTablaTargetSelect('FULL DYE CELDA 1');
-          }}
+          onClick={() => setActiveSubTab('buscar-fd')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'buscar-fd'
               ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
@@ -306,7 +284,6 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* Banner Superior con Búsqueda e Inserción */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -334,37 +311,8 @@ export const WipStocksVendidasView: React.FC = () => {
             <span className="text-xl font-black text-[#ff007f]">{resta}</span>
           </div>
         </div>
-
-        <form onSubmit={handleFormSubmit} className="flex items-center gap-2 flex-wrap">
-          <select
-            value={tablaTargetSelect}
-            onChange={e => setTablaTargetSelect(e.target.value)}
-            className="bg-[#0b0e14] border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white"
-          >
-            {(activeSubTab === 'buscar-bp' ? lineasBPNames : lineasFDNames).map(l => (
-              <option key={l} value={l}>{l}</option>
-            ))}
-          </select>
-
-          <input
-            type="text"
-            placeholder="Digitar / Escanear PO..."
-            value={poInput}
-            onChange={e => setPoInput(e.target.value)}
-            className="bg-[#0b0e14] border border-[#00f2fe]/60 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-48 font-mono font-bold"
-          />
-
-          <button
-            type="submit"
-            disabled={loadingBusqueda}
-            className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow-md cursor-pointer transition-all flex items-center gap-1"
-          >
-            {loadingBusqueda ? '🔍 Buscando...' : '⚡ Agregar Orden'}
-          </button>
-        </form>
       </div>
 
-      {/* Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
@@ -384,7 +332,7 @@ export const WipStocksVendidasView: React.FC = () => {
                 className="w-full bg-[#121826] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between"
               >
                 <div>
-                  <div className="bg-[#0b0e14] px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                  <div className="bg-[#0b0e14] px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h3 className="font-black text-[#39ff14] text-sm tracking-wide">
                         📑 {nombreLinea}
@@ -394,12 +342,43 @@ export const WipStocksVendidasView: React.FC = () => {
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => alert(`🚚 Enviando datos de ${nombreLinea} a Shipping`)}
-                      className="px-3 py-1.5 bg-[#00f2fe]/15 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/50 text-[#00f2fe] text-xs font-extrabold rounded-lg transition-all cursor-pointer"
+                    <form
+                      onSubmit={e => {
+                        e.preventDefault();
+                        ejecutarAgregarOrdenEnTabla(nombreLinea);
+                      }}
+                      className="flex items-center gap-1.5"
                     >
-                      🚚 Enviar a Shipping
-                    </button>
+                      <input
+                        type="text"
+                        placeholder="Escanear / PO..."
+                        value={inputsPorTabla[nombreLinea] || ''}
+                        onChange={e =>
+                          setInputsPorTabla({
+                            ...inputsPorTabla,
+                            [nombreLinea]: e.target.value,
+                          })
+                        }
+                        className="bg-[#121620] border border-[#00f2fe]/50 rounded-lg px-2.5 py-1 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-36 font-mono font-bold"
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={loadingBusqueda}
+                        className="px-3 py-1 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer whitespace-nowrap"
+                      >
+                        + Agregar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => alert(`🚚 Enviando datos de ${nombreLinea} a Shipping`)}
+                        className="px-2.5 py-1 bg-[#00f2fe]/10 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-bold rounded-lg transition-all cursor-pointer"
+                        title="Enviar a Shipping"
+                      >
+                        🚚 Enviar
+                      </button>
+                    </form>
                   </div>
 
                   <div className="p-2 overflow-x-auto">
