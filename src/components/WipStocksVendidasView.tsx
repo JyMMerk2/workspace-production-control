@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { wipEngineService } from '../services/wipEngineService';
 
 type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'database-contratos';
@@ -85,6 +85,8 @@ export const WipStocksVendidasView: React.FC = () => {
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialFD);
   const [ordenesDelDiaAnotadas, setOrdenesDelDiaAnotadas] = useState<string[]>(cargarOrdenesDiaIniciales);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
   }, [tablasBP]);
@@ -100,7 +102,7 @@ export const WipStocksVendidasView: React.FC = () => {
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenes = Object.values(activeTablas).flat();
 
-  // Evaluación Inversa: Si el contrato está en Órdenes del Día, la orden se evalúa como Capturada Completa
+  // Evaluación Jerárquica
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const estaEnOrdenesDelDiaLocal = ordenesDelDiaAnotadas.includes(item.contrato);
 
@@ -120,7 +122,6 @@ export const WipStocksVendidasView: React.FC = () => {
 
     const registradoEnOrdenesDelDia = estaEnOrdenesDelDiaLocal || estaEnOrdenesDelDiaServicio;
 
-    // 1. REGLA CLAVE: Si la orden está en Órdenes del Día (Col A) O fue marcada manualmente -> CAPTURADO COMPLETO
     if (registradoEnOrdenesDelDia || item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
@@ -129,7 +130,6 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // 2. Si está en Incompletos pero aún pendiente -> PARCIAL / EN PROCESO
     if (datosIncompletos && !datosIncompletos.completado) {
       return {
         texto: 'PARCIAL / EN PROCESO',
@@ -138,7 +138,6 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // 3. De lo contrario -> FALTA CAPTURA
     return {
       texto: 'FALTA CAPTURA',
       estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
@@ -154,6 +153,44 @@ export const WipStocksVendidasView: React.FC = () => {
     return o.checkCaptura || evalRes.checkAuto;
   }).length;
   const resta = totalOrders - capturados;
+
+  // Carga e Importación desde Archivo Excel / CSV
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      // Lectura por líneas (formato CSV/Texto)
+      const lineas = text.split(/\r\n|\n/);
+      const contratosExtraidos: string[] = [];
+
+      lineas.forEach(linea => {
+        const primeraColumna = linea.split(',')[0]?.split(';')[0]?.trim();
+        if (primeraColumna) {
+          const contratoLimpio = primeraColumna.replace(/[A-Za-z]/g, '');
+          if (contratoLimpio && !isNaN(Number(contratoLimpio))) {
+            contratosExtraidos.push(contratoLimpio);
+          }
+        }
+      });
+
+      if (contratosExtraidos.length > 0) {
+        setOrdenesDelDiaAnotadas(prev => Array.from(new Set([...contratosExtraidos, ...prev])));
+        alert(`✅ Se importaron correctamente ${contratosExtraidos.length} contratos a Órdenes del Día.`);
+      } else {
+        alert('No se encontraron contratos numéricos válidos en la Columna A del archivo.');
+      }
+    };
+
+    reader.readAsText(file);
+
+    // Resetear valor para permitir cargar el mismo archivo
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
     const valorInput = (inputsPorTabla[nombreTabla] || '').trim().toUpperCase();
@@ -258,7 +295,16 @@ export const WipStocksVendidasView: React.FC = () => {
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* Selector de Sub-pestañas */}
+      {/* Input Oculto para Cargar Archivo Excel / CSV */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".csv, .xlsx, .xls, text/plain"
+        className="hidden"
+      />
+
+      {/* 1. Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveSubTab('buscar-bp')}
@@ -294,12 +340,20 @@ export const WipStocksVendidasView: React.FC = () => {
         </button>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Botón para Cargar Excel / CSV */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3 py-1.5 bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+          >
+            📂 Cargar Excel / CSV
+          </button>
+
           <input
             type="text"
             placeholder="Filtrar por PO, Contrato o Estilo..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="bg-[#0b0e14] border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] w-64"
+            className="bg-[#0b0e14] border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] w-56"
           />
 
           <button
@@ -321,12 +375,12 @@ export const WipStocksVendidasView: React.FC = () => {
             }}
             className="px-3 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
           >
-            🧹 Limpiar Completas
+            🧹 Limpiar
           </button>
         </div>
       </div>
 
-      {/* Banner con Indicadores Generales */}
+      {/* 2. Banner de Totales Generales */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -361,32 +415,41 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub-Pestaña ÓRDENES DEL DÍA (Columna A de Validación) */}
+      {/* 3. Sub-Pestaña ÓRDENES DEL DÍA (Carga y Anotaciones) */}
       {activeSubTab === 'ordenes-dia' && (
         <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
             <div>
               <h2 className="text-lg font-black text-[#00f2fe]">📋 ÓRDENES DEL DÍA (COL A)</h2>
               <p className="text-xs text-gray-400">
-                Escanear / anotar aquí los contratos validados. Cualesquiera órdenes en las tablas con estos contratos cambiarán automáticamente a <strong>CAPTURADO COMPLETO</strong>.
+                Sube tu archivo Excel/CSV o anota contratos manualmente. Cualquier orden en las tablas con estos contratos cambiará a <strong>CAPTURADO COMPLETO</strong>.
               </p>
             </div>
 
-            <form onSubmit={handleAnotarOrdenDiaManual} className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Anotar Contrato en Col A (ej. 427713)..."
-                value={inputOrdenDiaManual}
-                onChange={e => setInputOrdenDiaManual(e.target.value)}
-                className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-64 font-mono font-bold"
-              />
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                type="submit"
-                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-1.5"
               >
-                + Registrar
+                📂 Subir Excel / CSV
               </button>
-            </form>
+
+              <form onSubmit={handleAnotarOrdenDiaManual} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Anotar Contrato en Col A..."
+                  value={inputOrdenDiaManual}
+                  onChange={e => setInputOrdenDiaManual(e.target.value)}
+                  className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                >
+                  + Registrar
+                </button>
+              </form>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -424,7 +487,7 @@ export const WipStocksVendidasView: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={4} className="p-8 text-center text-gray-500 italic text-xs">
-                      No hay contratos en Órdenes del Día. Escanea un número de contrato arriba para marcar automáticamente como capturadas sus órdenes correspondientes.
+                      No hay contratos en Órdenes del Día. Haz clic en "Subir Excel / CSV" o anota un contrato arriba para marcar automáticamente como capturadas sus órdenes correspondientes.
                     </td>
                   </tr>
                 )}
@@ -434,7 +497,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       )}
 
-      {/* Renderizado de Tablas BP y FD */}
+      {/* 4. Renderizado de Tablas BP y FD */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
