@@ -44,6 +44,14 @@ interface FilaOrdenDia {
   esHoy: boolean;
 }
 
+interface ModalInfo {
+  isOpen: boolean;
+  tipo: 'confirm' | 'info' | 'error';
+  titulo: string;
+  mensaje: string;
+  onConfirm?: () => void;
+}
+
 const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
 const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
 const STORAGE_ORDENES_DIA_KEY = 'wip_ordenes_dia_filas_v1';
@@ -96,7 +104,6 @@ const cargarQueueInicial = (): FilaQueue[] => {
   return [];
 };
 
-// Comparador Universal de Fechas (Compara con HOY M/d/YYYY)
 const esMismaFechaHoy = (fechaTexto: string): boolean => {
   if (!fechaTexto) return false;
 
@@ -142,6 +149,13 @@ export const WipStocksVendidasView: React.FC = () => {
   const [filasOrdenesDia, setFilasOrdenesDia] = useState<FilaOrdenDia[]>(cargarOrdenesDiaIniciales);
   const [queueResults, setQueueResults] = useState<FilaQueue[]>(cargarQueueInicial);
 
+  const [modal, setModal] = useState<ModalInfo>({
+    isOpen: false,
+    tipo: 'info',
+    titulo: '',
+    mensaje: '',
+  });
+
   const fileInputQueueRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -160,15 +174,23 @@ export const WipStocksVendidasView: React.FC = () => {
     localStorage.setItem(STORAGE_QUEUE_KEY, JSON.stringify(queueResults));
   }, [queueResults]);
 
+  useEffect(() => {
+    const listener = () => {
+      confirmarYActualizarOrdenesDelDia();
+    };
+    window.addEventListener('actualizar-ordenes-dia-event', listener);
+    return () => {
+      window.removeEventListener('actualizar-ordenes-dia-event', listener);
+    };
+  }, [queueResults, filasOrdenesDia]);
+
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenes = Object.values(activeTablas).flat();
 
-  // Lista de Contratos Anotados en Columna A
   const contratosAnotadosColA = filasOrdenesDia
     .map(f => f.colA_Anotar.replace(/[A-Za-z]/g, '').trim())
     .filter(c => c !== '');
 
-  // Evaluador de Estatus Jerárquico
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const estaEnOrdenesDelDiaLocal = contratosAnotadosColA.includes(item.contrato);
 
@@ -211,7 +233,6 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Cálculo de Fórmulas para Columnas B y C
   const calcularFormulasFilaOrdenDia = (fila: FilaOrdenDia) => {
     const poContrato = fila.po.replace(/[A-Za-z]/g, '').trim();
     const colA_Limpia = fila.colA_Anotar.replace(/[A-Za-z]/g, '').trim();
@@ -238,14 +259,28 @@ export const WipStocksVendidasView: React.FC = () => {
   }).length;
   const resta = totalOrders - capturados;
 
-  // Réplica Fiel del Script: Actualizar_Ordenes_Del_Dia() con Offset D3:P1000
-  const ejecutarActualizarOrdenesDelDia = () => {
+  // Lógica con Modal de Confirmación y Cancelación
+  const confirmarYActualizarOrdenesDelDia = () => {
     if (queueResults.length === 0) {
-      alert("Error: La hoja 'CustomizationQueue2Results' está vacía. Carga primero el archivo en la pestaña 'QUEUE RESULTS'.");
+      setModal({
+        isOpen: true,
+        tipo: 'error',
+        titulo: 'Cola Vacia',
+        mensaje: "La pestaña 'QUEUE RESULTS' no tiene registros. Por favor, sube primero el archivo CustomizationQueue2Results.xls.",
+      });
       return;
     }
 
-    // 1. Rescatar órdenes pendientes / no despachadas de la zona superior
+    setModal({
+      isOpen: true,
+      tipo: 'confirm',
+      titulo: 'Actualizar Órdenes del Día',
+      mensaje: `¿Deseas procesar la cola activa (${queueResults.length} filas) para filtrar las órdenes de HOY y conservar las pendientes?`,
+      onConfirm: () => ejecutarProcesamientoActualizar(),
+    });
+  };
+
+  const ejecutarProcesamientoActualizar = () => {
     const pendientesAAnadir = filasOrdenesDia.filter(row => {
       const dpto = (row.department || '').trim().toUpperCase();
       const po = (row.po || '').trim();
@@ -258,7 +293,6 @@ export const WipStocksVendidasView: React.FC = () => {
     const ordenesHoy: FilaOrdenDia[] = [];
     const ordenesOtrosDias: FilaOrdenDia[] = [];
 
-    // 2. Clasificar filas de la cola omitiendo "Team Spirit (Queued)" y mapeando desde Columna D
     queueResults.forEach((item, idx) => {
       const dpto = (item.department || '').trim().toUpperCase();
       if (dpto === 'TEAM SPIRIT (QUEUED)') return;
@@ -270,12 +304,12 @@ export const WipStocksVendidasView: React.FC = () => {
         colA_Anotar: '',
         colB_Status: 'FALTA CAPTURA',
         colC_DespuesCaptura: 'NO ENTREGADO',
-        department: item.department, // Col D
-        po: item.po,                 // Col E
-        qty: item.units,             // Col F
-        styles: item.styles,         // Col G
-        dueDate: item.dueDate,       // Col H
-        memo: item.memo,             // Col I
+        department: item.department,
+        po: item.po,
+        qty: item.units,
+        styles: item.styles,
+        dueDate: item.dueDate,
+        memo: item.memo,
         esHoy: esHoy
       };
 
@@ -286,14 +320,17 @@ export const WipStocksVendidasView: React.FC = () => {
       }
     });
 
-    // 3. Escribir Bloque Superior (Órdenes HOY + Pendientes) y Bloque Inferior
     const listaCompletaActualizada = [...ordenesHoy, ...pendientesAAnadir, ...ordenesOtrosDias];
     setFilasOrdenesDia(listaCompletaActualizada);
 
-    alert(`✅ Órdenes del día actualizadas correctamente.\n\nÓrdenes de HOY ubicadas en bloque superior: ${ordenesHoy.length}\nPendientes conservadas: ${pendientesAAnadir.length}\nOmitidos: 'Team Spirit (Queued)'.`);
+    setModal({
+      isOpen: true,
+      tipo: 'info',
+      titulo: 'Proceso Completado',
+      mensaje: `✅ Órdenes del Día actualizadas correctamente.\n\n• Órdenes de HOY: ${ordenesHoy.length}\n• Pendientes conservadas: ${pendientesAAnadir.length}\n• Registros de 'Team Spirit (Queued)' omitidos.`,
+    });
   };
 
-  // Parser Universal para NetSuite XML SpreadsheetML y CSV
   const handleFileUploadQueue = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -365,9 +402,12 @@ export const WipStocksVendidasView: React.FC = () => {
 
       if (queueImportado.length > 0) {
         setQueueResults(queueImportado);
-        alert(`✅ Carga exitosa: Se procesaron correctamente ${queueImportado.length} filas de CustomizationQueue2Results.`);
-      } else {
-        alert('No se pudieron leer registros del archivo.');
+        setModal({
+          isOpen: true,
+          tipo: 'info',
+          titulo: 'Carga Exitosa',
+          mensaje: `Se importaron ${queueImportado.length} registros a QUEUE RESULTS.`,
+        });
       }
     };
 
@@ -378,10 +418,7 @@ export const WipStocksVendidasView: React.FC = () => {
   const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
     const valorInput = (inputsPorTabla[nombreTabla] || '').trim().toUpperCase();
 
-    if (!valorInput) {
-      alert('Ingresa un número de PO/Contrato válido.');
-      return;
-    }
+    if (!valorInput) return;
 
     setLoadingBusqueda(true);
 
@@ -447,20 +484,26 @@ export const WipStocksVendidasView: React.FC = () => {
   };
 
   const handleEliminarOrden = (tabla: string, id: string) => {
-    if (confirm('¿Deseas eliminar esta orden de la lista?')) {
-      const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
-      setter(prev => ({
-        ...prev,
-        [tabla]: prev[tabla].filter(item => item.id !== id),
-      }));
-    }
+    setModal({
+      isOpen: true,
+      tipo: 'confirm',
+      titulo: 'Eliminar Orden',
+      mensaje: '¿Deseas eliminar esta orden de la lista?',
+      onConfirm: () => {
+        const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
+        setter(prev => ({
+          ...prev,
+          [tabla]: prev[tabla].filter(item => item.id !== id),
+        }));
+      },
+    });
   };
 
   const handleAnotarColAManual = (e: React.FormEvent) => {
     e.preventDefault();
     const contratoLimpio = inputOrdenDiaManual.trim().replace(/[A-Za-z]/g, '');
 
-    if (!contratoLimpio) return alert('Ingresa un contrato válido.');
+    if (!contratoLimpio) return;
 
     setFilasOrdenesDia(prev => [
       {
@@ -488,8 +531,29 @@ export const WipStocksVendidasView: React.FC = () => {
     );
   };
 
+  const handleLimpiarOrdenesDia = () => {
+    setModal({
+      isOpen: true,
+      tipo: 'confirm',
+      titulo: 'Limpiar Órdenes del Día',
+      mensaje: '¿Estás seguro de vaciar por completo la lista de Órdenes del Día?',
+      onConfirm: () => setFilasOrdenesDia([]),
+    });
+  };
+
+  const handleLimpiarQueue = () => {
+    setModal({
+      isOpen: true,
+      tipo: 'confirm',
+      titulo: 'Limpiar Queue Results',
+      mensaje: '¿Estás seguro de eliminar los registros cargados de CustomizationQueue2Results?',
+      onConfirm: () => setQueueResults([]),
+    });
+  };
+
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
+      {/* Input Oculto Cargar Queue */}
       <input
         type="file"
         ref={fileInputQueueRef}
@@ -497,6 +561,39 @@ export const WipStocksVendidasView: React.FC = () => {
         accept=".xls, .xlsx, .csv, .xml, .txt"
         className="hidden"
       />
+
+      {/* Modal Profesional Integrado */}
+      {modal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-[#121826] border border-[#00f2fe]/40 rounded-2xl p-6 shadow-2xl space-y-4 text-white">
+            <h3 className={`text-lg font-black tracking-wide ${modal.tipo === 'error' ? 'text-red-400' : 'text-[#00f2fe]'}`}>
+              {modal.titulo}
+            </h3>
+            <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">{modal.mensaje}</p>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+              {modal.tipo === 'confirm' && (
+                <button
+                  onClick={() => setModal({ ...modal, isOpen: false })}
+                  className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold rounded-lg cursor-pointer transition-all"
+                >
+                  Cancelar
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  if (modal.onConfirm) modal.onConfirm();
+                  setModal({ ...modal, isOpen: false });
+                }}
+                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg cursor-pointer shadow-md transition-all"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
@@ -546,7 +643,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={ejecutarActualizarOrdenesDelDia}
+            onClick={confirmarYActualizarOrdenesDelDia}
             className="px-3 py-1.5 bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
             🔄 Actualizar Órdenes del Día
@@ -554,7 +651,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
           <input
             type="text"
-            placeholder="Filtrar por PO, Contrato..."
+            placeholder="Filtrar por PO..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="bg-[#0b0e14] border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] w-56"
@@ -562,20 +659,26 @@ export const WipStocksVendidasView: React.FC = () => {
 
           <button
             onClick={() => {
-              if (confirm('¿Limpiar las tablas activas?')) {
-                if (activeSubTab === 'buscar-bp') {
-                  setTablasBP({
-                    'CUSTOM BAGS': [], 'SPUT 1': [], 'SPUT 2': [],
-                    'BIG BAG UTILITY 1': [], 'BIG BAG UTILITY 2': [],
-                    'UTILITY BAG LINE 3': [], 'LINEA 7 (CN)': []
-                  });
-                } else {
-                  setTablasFD({
-                    'FULL DYE CELDA 1': [], 'FULL DYE CELDA 2': [], 'FULL DYE CELDA 3': [],
-                    'FULL DYE CELDA 4': [], 'PANTS LINE 1': [], 'PANTS LINE 2': [], 'HATS LINE': []
-                  });
+              setModal({
+                isOpen: true,
+                tipo: 'confirm',
+                titulo: 'Limpiar Tablas Activas',
+                mensaje: '¿Deseas vaciar las órdenes registradas en las tablas activas?',
+                onConfirm: () => {
+                  if (activeSubTab === 'buscar-bp') {
+                    setTablasBP({
+                      'CUSTOM BAGS': [], 'SPUT 1': [], 'SPUT 2': [],
+                      'BIG BAG UTILITY 1': [], 'BIG BAG UTILITY 2': [],
+                      'UTILITY BAG LINE 3': [], 'LINEA 7 (CN)': []
+                    });
+                  } else {
+                    setTablasFD({
+                      'FULL DYE CELDA 1': [], 'FULL DYE CELDA 2': [], 'FULL DYE CELDA 3': [],
+                      'FULL DYE CELDA 4': [], 'PANTS LINE 1': [], 'PANTS LINE 2': [], 'HATS LINE': []
+                    });
+                  }
                 }
-              }
+              });
             }}
             className="px-3 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
           >
@@ -630,12 +733,21 @@ export const WipStocksVendidasView: React.FC = () => {
               </p>
             </div>
 
-            <button
-              onClick={() => fileInputQueueRef.current?.click()}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-2"
-            >
-              📂 Cargar CustomizationQueue2Results (.xls / .csv)
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fileInputQueueRef.current?.click()}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-2"
+              >
+                📂 Cargar CustomizationQueue2Results (.xls / .csv)
+              </button>
+
+              <button
+                onClick={handleLimpiarQueue}
+                className="px-4 py-2 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500 hover:text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+              >
+                🗑️ Limpiar Queue
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto max-h-96 custom-scrollbar">
@@ -675,7 +787,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       )}
 
-      {/* 4. Sub-Pestaña ÓRDENES DEL DÍA (Estructura idéntica con Col A, B, C + D3:P1000) */}
+      {/* 4. Sub-Pestaña ÓRDENES DEL DÍA */}
       {activeSubTab === 'ordenes-dia' && (
         <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
@@ -686,21 +798,30 @@ export const WipStocksVendidasView: React.FC = () => {
               </p>
             </div>
 
-            <form onSubmit={handleAnotarColAManual} className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Anotar en Col A..."
-                value={inputOrdenDiaManual}
-                onChange={e => setInputOrdenDiaManual(e.target.value)}
-                className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
-              />
+            <div className="flex items-center gap-2">
               <button
-                type="submit"
-                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                onClick={handleLimpiarOrdenesDia}
+                className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500 hover:text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
               >
-                + Anotar Col A
+                🧹 Limpiar Órdenes del Día
               </button>
-            </form>
+
+              <form onSubmit={handleAnotarColAManual} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Anotar en Col A..."
+                  value={inputOrdenDiaManual}
+                  onChange={e => setInputOrdenDiaManual(e.target.value)}
+                  className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                >
+                  + Anotar Col A
+                </button>
+              </form>
+            </div>
           </div>
 
           <div className="overflow-x-auto max-h-[500px] custom-scrollbar">
@@ -725,7 +846,6 @@ export const WipStocksVendidasView: React.FC = () => {
 
                     return (
                       <tr key={row.id} className="hover:bg-white/5 transition-colors">
-                        {/* Columna A: Anotar aquí */}
                         <td className="p-2 bg-blue-950/10">
                           <input
                             type="text"
@@ -736,7 +856,6 @@ export const WipStocksVendidasView: React.FC = () => {
                           />
                         </td>
 
-                        {/* Columna B: Status */}
                         <td className="p-2 text-center bg-emerald-950/10 font-bold">
                           <span className={`px-2 py-0.5 rounded text-[10px] border ${
                             evalColBC.statusB === 'CAPTURADO COMPLETO'
@@ -747,12 +866,10 @@ export const WipStocksVendidasView: React.FC = () => {
                           </span>
                         </td>
 
-                        {/* Columna C: Después de captura */}
                         <td className="p-2 text-center bg-purple-950/10 font-bold text-purple-300">
                           {evalColBC.despuesCapturaC}
                         </td>
 
-                        {/* Columnas D a I (D3:P1000) */}
                         <td className="p-2.5 text-amber-300 font-bold border-l border-white/10">{row.department}</td>
                         <td className="p-2.5 font-bold text-[#00f2fe]">{row.po}</td>
                         <td className="p-2.5 text-center text-white">{row.qty}</td>
@@ -835,7 +952,14 @@ export const WipStocksVendidasView: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => alert(`🚚 Enviando datos de ${nombreLinea} a Shipping`)}
+                        onClick={() => {
+                          setModal({
+                            isOpen: true,
+                            tipo: 'info',
+                            titulo: 'Shipping',
+                            mensaje: `Enviando datos de ${nombreLinea} a Shipping...`,
+                          });
+                        }}
                         className="px-2.5 py-1 bg-[#00f2fe]/10 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-bold rounded-lg transition-all cursor-pointer"
                         title="Enviar a Shipping"
                       >
