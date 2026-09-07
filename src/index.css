@@ -1,92 +1,141 @@
 @import "tailwindcss";
 
-/* VARIABLES GLOBAL TEMA CLARO / TEMA OSCURO */
-:root,
+/* =========================================================
+   VARIABLES Y ESTILOS PARA MODO CLARO (LIGHT MODE) HIGH CONTRAST
+   ========================================================= */
+
 html.light,
 body.light {
-  --bg-app: #f3f4f6;
-  --bg-surface: #ffffff;
-  --border-color: #e2e8f0;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-}
-
-html.dark,
-body.dark {
-  --bg-app: #0b0e14;
-  --bg-surface: #121826;
-  --border-color: rgba(255, 255, 255, 0.1);
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-}
-
-/* REGLAS MAESTRAS MODO CLARO (DÍA) */
-html.light body,
-html.light #root,
-html.light main,
-html.light aside,
-html.light header {
   background-color: #f1f5f9 !important;
   color: #0f172a !important;
 }
 
-/* Transformación de todos los contenedores a Blanco Limpio en Modo Día */
+/* Fondo principal y contenedores en Modo Día */
 html.light div[class*="bg-"],
 html.light aside[class*="bg-"],
 html.light header[class*="bg-"],
-html.light form[class*="bg-"] {
+html.light form[class*="bg-"],
+html.light main[class*="bg-"] {
   background-color: #ffffff !important;
-  border-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
   color: #0f172a !important;
 }
 
-/* Bordes y Sombras en Modo Día */
-html.light div[class*="border-[#00f2fe]"],
-html.light div[class*="border-white"],
-html.light div[class*="border-purple"] {
-  border-color: #cbd5e1 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+/* Ajuste de opacidad y contraste en texto general */
+html.light span, 
+html.light p, 
+html.light td, 
+html.light th, 
+html.light label, 
+html.light div {
+  opacity: 1 !important;
 }
 
-/* Tablas en Modo Día */
-html.light table tr,
+/* Colores de texto de tablas con alto contraste */
 html.light table th {
-  background-color: #f8fafc !important;
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light table td {
   color: #1e293b !important;
   border-color: #e2e8f0 !important;
 }
 
+html.light table tbody tr {
+  background-color: #ffffff !important;
+}
+
 html.light table tbody tr:hover {
-  background-color: #f1f5f9 !important;
+  background-color: #f8fafc !important;
 }
 
-/* Colores de Textos Relevantes */
-html.light .text-[#00f2fe] {
+/* Corrección de números desvanecidos (QTY, Estilos, Códigos) */
+html.light .text-white,
+html.light .text-gray-300,
+html.light .text-gray-400,
+html.light .text-slate-500 {
+  color: #1e293b !important;
+}
+
+/* Resaltados e Identificadores en Modo Día */
+html.light .text-[#00f2fe],
+html.light .text-cyan-600 {
   color: #0284c7 !important;
-}
-
-html.light .text-[#39ff14] {
-  color: #16a34a !important;
+  font-weight: 800 !important;
 }
 
 html.light .text-amber-300,
-html.light .text-amber-400 {
-  color: #d97706 !important;
+html.light .text-amber-400,
+html.light .text-amber-600 {
+  color: #b45309 !important;
+  font-weight: 800 !important;
 }
 
-html.light .text-gray-300,
-html.light .text-gray-400 {
-  color: #475569 !important;
+html.light .text-[#39ff14],
+html.light .text-emerald-600 {
+  color: #15803d !important;
+  font-weight: 800 !important;
 }
 
-/* Inputs de Texto */
+/* Estatus / Badges en Modo Día */
+html.light .bg-rose-500\/20 {
+  background-color: #ffe4e6 !important;
+  color: #be123c !important;
+  border-color: #f43f5e !important;
+  font-weight: 800 !important;
+}
+
+html.light .bg-emerald-500\/20 {
+  background-color: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #22c55e !important;
+  font-weight: 800 !important;
+}
+
+html.light .bg-amber-500\/20 {
+  background-color: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #f59e0b !important;
+  font-weight: 800 !important;
+}
+
+/* Columna de Envíos y Captura (1. ENV, 2. CAPTURA) */
+html.light .bg-blue-950\/40,
+html.light .bg-blue-950\/20,
+html.light .bg-blue-100,
+html.light .bg-blue-50 {
+  background-color: #eff6ff !important;
+}
+
+html.light .bg-emerald-950\/40,
+html.light .bg-emerald-950\/20,
+html.light .bg-emerald-100,
+html.light .bg-emerald-50 {
+  background-color: #f0fdf4 !important;
+}
+
+/* Inputs, Inputs de Tabla y Formularios */
 html.light input[type="text"],
 html.light select {
   background-color: #ffffff !important;
-  border-color: #cbd5e1 !important;
+  border-color: #94a3b8 !important;
   color: #0f172a !important;
+  font-weight: 700 !important;
 }
 
 html.light input[type="text"]::placeholder {
-  color: #94a3b8 !important;
+  color: #64748b !important;
+}
+
+/* =========================================================
+   MODO NOCHE (DARK MODE)
+   ========================================================= */
+
+html.dark,
+body.dark {
+  background-color: #0b0e14 !important;
+  color: #f8fafc !important;
 }
