@@ -506,17 +506,17 @@ export const WipStocksVendidasView: React.FC = () => {
         checkCaptura: false,
       };
 
-      if (activeSubTab === 'buscar-bp') {
-        setTablasBP(prev => ({
-          ...prev,
-          [nombreTabla]: [itemNuevo, ...(prev[nombreTabla] || [])],
-        }));
-      } else {
-        setTablasFD(prev => ({
-          ...prev,
-          [nombreTabla]: [itemNuevo, ...(prev[nombreTabla] || [])],
-        }));
-      }
+     if (activeSubTab === 'buscar-bp') {
+  setTablasBP(prev => ({
+    ...prev,
+    [nombreTabla]: [...(prev[nombreTabla] || []), itemNuevo], // Insertar al final (debajo)
+  }));
+} else {
+  setTablasFD(prev => ({
+    ...prev,
+    [nombreTabla]: [...(prev[nombreTabla] || []), itemNuevo], // Insertar al final (debajo)
+  }));
+}
 
       setInputsPorTabla(prev => ({ ...prev, [nombreTabla]: '' }));
     } catch (error) {
