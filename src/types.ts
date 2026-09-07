@@ -2,6 +2,8 @@ export type TabType =
   | 'dashboard-live'
   | 'planos'
   | 'sizing-calculator'
+  | 'wip-stocks-vendidas'
+  | 'wip-demo'
   | 'wip'
   | 'cuadre-fd'
   | 'cuadre-mochilas'
