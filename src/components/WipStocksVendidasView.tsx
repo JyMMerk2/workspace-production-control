@@ -214,7 +214,7 @@ export const WipStocksVendidasView: React.FC = () => {
     if (registradoEnOrdenesDelDia || item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
-        estiloClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-[#39ff14] border border-emerald-300 dark:border-emerald-500/40',
+        estiloClass: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-[#39ff14] border border-emerald-300 dark:border-emerald-500/40',
         checkAuto: true,
       };
     }
@@ -229,7 +229,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
     return {
       texto: 'FALTA CAPTURA',
-      estiloClass: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 border border-rose-300 dark:border-rose-500/40',
+      estiloClass: 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 border border-rose-300 dark:border-rose-500/40',
       checkAuto: false,
     };
   };
@@ -1014,21 +1014,45 @@ export const WipStocksVendidasView: React.FC = () => {
                             const checkEfectivo = f.checkCaptura || evalJerarquica.checkAuto;
 
                             return (
-                              <tr key={f.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                                <td className="p-1.5 font-mono font-bold text-sky-600 dark:text-[#00f2fe] whitespace-nowrap">{f.po}</td>
-                                <td className="p-1.5 font-mono font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">{f.contrato}</td>
-                                <td className="p-1.5 text-center font-mono font-bold text-slate-800 dark:text-white whitespace-nowrap">{f.qty}</td>
-                                <td className="p-1.5 font-mono text-slate-600 dark:text-gray-300 whitespace-nowrap">{f.style}</td>
-                                <td className="p-1.5 text-slate-600 dark:text-gray-300 whitespace-nowrap">{f.color}</td>
+                              <tr
+                                key={f.id}
+                                className={`transition-all duration-200 ${
+                                  checkEfectivo
+                                    ? 'bg-emerald-100/70 dark:bg-emerald-950/30 border-l-4 border-emerald-500 dark:border-[#39ff14]'
+                                    : 'hover:bg-slate-50 dark:hover:bg-white/5 border-l-4 border-transparent'
+                                }`}
+                              >
+                                <td className={`p-1.5 font-mono font-bold whitespace-nowrap ${checkEfectivo ? 'text-emerald-900 dark:text-[#39ff14]' : 'text-sky-600 dark:text-[#00f2fe]'}`}>
+                                  {f.po}
+                                </td>
+
+                                <td className={`p-1.5 font-mono font-bold whitespace-nowrap ${checkEfectivo ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                                  {f.contrato}
+                                </td>
+
+                                <td className="p-1.5 text-center font-mono font-bold text-slate-800 dark:text-white whitespace-nowrap">
+                                  {f.qty}
+                                </td>
+
+                                <td className={`p-1.5 font-mono whitespace-nowrap ${checkEfectivo ? 'text-emerald-900 font-semibold dark:text-gray-200' : 'text-slate-600 dark:text-gray-300'}`}>
+                                  {f.style}
+                                </td>
+
+                                <td className={`p-1.5 whitespace-nowrap ${checkEfectivo ? 'text-emerald-900 font-semibold dark:text-gray-200' : 'text-slate-600 dark:text-gray-300'}`}>
+                                  {f.color}
+                                </td>
+
                                 <td className="p-1.5 text-center whitespace-nowrap">
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                    f.tipo === 'CUSTOM' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30' : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
+                                    f.tipo === 'CUSTOM'
+                                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30'
+                                      : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
                                   }`}>
                                     {f.tipo}
                                   </span>
                                 </td>
 
-                                <td className="p-1.5 text-center bg-slate-50 dark:bg-blue-950/20 whitespace-nowrap">
+                                <td className="p-1.5 text-center whitespace-nowrap">
                                   <input
                                     type="checkbox"
                                     checked={f.checkShipping}
@@ -1037,7 +1061,7 @@ export const WipStocksVendidasView: React.FC = () => {
                                   />
                                 </td>
 
-                                <td className="p-1.5 text-center bg-emerald-50/50 dark:bg-emerald-950/20 whitespace-nowrap">
+                                <td className="p-1.5 text-center whitespace-nowrap">
                                   <input
                                     type="checkbox"
                                     checked={checkEfectivo}
@@ -1047,7 +1071,7 @@ export const WipStocksVendidasView: React.FC = () => {
                                 </td>
 
                                 <td className="p-1.5 text-center font-bold whitespace-nowrap">
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${evalJerarquica.estiloClass}`}>
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold shadow-sm ${evalJerarquica.estiloClass}`}>
                                     {evalJerarquica.texto}
                                   </span>
                                 </td>
@@ -1056,7 +1080,7 @@ export const WipStocksVendidasView: React.FC = () => {
                                   <button
                                     onClick={() => handleEliminarOrden(nombreLinea, f.id)}
                                     className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded cursor-pointer transition-all"
-                                    title="Eliminar orden de la lista"
+                                    title="Eliminar orden"
                                   >
                                     🗑️
                                   </button>
