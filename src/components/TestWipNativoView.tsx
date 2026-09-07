@@ -54,7 +54,7 @@ export const TestWipNativoView: React.FC = () => {
   const [sheetsUrl, setSheetsUrl] = useState('');
   const [isLiveConnected, setIsLiveConnected] = useState(false);
 
-  // Modal de confirmación para transferir a WIP Stocks & Vendidas (Columna A)
+  // Modal de confirmación para transferir a WIP Stocks & Vendidas (Primer espacio vacío de Columna A)
   const [pendingTransferContract, setPendingTransferContract] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,14 +160,14 @@ export const TestWipNativoView: React.FC = () => {
     };
   }, []);
 
-  // Confirmar y Anotar Contrato únicamente en Columna A ("Anotar aquí ↓")
+  // Anotar contrato en el primer espacio disponible de la Columna A
   const confirmAndExecuteTransfer = async (contratoId: string) => {
     const { error } = await supabase
       .from('wip_stocks_vendidas')
       .upsert([{ contrato: contratoId }], { onConflict: 'contrato' });
 
     if (!error) {
-      alert(`✅ Contrato ${contratoId} anotado en "ORDENES DEL DIA" (Columna A).`);
+      alert(`✅ Contrato ${contratoId} anotado en el primer espacio libre de la Columna A.`);
     } else {
       alert('Error al transferir contrato: ' + error.message);
     }
@@ -217,7 +217,7 @@ export const TestWipNativoView: React.FC = () => {
       contrato: match?.contrato || contratoExtracted,
       estilo: match?.estilo || 'PENDIENTE DB',
       qty: match?.qty || 0,
-      completado: false, // Por defecto desmarcado (PARCIAL)
+      completado: false, // Inicia desmarcado (PARCIAL)
       estado_captura: 'CAPTURADO PARCIAL',
       estado_general: match?.estadoGeneral || 'AB',
       modificado_por: activeUser,
@@ -595,7 +595,7 @@ export const TestWipNativoView: React.FC = () => {
               <h3 className="text-base font-bold uppercase">Confirmar Transferencia</h3>
             </div>
             <p className="text-xs text-gray-300 leading-relaxed">
-              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea anotarlo en <strong className="text-white">"ORDENES DEL DIA" (Columna A)</strong>?
+              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea anotarlo en el primer espacio vacío de <strong className="text-white">"ORDENES DEL DIA" (Columna A)</strong>?
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
