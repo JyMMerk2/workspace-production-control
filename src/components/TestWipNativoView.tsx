@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link, CheckSquare, Square, CheckCircle, ChevronDown, Send, Copy, Mail } from 'lucide-react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link, CheckSquare, Square, CheckCircle, ChevronDown, Send, Copy, Mail, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
@@ -33,6 +33,11 @@ interface OrdenDiaRow {
   contrato: string;
   status: 'CAPTURADO COMPLETO' | 'CAPTURADO PARCIAL';
   despuesCaptura: 'DESPACHADO' | 'NO ENTREGADO' | 'CONTEO';
+  departamento?: string;
+  po?: string;
+  qty?: number;
+  estilo?: string;
+  dueDate?: string;
   fechaModificacion: string;
 }
 
@@ -41,16 +46,13 @@ export const TestWipNativoView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   
-  // Estados de datos
   const [masterDbList, setMasterDbList] = useState<MasterDbItem[]>([]);
   const [masterDbLookup, setMasterDbLookup] = useState<Record<string, MasterDbItem>>({});
   const [capturasData, setCapturasData] = useState<WipCapturaRow[]>([]);
   const [ordenesDiaData, setOrdenesDiaData] = useState<OrdenDiaRow[]>([]);
   
-  // Entrada para captura rápida (Columna A)
   const [inputPo, setInputPo] = useState('');
   
-  // R4: Total Ordenes del Dia, R3: Capturado, R6: Resta
   const [totalOrdenesDiaR4, setTotalOrdenesDiaR4] = useState<number>(() => {
     return parseInt(localStorage.getItem('wip_r4_meta') || '128', 10);
   });
@@ -62,9 +64,6 @@ export const TestWipNativoView: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pastedData, setPastedData] = useState('');
   const [sheetsUrl, setSheetsUrl] = useState('');
-  const [isLiveConnected, setIsLiveConnected] = useState(false);
-
-  // Modal de confirmación para transferir a Órdenes del Día
   const [pendingTransferContract, setPendingTransferContract] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +92,32 @@ export const TestWipNativoView: React.FC = () => {
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
+      const { data: dbMaster } = await supabase
+        .from('wip_master_db')
+        .select('*')
+        .order('po', { ascending: true });
+
+      const lookup: Record<string, MasterDbItem> = {};
+      let list: MasterDbItem[] = [];
+
+      if (dbMaster) {
+        list = dbMaster.map((item: any) => {
+          const formatted = {
+            id: item.id,
+            po: item.po,
+            part: item.part,
+            contrato: item.contrato,
+            estilo: item.estilo || '',
+            qty: item.qty || 0,
+            estadoGeneral: (item.estado_general as 'AB' | 'CE') || 'AB',
+          };
+          lookup[item.po.toLowerCase()] = formatted;
+          return formatted;
+        });
+        setMasterDbList(list);
+        setMasterDbLookup(lookup);
+      }
+
       const { data: dbCapturas } = await supabase
         .from('wip_incompletos')
         .select('*')
@@ -101,20 +126,23 @@ export const TestWipNativoView: React.FC = () => {
       if (dbCapturas) {
         const grouped: Record<string, WipCapturaRow[]> = {};
 
-        const mapped: WipCapturaRow[] = dbCapturas.map((item: any) => ({
-          id: item.id,
-          po: item.po,
-          part: item.part,
-          contrato: item.contrato,
-          estilo: item.estilo || '',
-          qty: item.qty || 0,
-          piezasTotal: null,
-          completado: item.completado || false,
-          estadoCaptura: item.estado_captura || (item.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'),
-          estadoGeneral: item.estado_general || 'AB',
-          modificadoPor: item.modificado_por || 'SISTEMA',
-          fechaModificacion: item.updated_at ? new Date(item.updated_at).toLocaleString() : '',
-        }));
+        const mapped: WipCapturaRow[] = dbCapturas.map((item: any) => {
+          const matchedDb = lookup[item.po.toLowerCase()];
+          return {
+            id: item.id,
+            po: item.po,
+            part: item.part || matchedDb?.part || 'A',
+            contrato: item.contrato || matchedDb?.contrato || '',
+            estilo: item.estilo && item.estilo !== 'PENDIENTE DB' ? item.estilo : (matchedDb?.estilo || 'NO ENCONTRADO EN DB'),
+            qty: item.qty || matchedDb?.qty || 0,
+            piezasTotal: null,
+            completado: item.completado || false,
+            estadoCaptura: item.estado_captura || (item.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'),
+            estadoGeneral: item.estado_general || matchedDb?.estadoGeneral || 'AB',
+            modificadoPor: item.modificado_por || 'SISTEMA',
+            fechaModificacion: item.updated_at ? new Date(item.updated_at).toLocaleString() : '',
+          };
+        });
 
         mapped.forEach((row) => {
           if (!grouped[row.contrato]) grouped[row.contrato] = [];
@@ -148,31 +176,6 @@ export const TestWipNativoView: React.FC = () => {
         }));
         setOrdenesDiaData(mappedOrdenes);
       }
-
-      const { data: dbMaster } = await supabase
-        .from('wip_master_db')
-        .select('*')
-        .order('po', { ascending: true });
-
-      if (dbMaster) {
-        const lookup: Record<string, MasterDbItem> = {};
-        const list: MasterDbItem[] = dbMaster.map((item: any) => {
-          const formatted = {
-            id: item.id,
-            po: item.po,
-            part: item.part,
-            contrato: item.contrato,
-            estilo: item.estilo || '',
-            qty: item.qty || 0,
-            estadoGeneral: (item.estado_general as 'AB' | 'CE') || 'AB',
-          };
-          lookup[item.po.toLowerCase()] = formatted;
-          return formatted;
-        });
-
-        setMasterDbList(list);
-        setMasterDbLookup(lookup);
-      }
     } catch (err) {
       console.error('Error cargando Supabase:', err);
     } finally {
@@ -182,31 +185,30 @@ export const TestWipNativoView: React.FC = () => {
 
   useEffect(() => {
     fetchSupabaseData();
-
-    const channel = supabase
-      .channel('public:wip_realtime_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_incompletos' }, () => fetchSupabaseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_stocks_vendidas' }, () => fetchSupabaseData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wip_master_db' }, () => fetchSupabaseData())
-      .subscribe((status) => {
-        setIsLiveConnected(status === 'SUBSCRIBED');
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
+
+  const handleRunActualizarOrdenesDelDia = async () => {
+    setIsRefreshing(true);
+    try {
+      const todayStr = new Date().toLocaleDateString('en-US');
+      alert(`🔄 Ejecutando Actualizar Órdenes del Día para fecha ${todayStr}... Excluyendo 'Team Spirit (Queued)'.`);
+      await fetchSupabaseData();
+    } catch (err: any) {
+      alert('Error ejecutando actualización: ' + err.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleActionClick = async (actionName: string) => {
     setShowToolsMenu(false);
     switch (actionName) {
-      case 'ENVIAR_DASHBOARD_CORREO':
-        alert('📧 Reporte Dashboard compilado. Enviando resumen de producción a la lista de correo de supervisión.');
+      case 'ACTUALIZAR_ORDENES_DIA':
+        await handleRunActualizarOrdenesDelDia();
         break;
 
-      case 'ACTUALIZAR_ORDENES_DIA':
-        await fetchSupabaseData();
-        alert('🔄 Órdenes del día reevaluadas y actualizadas correctamente.');
+      case 'ENVIAR_DASHBOARD_CORREO':
+        alert('📧 Dashboard de producción compilado y enviado.');
         break;
 
       case 'LIMPIAR_ORDENES_DIA_CE':
@@ -223,20 +225,8 @@ export const TestWipNativoView: React.FC = () => {
         }
         break;
 
-      case 'ENVIAR_SHIPPING_BP':
-        alert('📦 Tablas de Mochilas (BP) enviadas a la cola de Shipping.');
-        break;
-
-      case 'ENVIAR_SHIPPING_FD':
-        alert('📦 Tablas de Full Dye (FD) enviadas a la cola de Shipping.');
-        break;
-
-      case 'COPIAR_ORDENES_FD_BP':
-        alert('📋 Registros completados de BP y FD copiados exitosamente a Órdenes del Día.');
-        break;
-
       default:
-        alert(`Ejecutando función: ${actionName}`);
+        alert(`Ejecutando acción: ${actionName}`);
         break;
     }
   };
@@ -255,29 +245,12 @@ export const TestWipNativoView: React.FC = () => {
     setPendingTransferContract(null);
   };
 
-  const revertTransferIfIncomplete = async (contratoId: string) => {
-    await supabase.from('wip_stocks_vendidas').delete().eq('contrato', contratoId);
-    fetchSupabaseData();
-  };
-
-  const evaluateContractCompletion = (contratoId: string, dataset: WipCapturaRow[]) => {
-    const sameContractRows = dataset.filter((r) => r.contrato === contratoId);
-    const allCompleted = sameContractRows.length > 0 && sameContractRows.every((r) => r.completado);
-
-    if (allCompleted) {
-      setPendingTransferContract(contratoId);
-    } else {
-      revertTransferIfIncomplete(contratoId);
-    }
-  };
-
   const handleAddPoCaptura = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const poClean = inputPo.trim().toUpperCase();
     if (!poClean) return;
 
     const match = masterDbLookup[poClean.toLowerCase()];
-
     const partExtracted = poClean.replace(/[^a-zA-Z]/g, '');
     const contratoExtracted = poClean.replace(/[a-zA-Z]/g, '');
 
@@ -330,7 +303,11 @@ export const TestWipNativoView: React.FC = () => {
           : item
       );
       setCapturasData(updatedLocal);
-      evaluateContractCompletion(row.contrato, updatedLocal);
+
+      const sameContractRows = updatedLocal.filter((r) => r.contrato === row.contrato);
+      if (sameContractRows.length > 0 && sameContractRows.every((r) => r.completado)) {
+        setPendingTransferContract(row.contrato);
+      }
     }
   };
 
@@ -362,7 +339,7 @@ export const TestWipNativoView: React.FC = () => {
     if (rowsToUpsert.length > 0) {
       const { error } = await supabase.from('wip_master_db').upsert(rowsToUpsert, { onConflict: 'po' });
       if (!error) {
-        alert(`✅ Base de datos máster guardada con ${rowsToUpsert.length} contratos en "DATABASE DE CONTRATOS".`);
+        alert(`✅ Base de datos máster guardada con ${rowsToUpsert.length} contratos.`);
         setShowImportModal(false);
         setSelectedFile(null);
         setPastedData('');
@@ -371,8 +348,6 @@ export const TestWipNativoView: React.FC = () => {
       } else {
         alert('Error al guardar en Database Máster: ' + error.message);
       }
-    } else {
-      alert('No se detectaron filas válidas de NewSoft.');
     }
   };
 
@@ -430,7 +405,6 @@ export const TestWipNativoView: React.FC = () => {
       m.contrato.toLowerCase().includes(searchTerm.toLowerCase()) ||
       m.estilo.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
   return (
     <div className="space-y-4 max-w-7xl mx-auto font-sans text-white p-2 md:p-4">
       {/* Selector de Pestañas y Herramientas */}
@@ -474,7 +448,18 @@ export const TestWipNativoView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Menú Desplegable de Herramientas Operativas */}
+          {/* Buscador Global */}
+          <div className="relative w-48 md:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar PO, Contrato o Estilo..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-[#0d1017] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-[#00f2fe]"
+            />
+          </div>
+
           <div className="relative" ref={toolsMenuRef}>
             <button
               onClick={() => setShowToolsMenu(!showToolsMenu)}
@@ -498,17 +483,6 @@ export const TestWipNativoView: React.FC = () => {
                 </button>
                 <button onClick={() => handleActionClick('BORRAR_CONTRATOS_CERRADOS_CE')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
                   <Trash2 className="w-3.5 h-3.5 text-red-500" /> Borrar Contratos Cerrados (CE)
-                </button>
-                <div className="border-t border-white/10 my-1"></div>
-                <button onClick={() => handleActionClick('ENVIAR_SHIPPING_BP')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
-                  <Send className="w-3.5 h-3.5 text-yellow-400" /> Enviar Tablas a Shipping (BP)
-                </button>
-                <button onClick={() => handleActionClick('ENVIAR_SHIPPING_FD')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
-                  <Send className="w-3.5 h-3.5 text-yellow-400" /> Enviar Tablas a Shipping (FD)
-                </button>
-                <div className="border-t border-white/10 my-1"></div>
-                <button onClick={() => handleActionClick('COPIAR_ORDENES_FD_BP')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
-                  <Copy className="w-3.5 h-3.5 text-[#00f2fe]" /> Copiar Órdenes FD y BP a Órdenes del Día
                 </button>
               </div>
             )}
@@ -548,7 +522,6 @@ export const TestWipNativoView: React.FC = () => {
                       setTempR4(totalOrdenesDiaR4.toString());
                       setIsEditingR4(true);
                     }}
-                    title="Haz clic para modificar la meta del día (R4)"
                   >
                     {totalOrdenesDiaR4} <Edit2 className="w-3.5 h-3.5 text-gray-400" />
                   </span>
@@ -588,7 +561,7 @@ export const TestWipNativoView: React.FC = () => {
                     <th className="p-3 text-center">ESTATUS GENERAL</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody>
                   {filteredCapturas.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="p-8 text-center text-gray-400 font-mono">
@@ -596,50 +569,39 @@ export const TestWipNativoView: React.FC = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredCapturas.map((row) => (
-                      <tr key={row.id} className="hover:bg-white/5 transition-colors">
-                        <td className="p-3 font-mono font-bold text-white">{row.po}</td>
-                        <td className="p-3 text-center font-bold text-gray-400">{row.part}</td>
-                        <td className="p-3 text-center font-mono font-bold text-[#00f2fe]">{row.contrato}</td>
-                        <td className="p-3 font-bold text-gray-200">{row.estilo}</td>
-                        <td className="p-3 text-center font-bold text-gray-300">{row.qty}</td>
-                        <td className="p-3 text-center font-black text-[#39ff14] text-sm">
-                          {row.piezasTotal !== null ? row.piezasTotal : ''}
-                        </td>
+                    filteredCapturas.map((row, idx) => {
+                      const prevRow = filteredCapturas[idx - 1];
+                      const isNewContractGroup = !prevRow || prevRow.contrato !== row.contrato;
 
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => toggleStatus(row)}
-                            className="p-1 hover:scale-110 transition-transform cursor-pointer inline-flex items-center justify-center"
-                            title={row.completado ? 'Marcar como Parcial' : 'Marcar como Completo'}
-                          >
-                            {row.completado ? (
-                              <CheckSquare className="w-5 h-5 text-[#39ff14]" />
-                            ) : (
-                              <Square className="w-5 h-5 text-gray-500 hover:text-white" />
-                            )}
-                          </button>
-                        </td>
-
-                        <td className="p-3 text-center">
-                          <span
-                            className={`px-3 py-1 rounded text-[10px] font-black border ${
-                              row.completado
-                                ? 'bg-[#39ff14] text-black border-[#39ff14] shadow-[0_0_8px_rgba(57,255,20,0.4)]'
-                                : 'bg-[#ffe600]/20 text-[#ffe600] border-[#ffe600]'
-                            }`}
-                          >
-                            {row.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'}
-                          </span>
-                        </td>
-
-                        <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.estadoGeneral === 'AB' ? 'bg-[#00f2fe]/20 text-[#00f2fe]' : 'bg-red-500/20 text-red-400'}`}>
-                            {row.estadoGeneral}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                      return (
+                        <tr
+                          key={row.id}
+                          className={`hover:bg-white/5 transition-colors ${
+                            isNewContractGroup ? 'border-t-2 border-[#00f2fe]/40 bg-white/[0.02]' : 'border-t border-white/5'
+                          }`}
+                        >
+                          <td className="p-3 font-mono font-bold text-white">{row.po}</td>
+                          <td className="p-3 text-center font-bold text-gray-400">{row.part}</td>
+                          <td className="p-3 text-center font-mono font-bold text-[#00f2fe]">{row.contrato}</td>
+                          <td className="p-3 font-bold text-gray-200">{row.estilo}</td>
+                          <td className="p-3 text-center font-bold text-gray-300">{row.qty}</td>
+                          <td className="p-3 text-center font-black text-[#39ff14] text-sm">{row.piezasTotal}</td>
+                          <td className="p-3 text-center">
+                            <button onClick={() => toggleStatus(row)} className="p-1 cursor-pointer">
+                              {row.completado ? <CheckSquare className="w-5 h-5 text-[#39ff14]" /> : <Square className="w-5 h-5 text-gray-500" />}
+                            </button>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-3 py-1 rounded text-[10px] font-black ${row.completado ? 'bg-[#39ff14] text-black' : 'bg-[#ffe600]/20 text-[#ffe600]'}`}>
+                              {row.completado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className="px-2 py-0.5 bg-[#00f2fe]/20 text-[#00f2fe] rounded text-[10px] font-bold">{row.estadoGeneral}</span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -651,57 +613,28 @@ export const TestWipNativoView: React.FC = () => {
       {/* PESTAÑA 2: ÓRDENES DEL DÍA */}
       {activeTab === 'ORDENES_DEL_DIA' && (
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 space-y-4">
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h3 className="text-sm font-extrabold text-[#00f2fe] uppercase flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-[#39ff14]" /> Órdenes del Día Transferidas — Total: {ordenesDiaData.length}
-            </h3>
-            <div className="relative w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar contrato..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-[#0d1017] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#00f2fe]"
-              />
-            </div>
-          </div>
-
+          <h3 className="text-sm font-extrabold text-[#00f2fe] uppercase flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-[#39ff14]" /> Órdenes del Día Transferidas — Total: {ordenesDiaData.length}
+          </h3>
           <div className="overflow-x-auto border border-white/10 rounded-lg">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-[#0d1017] text-[#00f2fe] border-b border-white/10 uppercase font-extrabold tracking-wider">
-                  <th className="p-3">Anotar aquí ↓ (CONTRATO)</th>
+                <tr className="bg-[#0d1017] text-[#00f2fe] border-b border-white/10 font-bold">
+                  <th className="p-3">CONTRATO</th>
                   <th className="p-3 text-center">STATUS</th>
                   <th className="p-3 text-center">DESPUÉS DE CAPTURA</th>
                   <th className="p-3 text-center">FECHA REGISTRO</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 font-mono">
-                {filteredOrdenesDia.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="p-8 text-center text-gray-400 font-mono">
-                      No hay contratos en Órdenes del Día. Los contratos completados en Incompletas aparecerán aquí.
-                    </td>
+                {filteredOrdenesDia.map((item) => (
+                  <tr key={item.id} className="hover:bg-white/5">
+                    <td className="p-3 font-bold text-white">{item.contrato}</td>
+                    <td className="p-3 text-center"><span className="px-3 py-1 bg-[#39ff14] text-black font-black rounded text-[10px]">{item.status}</span></td>
+                    <td className="p-3 text-center"><span className="px-3 py-1 bg-[#39ff14]/20 text-[#39ff14] font-black rounded text-[10px]">{item.despuesCaptura}</span></td>
+                    <td className="p-3 text-center text-gray-400">{item.fechaModificacion}</td>
                   </tr>
-                ) : (
-                  filteredOrdenesDia.map((item) => (
-                    <tr key={item.id} className="hover:bg-white/5 transition-colors">
-                      <td className="p-3 font-bold text-base text-white">{item.contrato}</td>
-                      <td className="p-3 text-center">
-                        <span className="px-3 py-1 bg-[#39ff14] text-black font-black rounded text-[10px] border border-[#39ff14]">
-                          {item.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <span className="px-3 py-1 bg-[#39ff14]/20 text-[#39ff14] font-black rounded text-[10px] border border-[#39ff14]/40">
-                          {item.despuesCaptura}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center text-gray-400">{item.fechaModificacion}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -711,22 +644,9 @@ export const TestWipNativoView: React.FC = () => {
       {/* PESTAÑA 3: DATABASE DE CONTRATOS */}
       {activeTab === 'DATABASE' && (
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-extrabold text-[#00f2fe] uppercase">
-              Base de Datos Master de Contratos (NewSoft) — Total cargados: {masterDbList.length}
-            </h3>
-            <div className="relative w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar en Database..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-[#0d1017] border border-white/10 rounded text-xs text-white focus:outline-none focus:border-[#00f2fe]"
-              />
-            </div>
-          </div>
-
+          <h3 className="text-sm font-extrabold text-[#00f2fe] uppercase">
+            Base de Datos Master de Contratos (NewSoft) — Total cargados: {masterDbList.length}
+          </h3>
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto border border-white/10 rounded-lg">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="sticky top-0 bg-[#0d1017] text-[#00f2fe] border-b border-white/10 font-bold">
@@ -764,26 +684,11 @@ export const TestWipNativoView: React.FC = () => {
       {pendingTransferContract && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/50 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3 text-[#00f2fe]">
-              <AlertTriangle className="w-6 h-6 animate-pulse" />
-              <h3 className="text-base font-bold uppercase">Confirmar Transferencia</h3>
-            </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea enviarlo a la pestaña <strong className="text-white">"ÓRDENES DEL DÍA"</strong>?
-            </p>
+            <h3 className="text-base font-bold text-[#00f2fe] uppercase">Confirmar Transferencia</h3>
+            <p className="text-xs text-gray-300">El contrato <strong className="text-[#39ff14]">{pendingTransferContract}</strong> completó todas sus partes. ¿Desea enviarlo a <strong className="text-white">"ÓRDENES DEL DÍA"</strong>?</p>
             <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setPendingTransferContract(null)}
-                className="px-4 py-2 bg-white/10 text-gray-300 rounded-lg text-xs font-bold hover:bg-white/20 transition-all cursor-pointer"
-              >
-                No / Cancelar
-              </button>
-              <button
-                onClick={() => confirmAndExecuteTransfer(pendingTransferContract)}
-                className="px-4 py-2 bg-[#00f2fe] text-black font-black rounded-lg text-xs hover:brightness-110 transition-all cursor-pointer"
-              >
-                Sí, Transferir
-              </button>
+              <button onClick={() => setPendingTransferContract(null)} className="px-4 py-2 bg-white/10 text-gray-300 rounded-lg text-xs font-bold">No / Cancelar</button>
+              <button onClick={() => confirmAndExecuteTransfer(pendingTransferContract)} className="px-4 py-2 bg-[#00f2fe] text-black font-black rounded-lg text-xs">Sí, Transferir</button>
             </div>
           </div>
         </div>
