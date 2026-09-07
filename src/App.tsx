@@ -9,7 +9,8 @@ import { SheetsView } from './components/SheetsView';
 import { ManualView } from './components/ManualView';
 import { ConfigView } from './components/ConfigView';
 import { TestWipNativoView } from './components/TestWipNativoView';
-import { WipStocksVendidasView } from './components/WipStocksVendidasView';import ProductionControlToolbar from './components/ProductionControlToolbar';
+import { WipStocksVendidasView } from './components/WipStocksVendidasView';
+import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
 import { INITIAL_FALLBACK_DASHBOARD, fetchLiveDashboardData } from './data/dashboardService';
@@ -31,10 +32,22 @@ export default function App() {
     return localStorage.getItem('theme_mode') !== 'light';
   });
 
+  // Sincronización del tema global con Tailwind (Elemento Raíz HTML)
+  useEffect(() => {
+    const root = document.documentElement;
+    localStorage.setItem('theme_mode', darkMode ? 'dark' : 'light');
+    
+    if (darkMode) {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    }
+  }, [darkMode]);
+
   const toggleTheme = () => {
-    const nextMode = !darkMode;
-    setDarkMode(nextMode);
-    localStorage.setItem('theme_mode', nextMode ? 'dark' : 'light');
+    setDarkMode(prevMode => !prevMode);
   };
 
   // Inicializar con datos en caché para evitar reseteos a ceros
@@ -125,8 +138,8 @@ export default function App() {
   return (
     <div
       className={`min-h-screen ${
-        darkMode ? 'bg-[#0b0e14] text-[#e1e6ed]' : 'bg-slate-100 text-slate-900'
-      } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
+        darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
+      } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-300`}
     >
       {/* Encabezado Superior */}
       <Header
@@ -180,7 +193,7 @@ export default function App() {
             {/* 2. Módulo Completo Nativo: WIP Stocks & Vendidas */}
             {(activeTab as string) === 'wip-stocks-vendidas' && <WipStocksVendidasView />}
 
-            {/* 3. Módulo DEMO Existente (Preservado intacto) */}
+            {/* 3. Módulo DEMO Existente */}
             {(activeTab as string) === 'wip-demo' && <TestWipNativoView />}
 
             {/* 4. Buscador de Planos */}
