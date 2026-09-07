@@ -24,16 +24,13 @@ interface RegistroIncompleto {
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
+  const [poInput, setPoInput] = useState('');
+  const [tablaTargetSelect, setTablaTargetSelect] = useState('CUSTOM BAGS');
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
-  // Formulario rápido (Entrada de PO)
-  const [nuevaOrden, setNuevaOrden] = useState({
-    tablaTarget: 'CUSTOM BAGS',
-    po: '',
-  });
-
-  // Base de Datos Centralizada para autocompletado instantáneo por PO o Contrato
+  // Diccionario centralizado para autocompletado inmediato al agregar PO
   const baseDatosInventario: Record<string, { qty: number; style: string; color: string; tipo: 'CUSTOM' | 'STOCK' }> = {
+    '427769B': { qty: 1, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
     '419217A': { qty: 10, style: 'PS-9100', color: 'TL/N/HCR', tipo: 'CUSTOM' },
     '427713B': { qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
     '427432A': { qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM' },
@@ -41,10 +38,10 @@ export const WipStocksVendidasView: React.FC = () => {
     '427418A': { qty: 14, style: 'FD-9006', color: 'CUSTOM', tipo: 'CUSTOM' },
     '419211A': { qty: 10, style: 'PS-9100', color: 'M/O/FLE', tipo: 'STOCK' },
     '426281A': { qty: 22, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
-    '427685A': { qty: 14, style: 'FD-9047', color: 'CUSTOM', tipo: 'CUSTOM' },
   };
 
   const [baseIncompletos] = useState<Record<string, RegistroIncompleto>>({
+    '427769B': { po: '427769B', completado: true, piezasFaltantes: 0 },
     '419217A': { po: '419217A', completado: true, piezasFaltantes: 0 },
     '427713B': { po: '427713B', completado: true, piezasFaltantes: 0 },
     '427432A': { po: '427432A', completado: true, piezasFaltantes: 0 },
@@ -54,6 +51,7 @@ export const WipStocksVendidasView: React.FC = () => {
   });
 
   const [ordenesDelDiaRegistradas] = useState<string[]>([
+    '427769',
     '419217',
     '427713',
     '427432',
@@ -61,7 +59,7 @@ export const WipStocksVendidasView: React.FC = () => {
     '426281',
   ]);
 
-  // Tablas Mochilas (BUSCAR BP)
+  // Tablas Mochilas
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>({
     'CUSTOM BAGS': [
       { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
@@ -80,7 +78,7 @@ export const WipStocksVendidasView: React.FC = () => {
     'LINEA 7 (CN)': [],
   });
 
-  // Tablas Full Dye (BUSCAR FD)
+  // Tablas Full Dye
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>({
     'FULL DYE CELDA 1': [
       { id: 'fd-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
@@ -107,7 +105,7 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica de Fórmulas Jerárquicas
+  // Lógica Jerárquica de Fórmulas
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const registroIncompleto = baseIncompletos[item.po];
     const estaEnOrdenesDia = ordenesDelDiaRegistradas.includes(item.contrato);
@@ -131,7 +129,7 @@ export const WipStocksVendidasView: React.FC = () => {
     if (registroIncompleto.completado && !estaEnOrdenesDia) {
       return {
         texto: 'REVISAR WIP E INCOMPLETOS',
-        estiloClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+        estiloClass: 'bg-purple-500/20 text-purple-[#39ff14] border-purple-500/40',
         checkAuto: true,
       };
     }
@@ -143,57 +141,67 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Función Principal: Buscar PO en BD y autocompletar automáticamente datos
-  const handleAgregarOrdenBuscandoEnBD = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const poBuscada = nuevaOrden.po.trim().toUpperCase();
+  // Función ejecutable al presionar "Agregar Orden" o presionar ENTER
+  const ejecutarAgregarOrden = async () => {
+    const poLimpia = poInput.trim().toUpperCase();
 
-    if (!poBuscada) {
-      return alert('Ingresa un número de PO/Contrato');
+    if (!poLimpia) {
+      alert('Ingresa un número de PO/Contrato válido.');
+      return;
     }
 
     setLoadingBusqueda(true);
 
     try {
-      // 1. Consultar en base de datos local / Supabase
-      let detalles = baseDatosInventario[poBuscada];
+      // 1. Búsqueda de datos
+      let detalles = baseDatosInventario[poLimpia];
 
       if (!detalles) {
-        const resService = await wipEngineService.buscarDetallesPO(poBuscada);
+        const resService = await wipEngineService.buscarDetallesPO(poLimpia);
         if (resService) detalles = resService;
       }
 
-      // 2. Extraer número de contrato (quitar letras)
-      const contratoLimpio = poBuscada.replace(/[A-Za-z]/g, '');
+      // Extraer contrato numérico
+      const contratoCalculado = poLimpia.replace(/[A-Za-z]/g, '');
 
-      // 3. Crear item autocompletado
+      // 2. Construcción de la nueva fila
       const itemNuevo: OrdenItem = {
         id: Date.now().toString(),
-        po: poBuscada,
-        contrato: contratoLimpio || poBuscada,
+        po: poLimpia,
+        contrato: contratoCalculado || poLimpia,
         qty: detalles ? detalles.qty : 1,
-        style: detalles ? detalles.style : 'FD-GENERIC',
+        style: detalles ? detalles.style : 'FD-9031',
         color: detalles ? detalles.color : 'CUSTOM',
         tipo: detalles ? detalles.tipo : 'CUSTOM',
         checkShipping: false,
         checkCaptura: false,
       };
 
-      const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
-      const target = nuevaOrden.tablaTarget;
+      // 3. Inserción reactiva en el estado
+      if (activeSubTab === 'buscar-bp') {
+        setTablasBP(prev => ({
+          ...prev,
+          [tablaTargetSelect]: [itemNuevo, ...(prev[tablaTargetSelect] || [])],
+        }));
+      } else {
+        setTablasFD(prev => ({
+          ...prev,
+          [tablaTargetSelect]: [itemNuevo, ...(prev[tablaTargetSelect] || [])],
+        }));
+      }
 
-      setter(prev => ({
-        ...prev,
-        [target]: [itemNuevo, ...(prev[target] || [])],
-      }));
-
-      // Limpiar campo de entrada
-      setNuevaOrden(prev => ({ ...prev, po: '' }));
-    } catch (err) {
-      console.error(err);
+      // Resetear input
+      setPoInput('');
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoadingBusqueda(false);
     }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    ejecutarAgregarOrden();
   };
 
   const toggleShipping = (tabla: string, id: string) => {
@@ -217,7 +225,7 @@ export const WipStocksVendidasView: React.FC = () => {
   };
 
   const handleEliminarOrden = (tabla: string, id: string) => {
-    if (confirm('¿Deseas eliminar esta orden de la tabla?')) {
+    if (confirm('¿Deseas eliminar esta orden de la lista?')) {
       const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
       setter(prev => ({
         ...prev,
@@ -233,7 +241,7 @@ export const WipStocksVendidasView: React.FC = () => {
         <button
           onClick={() => {
             setActiveSubTab('buscar-bp');
-            setNuevaOrden(p => ({ ...p, tablaTarget: 'CUSTOM BAGS' }));
+            setTablaTargetSelect('CUSTOM BAGS');
           }}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'buscar-bp'
@@ -247,7 +255,7 @@ export const WipStocksVendidasView: React.FC = () => {
         <button
           onClick={() => {
             setActiveSubTab('buscar-fd');
-            setNuevaOrden(p => ({ ...p, tablaTarget: 'FULL DYE CELDA 1' }));
+            setTablaTargetSelect('FULL DYE CELDA 1');
           }}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'buscar-fd'
@@ -287,7 +295,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner Módulo de Búsqueda Rápida e Inserción con Autocompletado */}
+      {/* 2. Banner con formulario totalmente funcional */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -316,11 +324,11 @@ export const WipStocksVendidasView: React.FC = () => {
           </div>
         </div>
 
-        {/* Escribes la PO + Enter / Clic y consulta BD autocompletando datos */}
-        <form onSubmit={handleAgregarOrdenBuscandoEnBD} className="flex items-center gap-2 flex-wrap">
+        {/* Formulario conectado */}
+        <form onSubmit={handleFormSubmit} className="flex items-center gap-2 flex-wrap">
           <select
-            value={nuevaOrden.tablaTarget}
-            onChange={e => setNuevaOrden({ ...nuevaOrden, tablaTarget: e.target.value })}
+            value={tablaTargetSelect}
+            onChange={e => setTablaTargetSelect(e.target.value)}
             className="bg-[#0b0e14] border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white"
           >
             {(activeSubTab === 'buscar-bp' ? lineasBPNames : lineasFDNames).map(l => (
@@ -331,9 +339,9 @@ export const WipStocksVendidasView: React.FC = () => {
           <input
             type="text"
             placeholder="Digitar / Escanear PO..."
-            value={nuevaOrden.po}
-            onChange={e => setNuevaOrden({ ...nuevaOrden, po: e.target.value })}
-            className="bg-[#0b0e14] border border-[#00f2fe]/60 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-44 font-mono font-bold"
+            value={poInput}
+            onChange={e => setPoInput(e.target.value)}
+            className="bg-[#0b0e14] border border-[#00f2fe]/60 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-48 font-mono font-bold"
           />
 
           <button
@@ -346,7 +354,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* 3. Renderizado de Tablas con PO y CONTRATO visibles */}
+      {/* 3. Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
