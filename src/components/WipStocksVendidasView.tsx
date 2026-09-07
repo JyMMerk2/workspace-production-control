@@ -213,7 +213,7 @@ export const WipStocksVendidasView: React.FC = () => {
     if (registradoEnOrdenesDelDia || item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
-        estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40',
+        estiloClass: 'bg-emerald-500/20 text-emerald-600 dark:text-[#39ff14] border-emerald-500/40',
         checkAuto: true,
       };
     }
@@ -221,14 +221,14 @@ export const WipStocksVendidasView: React.FC = () => {
     if (datosIncompletos && !datosIncompletos.completado) {
       return {
         texto: 'PARCIAL / EN PROCESO',
-        estiloClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        estiloClass: 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40',
         checkAuto: false,
       };
     }
 
     return {
       texto: 'FALTA CAPTURA',
-      estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+      estiloClass: 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/40',
       checkAuto: false,
     };
   };
@@ -259,13 +259,12 @@ export const WipStocksVendidasView: React.FC = () => {
   }).length;
   const resta = totalOrders - capturados;
 
-  // Lógica con Modal de Confirmación y Cancelación
   const confirmarYActualizarOrdenesDelDia = () => {
     if (queueResults.length === 0) {
       setModal({
         isOpen: true,
         tipo: 'error',
-        titulo: 'Cola Vacia',
+        titulo: 'Cola Vacía',
         mensaje: "La pestaña 'QUEUE RESULTS' no tiene registros. Por favor, sube primero el archivo CustomizationQueue2Results.xls.",
       });
       return;
@@ -552,8 +551,7 @@ export const WipStocksVendidasView: React.FC = () => {
   };
 
   return (
-    <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* Input Oculto Cargar Queue */}
+    <div className="w-full space-y-4 font-sans text-slate-800 dark:text-slate-100 px-1 transition-colors duration-300">
       <input
         type="file"
         ref={fileInputQueueRef}
@@ -562,20 +560,20 @@ export const WipStocksVendidasView: React.FC = () => {
         className="hidden"
       />
 
-      {/* Modal Profesional Integrado */}
+      {/* Modal Profesional Integrado Adaptable al Tema */}
       {modal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-[#121826] border border-[#00f2fe]/40 rounded-2xl p-6 shadow-2xl space-y-4 text-white">
-            <h3 className={`text-lg font-black tracking-wide ${modal.tipo === 'error' ? 'text-red-400' : 'text-[#00f2fe]'}`}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-white dark:bg-[#121826] border border-slate-300 dark:border-[#00f2fe]/40 rounded-2xl p-6 shadow-2xl space-y-4 text-slate-800 dark:text-white transition-colors duration-300">
+            <h3 className={`text-lg font-black tracking-wide ${modal.tipo === 'error' ? 'text-red-500' : 'text-cyan-600 dark:text-[#00f2fe]'}`}>
               {modal.titulo}
             </h3>
-            <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">{modal.mensaje}</p>
+            <p className="text-xs text-slate-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">{modal.mensaje}</p>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-white/10">
               {modal.tipo === 'confirm' && (
                 <button
                   onClick={() => setModal({ ...modal, isOpen: false })}
-                  className="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold rounded-lg cursor-pointer transition-all"
+                  className="px-4 py-1.5 bg-slate-200 dark:bg-gray-800 hover:bg-slate-300 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-300 text-xs font-bold rounded-lg cursor-pointer transition-all"
                 >
                   Cancelar
                 </button>
@@ -586,7 +584,7 @@ export const WipStocksVendidasView: React.FC = () => {
                   if (modal.onConfirm) modal.onConfirm();
                   setModal({ ...modal, isOpen: false });
                 }}
-                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg cursor-pointer shadow-md transition-all"
+                className="px-4 py-1.5 bg-cyan-500 dark:bg-[#00f2fe] hover:bg-cyan-600 dark:hover:bg-[#00c8d4] text-white dark:text-black font-extrabold text-xs rounded-lg cursor-pointer shadow-md transition-all"
               >
                 Aceptar
               </button>
@@ -595,14 +593,14 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       )}
 
-      {/* 1. Selector de Sub-pestañas */}
-      <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
+      {/* 1. Selector de Sub-pestañas Adaptables */}
+      <div className="flex items-center gap-2 border-b border-slate-300 dark:border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveSubTab('buscar-bp')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'buscar-bp'
-              ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
-              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+              ? 'bg-cyan-500 dark:bg-[#00f2fe] text-white dark:text-black font-extrabold shadow-lg'
+              : 'bg-slate-200 dark:bg-[#121620] text-slate-600 dark:text-gray-400 hover:text-black dark:hover:text-white border border-slate-300 dark:border-white/5'
           }`}
         >
           🎒 TABLAS MOCHILAS
@@ -612,8 +610,8 @@ export const WipStocksVendidasView: React.FC = () => {
           onClick={() => setActiveSubTab('buscar-fd')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'buscar-fd'
-              ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
-              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+              ? 'bg-cyan-500 dark:bg-[#00f2fe] text-white dark:text-black font-extrabold shadow-lg'
+              : 'bg-slate-200 dark:bg-[#121620] text-slate-600 dark:text-gray-400 hover:text-black dark:hover:text-white border border-slate-300 dark:border-white/5'
           }`}
         >
           👕 FD (FULL DYE)
@@ -623,8 +621,8 @@ export const WipStocksVendidasView: React.FC = () => {
           onClick={() => setActiveSubTab('ordenes-dia')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'ordenes-dia'
-              ? 'bg-[#00f2fe] text-black font-extrabold shadow-lg shadow-[#00f2fe]/20'
-              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+              ? 'bg-cyan-500 dark:bg-[#00f2fe] text-white dark:text-black font-extrabold shadow-lg'
+              : 'bg-slate-200 dark:bg-[#121620] text-slate-600 dark:text-gray-400 hover:text-black dark:hover:text-white border border-slate-300 dark:border-white/5'
           }`}
         >
           📋 ÓRDENES DEL DÍA ({filasOrdenesDia.length})
@@ -634,8 +632,8 @@ export const WipStocksVendidasView: React.FC = () => {
           onClick={() => setActiveSubTab('queue-results')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeSubTab === 'queue-results'
-              ? 'bg-purple-500 text-white font-extrabold shadow-lg shadow-purple-500/20'
-              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+              ? 'bg-purple-600 dark:bg-purple-500 text-white font-extrabold shadow-lg'
+              : 'bg-slate-200 dark:bg-[#121620] text-slate-600 dark:text-gray-400 hover:text-black dark:hover:text-white border border-slate-300 dark:border-white/5'
           }`}
         >
           📥 QUEUE RESULTS ({queueResults.length})
@@ -644,7 +642,7 @@ export const WipStocksVendidasView: React.FC = () => {
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={confirmarYActualizarOrdenesDelDia}
-            className="px-3 py-1.5 bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+            className="px-3 py-1.5 bg-cyan-500/10 dark:bg-[#00f2fe]/20 border border-cyan-500/40 dark:border-[#00f2fe]/50 text-cyan-600 dark:text-[#00f2fe] hover:bg-cyan-500 dark:hover:bg-[#00f2fe] hover:text-white dark:hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
             🔄 Actualizar Órdenes del Día
           </button>
@@ -654,7 +652,7 @@ export const WipStocksVendidasView: React.FC = () => {
             placeholder="Filtrar por PO..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="bg-[#0b0e14] border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] w-56"
+            className="bg-white dark:bg-[#0b0e14] border border-slate-300 dark:border-white/20 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-cyan-500 dark:focus:border-[#00f2fe] w-56 transition-colors"
           />
 
           <button
@@ -680,55 +678,55 @@ export const WipStocksVendidasView: React.FC = () => {
                 }
               });
             }}
-            className="px-3 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
+            className="px-3 py-1.5 bg-emerald-500/10 dark:bg-[#39ff14]/20 border border-emerald-500/40 dark:border-[#39ff14]/40 text-emerald-600 dark:text-[#39ff14] hover:bg-emerald-500 dark:hover:bg-[#39ff14] hover:text-white dark:hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
           >
             🧹 Limpiar
           </button>
         </div>
       </div>
 
-      {/* 2. Banner de Totales */}
-      <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
+      {/* 2. Banner Adaptable de Totales */}
+      <div className="w-full bg-white dark:bg-[#121826] border border-slate-200 dark:border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4 transition-colors duration-300">
         <div className="flex items-center gap-6">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-400 block">TOTAL ÓRDENES</span>
-            <span className="text-xl font-black text-white">{totalOrders}</span>
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-gray-400 block">TOTAL ÓRDENES</span>
+            <span className="text-xl font-black text-slate-800 dark:text-white">{totalOrders}</span>
           </div>
 
-          <div className="border-l border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-[#00f2fe] block">CTM ORDERS</span>
-            <span className="text-xl font-black text-[#00f2fe]">{ctmOrders}</span>
+          <div className="border-l border-slate-200 dark:border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-cyan-600 dark:text-[#00f2fe] block">CTM ORDERS</span>
+            <span className="text-xl font-black text-cyan-600 dark:text-[#00f2fe]">{ctmOrders}</span>
           </div>
 
-          <div className="border-l border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-amber-400 block">STOCK ORDERS</span>
-            <span className="text-xl font-black text-amber-400">{stockOrders}</span>
+          <div className="border-l border-slate-200 dark:border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 block">STOCK ORDERS</span>
+            <span className="text-xl font-black text-amber-600 dark:text-amber-400">{stockOrders}</span>
           </div>
 
-          <div className="border-l border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-[#39ff14] block">CAPTURADO</span>
-            <span className="text-xl font-black text-[#39ff14]">{capturados}</span>
+          <div className="border-l border-slate-200 dark:border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-[#39ff14] block">CAPTURADO</span>
+            <span className="text-xl font-black text-emerald-600 dark:text-[#39ff14]">{capturados}</span>
           </div>
 
-          <div className="border-l border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-[#ff007f] block">RESTA</span>
-            <span className="text-xl font-black text-[#ff007f]">{resta}</span>
+          <div className="border-l border-slate-200 dark:border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-pink-600 dark:text-[#ff007f] block">RESTA</span>
+            <span className="text-xl font-black text-pink-600 dark:text-[#ff007f]">{resta}</span>
           </div>
 
-          <div className="border-l border-white/10 pl-6">
-            <span className="text-[10px] uppercase tracking-wider text-purple-400 block">ÓRDENES DÍA (COL A)</span>
-            <span className="text-xl font-black text-purple-400">{contratosAnotadosColA.length}</span>
+          <div className="border-l border-slate-200 dark:border-white/10 pl-6">
+            <span className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400 block">ÓRDENES DÍA (COL A)</span>
+            <span className="text-xl font-black text-purple-600 dark:text-purple-400">{contratosAnotadosColA.length}</span>
           </div>
         </div>
       </div>
 
       {/* 3. Sub-Pestaña CUSTOMIZATION QUEUE RESULTS */}
       {activeSubTab === 'queue-results' && (
-        <div className="w-full bg-[#121826] border border-purple-500/40 rounded-xl p-6 shadow-2xl space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+        <div className="w-full bg-white dark:bg-[#121826] border border-purple-300 dark:border-purple-500/40 rounded-xl p-6 shadow-2xl space-y-4 transition-colors duration-300">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-white/10 pb-4">
             <div>
-              <h2 className="text-lg font-black text-purple-400">📥 CustomizationQueue2Results</h2>
-              <p className="text-xs text-gray-400">
+              <h2 className="text-lg font-black text-purple-600 dark:text-purple-400">📥 CustomizationQueue2Results</h2>
+              <p className="text-xs text-slate-500 dark:text-gray-400">
                 Sube el archivo <code>CustomizationQueue2Results.xls</code> exportado de NetSuite.
               </p>
             </div>
@@ -743,7 +741,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
               <button
                 onClick={handleLimpiarQueue}
-                className="px-4 py-2 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500 hover:text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                className="px-4 py-2 bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 dark:border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-500 hover:text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
               >
                 🗑️ Limpiar Queue
               </button>
@@ -753,30 +751,30 @@ export const WipStocksVendidasView: React.FC = () => {
           <div className="overflow-x-auto max-h-96 custom-scrollbar">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="bg-[#0b0e14] text-gray-400 font-bold border-b border-white/10 uppercase text-[11px] sticky top-0">
+                <tr className="bg-slate-100 dark:bg-[#0b0e14] text-slate-600 dark:text-gray-400 font-bold border-b border-slate-200 dark:border-white/10 uppercase text-[11px] sticky top-0">
                   <th className="p-2.5">Department</th>
-                  <th className="p-2.5 text-[#00f2fe]">PO</th>
+                  <th className="p-2.5 text-cyan-600 dark:text-[#00f2fe]">PO</th>
                   <th className="p-2.5 text-center">Units</th>
                   <th className="p-2.5">Styles</th>
-                  <th className="p-2.5 text-amber-300">Due Date</th>
+                  <th className="p-2.5 text-amber-600 dark:text-amber-300">Due Date</th>
                   <th className="p-2.5">Memo / Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                 {queueResults.length > 0 ? (
                   queueResults.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-white/5 transition-colors">
-                      <td className="p-2.5 font-bold text-gray-300">{row.department}</td>
-                      <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{row.po}</td>
+                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                      <td className="p-2.5 font-bold text-slate-700 dark:text-gray-300">{row.department}</td>
+                      <td className="p-2.5 font-mono font-bold text-cyan-600 dark:text-[#00f2fe]">{row.po}</td>
                       <td className="p-2.5 text-center font-mono">{row.units}</td>
-                      <td className="p-2.5 font-mono text-gray-400">{row.styles}</td>
-                      <td className="p-2.5 font-mono font-bold text-amber-300">{row.dueDate}</td>
-                      <td className="p-2.5 text-gray-400">{row.memo}</td>
+                      <td className="p-2.5 font-mono text-slate-500 dark:text-gray-400">{row.styles}</td>
+                      <td className="p-2.5 font-mono font-bold text-amber-600 dark:text-amber-300">{row.dueDate}</td>
+                      <td className="p-2.5 text-slate-500 dark:text-gray-400">{row.memo}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-gray-500 italic text-xs">
+                    <td colSpan={6} className="p-8 text-center text-slate-400 dark:text-gray-500 italic text-xs">
                       No hay datos cargados. Haz clic arriba para cargar el archivo <code>CustomizationQueue2Results.xls</code>.
                     </td>
                   </tr>
@@ -789,11 +787,11 @@ export const WipStocksVendidasView: React.FC = () => {
 
       {/* 4. Sub-Pestaña ÓRDENES DEL DÍA */}
       {activeSubTab === 'ordenes-dia' && (
-        <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+        <div className="w-full bg-white dark:bg-[#121826] border border-slate-200 dark:border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4 transition-colors duration-300">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-white/10 pb-4">
             <div>
-              <h2 className="text-lg font-black text-[#00f2fe]">📋 ÓRDENES DEL DÍA</h2>
-              <p className="text-xs text-gray-400">
+              <h2 className="text-lg font-black text-cyan-600 dark:text-[#00f2fe]">📋 ÓRDENES DEL DÍA</h2>
+              <p className="text-xs text-slate-500 dark:text-gray-400">
                 Estructura exacta: <strong>Col A</strong> (Anotar aquí), <strong>Col B</strong> (Status), <strong>Col C</strong> (Después de captura), <strong>Col D3 en adelante</strong> (Departamento, PO, QTY, etc.).
               </p>
             </div>
@@ -801,7 +799,7 @@ export const WipStocksVendidasView: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleLimpiarOrdenesDia}
-                className="px-3 py-1.5 bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500 hover:text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                className="px-3 py-1.5 bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 dark:border-red-500/40 text-red-600 dark:text-red-300 hover:bg-red-500 hover:text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
               >
                 🧹 Limpiar Órdenes del Día
               </button>
@@ -812,11 +810,11 @@ export const WipStocksVendidasView: React.FC = () => {
                   placeholder="Anotar en Col A..."
                   value={inputOrdenDiaManual}
                   onChange={e => setInputOrdenDiaManual(e.target.value)}
-                  className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
+                  className="bg-slate-50 dark:bg-[#0b0e14] border border-cyan-500/50 dark:border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-white focus:border-cyan-500 dark:focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
+                  className="px-4 py-1.5 bg-cyan-500 dark:bg-[#00f2fe] hover:bg-cyan-600 dark:hover:bg-[#00c8d4] text-white dark:text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
                 >
                   + Anotar Col A
                 </button>
@@ -827,61 +825,61 @@ export const WipStocksVendidasView: React.FC = () => {
           <div className="overflow-x-auto max-h-[500px] custom-scrollbar">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="bg-[#0b0e14] text-gray-400 font-bold border-b border-white/10 uppercase text-[11px] sticky top-0 z-10">
-                  <th className="p-2.5 text-center text-[#00f2fe] bg-blue-950/40">Col A: Anotar aquí ↓</th>
-                  <th className="p-2.5 text-center bg-emerald-950/40 text-emerald-300">Col B: Status</th>
-                  <th className="p-2.5 text-center bg-purple-950/40 text-purple-300">Col C: Después de Captura</th>
-                  <th className="p-2.5 text-amber-300 border-l border-white/10">Col D: Departamento</th>
-                  <th className="p-2.5 font-bold text-[#00f2fe]">Col E: PO</th>
+                <tr className="bg-slate-100 dark:bg-[#0b0e14] text-slate-600 dark:text-gray-400 font-bold border-b border-slate-200 dark:border-white/10 uppercase text-[11px] sticky top-0 z-10">
+                  <th className="p-2.5 text-center text-cyan-600 dark:text-[#00f2fe] bg-blue-100 dark:bg-blue-950/40">Col A: Anotar aquí ↓</th>
+                  <th className="p-2.5 text-center bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300">Col B: Status</th>
+                  <th className="p-2.5 text-center bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300">Col C: Después de Captura</th>
+                  <th className="p-2.5 text-amber-600 dark:text-amber-300 border-l border-slate-200 dark:border-white/10">Col D: Departamento</th>
+                  <th className="p-2.5 font-bold text-cyan-600 dark:text-[#00f2fe]">Col E: PO</th>
                   <th className="p-2.5 text-center">Col F: QTY</th>
                   <th className="p-2.5">Col G: STYLES</th>
-                  <th className="p-2.5 text-amber-300">Col H: DUE DATE</th>
+                  <th className="p-2.5 text-amber-600 dark:text-amber-300">Col H: DUE DATE</th>
                   <th className="p-2.5">Col I: MEMO</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 font-mono">
+              <tbody className="divide-y divide-slate-200 dark:divide-white/5 font-mono">
                 {filasOrdenesDia.length > 0 ? (
                   filasOrdenesDia.map(row => {
                     const evalColBC = calcularFormulasFilaOrdenDia(row);
 
                     return (
-                      <tr key={row.id} className="hover:bg-white/5 transition-colors">
-                        <td className="p-2 bg-blue-950/10">
+                      <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="p-2 bg-blue-50 dark:bg-blue-950/10">
                           <input
                             type="text"
                             value={row.colA_Anotar}
                             onChange={e => handleModificarColAInFila(row.id, e.target.value)}
                             placeholder="Digit aquí..."
-                            className="w-full bg-[#0b0e14] border border-[#00f2fe]/40 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-[#00f2fe] font-bold"
+                            className="w-full bg-white dark:bg-[#0b0e14] border border-cyan-500/40 dark:border-[#00f2fe]/40 rounded px-2 py-0.5 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-cyan-500 dark:focus:border-[#00f2fe] font-bold"
                           />
                         </td>
 
-                        <td className="p-2 text-center bg-emerald-950/10 font-bold">
+                        <td className="p-2 text-center bg-emerald-50 dark:bg-emerald-950/10 font-bold">
                           <span className={`px-2 py-0.5 rounded text-[10px] border ${
                             evalColBC.statusB === 'CAPTURADO COMPLETO'
-                              ? 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-[#39ff14] border-emerald-500/40'
+                              : 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border-rose-500/40'
                           }`}>
                             {evalColBC.statusB}
                           </span>
                         </td>
 
-                        <td className="p-2 text-center bg-purple-950/10 font-bold text-purple-300">
+                        <td className="p-2 text-center bg-purple-50 dark:bg-purple-950/10 font-bold text-purple-600 dark:text-purple-300">
                           {evalColBC.despuesCapturaC}
                         </td>
 
-                        <td className="p-2.5 text-amber-300 font-bold border-l border-white/10">{row.department}</td>
-                        <td className="p-2.5 font-bold text-[#00f2fe]">{row.po}</td>
-                        <td className="p-2.5 text-center text-white">{row.qty}</td>
-                        <td className="p-2.5 text-gray-300">{row.styles}</td>
-                        <td className="p-2.5 text-amber-300">{row.dueDate}</td>
-                        <td className="p-2.5 text-gray-400 max-w-xs truncate">{row.memo}</td>
+                        <td className="p-2.5 text-amber-600 dark:text-amber-300 font-bold border-l border-slate-200 dark:border-white/10">{row.department}</td>
+                        <td className="p-2.5 font-bold text-cyan-600 dark:text-[#00f2fe]">{row.po}</td>
+                        <td className="p-2.5 text-center text-slate-800 dark:text-white">{row.qty}</td>
+                        <td className="p-2.5 text-slate-600 dark:text-gray-300">{row.styles}</td>
+                        <td className="p-2.5 text-amber-600 dark:text-amber-300">{row.dueDate}</td>
+                        <td className="p-2.5 text-slate-500 dark:text-gray-400 max-w-xs truncate">{row.memo}</td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-gray-500 italic text-xs">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 dark:text-gray-500 italic text-xs">
                       No hay órdenes registradas. Sube la cola en QUEUE RESULTS y presiona "Actualizar Órdenes del Día".
                     </td>
                   </tr>
@@ -909,15 +907,15 @@ export const WipStocksVendidasView: React.FC = () => {
             return (
               <div
                 key={nombreLinea}
-                className="w-full bg-[#121826] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between"
+                className="w-full bg-white dark:bg-[#121826] border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between transition-colors duration-300"
               >
                 <div>
-                  <div className="bg-[#0b0e14] px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+                  <div className="bg-slate-100 dark:bg-[#0b0e14] px-4 py-3 border-b border-slate-200 dark:border-white/10 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-black text-[#39ff14] text-sm tracking-wide">
+                      <h3 className="font-black text-emerald-600 dark:text-[#39ff14] text-sm tracking-wide">
                         📑 {nombreLinea}
                       </h3>
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-slate-500 dark:text-gray-400">
                         {filasFiltradas.length} Órdenes | {totalPiezas} Piezas Acumuladas
                       </span>
                     </div>
@@ -939,13 +937,13 @@ export const WipStocksVendidasView: React.FC = () => {
                             [nombreLinea]: e.target.value,
                           })
                         }
-                        className="bg-[#121620] border border-[#00f2fe]/50 rounded-lg px-2.5 py-1 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-36 font-mono font-bold"
+                        className="bg-white dark:bg-[#121620] border border-cyan-500/50 dark:border-[#00f2fe]/50 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white focus:border-cyan-500 dark:focus:border-[#00f2fe] focus:outline-none w-36 font-mono font-bold"
                       />
 
                       <button
                         type="submit"
                         disabled={loadingBusqueda}
-                        className="px-3 py-1 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer whitespace-nowrap"
+                        className="px-3 py-1 bg-cyan-500 dark:bg-[#00f2fe] hover:bg-cyan-600 dark:hover:bg-[#00c8d4] text-white dark:text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer whitespace-nowrap"
                       >
                         + Agregar
                       </button>
@@ -960,7 +958,7 @@ export const WipStocksVendidasView: React.FC = () => {
                             mensaje: `Enviando datos de ${nombreLinea} a Shipping...`,
                           });
                         }}
-                        className="px-2.5 py-1 bg-[#00f2fe]/10 hover:bg-[#00f2fe] hover:text-black border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-bold rounded-lg transition-all cursor-pointer"
+                        className="px-2.5 py-1 bg-cyan-500/10 dark:bg-[#00f2fe]/10 hover:bg-cyan-500 dark:hover:bg-[#00f2fe] text-cyan-600 dark:text-[#00f2fe] hover:text-white dark:hover:text-black border border-cyan-500/40 dark:border-[#00f2fe]/40 text-xs font-bold rounded-lg transition-all cursor-pointer"
                         title="Enviar a Shipping"
                       >
                         🚚 Enviar
@@ -971,55 +969,55 @@ export const WipStocksVendidasView: React.FC = () => {
                   <div className="p-2 overflow-x-auto">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
-                        <tr className="bg-[#0b0e14]/60 text-gray-400 border-b border-white/10 font-bold uppercase text-[11px]">
+                        <tr className="bg-slate-50 dark:bg-[#0b0e14]/60 text-slate-500 dark:text-gray-400 border-b border-slate-200 dark:border-white/10 font-bold uppercase text-[11px]">
                           <th className="p-2.5">PO / Orden</th>
-                          <th className="p-2.5 text-amber-300">Contrato</th>
+                          <th className="p-2.5 text-amber-600 dark:text-amber-300">Contrato</th>
                           <th className="p-2.5 text-center">QTY</th>
                           <th className="p-2.5">Estilo</th>
                           <th className="p-2.5">Color</th>
                           <th className="p-2.5 text-center">Tipo</th>
-                          <th className="p-2.5 text-center bg-blue-950/40 text-blue-300">1. ENV (Shipping)</th>
-                          <th className="p-2.5 text-center bg-emerald-950/40 text-emerald-300">2. CAPTURA (Custom)</th>
+                          <th className="p-2.5 text-center bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">1. ENV (Shipping)</th>
+                          <th className="p-2.5 text-center bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">2. CAPTURA (Custom)</th>
                           <th className="p-2.5 text-center">Estatus Fórmulas</th>
                           <th className="p-2.5 text-center">Acción</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-white/5">
+                      <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                         {filasFiltradas.length > 0 ? (
                           filasFiltradas.map(f => {
                             const evalJerarquica = calcularEstadoFormulaJerarquica(f);
                             const checkEfectivo = f.checkCaptura || evalJerarquica.checkAuto;
 
                             return (
-                              <tr key={f.id} className="hover:bg-white/5 transition-colors">
-                                <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{f.po}</td>
-                                <td className="p-2.5 font-mono font-bold text-amber-300">{f.contrato}</td>
-                                <td className="p-2.5 text-center font-mono font-bold text-white">{f.qty}</td>
-                                <td className="p-2.5 font-mono text-gray-300">{f.style}</td>
-                                <td className="p-2.5 text-gray-300">{f.color}</td>
+                              <tr key={f.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                                <td className="p-2.5 font-mono font-bold text-cyan-600 dark:text-[#00f2fe]">{f.po}</td>
+                                <td className="p-2.5 font-mono font-bold text-amber-600 dark:text-amber-300">{f.contrato}</td>
+                                <td className="p-2.5 text-center font-mono font-bold text-slate-800 dark:text-white">{f.qty}</td>
+                                <td className="p-2.5 font-mono text-slate-600 dark:text-gray-300">{f.style}</td>
+                                <td className="p-2.5 text-slate-600 dark:text-gray-300">{f.color}</td>
                                 <td className="p-2.5 text-center">
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    f.tipo === 'CUSTOM' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                    f.tipo === 'CUSTOM' ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30' : 'bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/30'
                                   }`}>
                                     {f.tipo}
                                   </span>
                                 </td>
 
-                                <td className="p-2.5 text-center bg-blue-950/20">
+                                <td className="p-2.5 text-center bg-blue-50 dark:bg-blue-950/20">
                                   <input
                                     type="checkbox"
                                     checked={f.checkShipping}
                                     onChange={() => toggleShipping(nombreLinea, f.id)}
-                                    className="w-4 h-4 accent-[#00f2fe] cursor-pointer"
+                                    className="w-4 h-4 accent-cyan-500 dark:accent-[#00f2fe] cursor-pointer"
                                   />
                                 </td>
 
-                                <td className="p-2.5 text-center bg-emerald-950/20">
+                                <td className="p-2.5 text-center bg-emerald-50 dark:bg-emerald-950/20">
                                   <input
                                     type="checkbox"
                                     checked={checkEfectivo}
                                     onChange={() => toggleCaptura(nombreLinea, f.id)}
-                                    className="w-4 h-4 accent-[#39ff14] cursor-pointer"
+                                    className="w-4 h-4 accent-emerald-500 dark:accent-[#39ff14] cursor-pointer"
                                   />
                                 </td>
 
@@ -1032,7 +1030,7 @@ export const WipStocksVendidasView: React.FC = () => {
                                 <td className="p-2.5 text-center">
                                   <button
                                     onClick={() => handleEliminarOrden(nombreLinea, f.id)}
-                                    className="p-1 text-red-400 hover:bg-red-500/10 rounded cursor-pointer transition-all"
+                                    className="p-1 text-red-500 hover:bg-red-500/10 rounded cursor-pointer transition-all"
                                     title="Eliminar orden de la lista"
                                   >
                                     🗑️
@@ -1043,7 +1041,7 @@ export const WipStocksVendidasView: React.FC = () => {
                           })
                         ) : (
                           <tr>
-                            <td colSpan={10} className="p-6 text-center text-gray-500 italic text-xs">
+                            <td colSpan={10} className="p-6 text-center text-slate-400 dark:text-gray-500 italic text-xs">
                               Sin órdenes registradas en {nombreLinea}
                             </td>
                           </tr>
@@ -1053,9 +1051,9 @@ export const WipStocksVendidasView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-[#0b0e14] px-4 py-2 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
-                  <span>Envíos Listos: <strong className="text-[#00f2fe]">{filasFiltradas.filter(f => f.checkShipping).length}</strong></span>
-                  <span>Capturados: <strong className="text-[#39ff14]">{filasFiltradas.filter(f => f.checkCaptura || calcularEstadoFormulaJerarquica(f).checkAuto).length}</strong></span>
+                <div className="bg-slate-100 dark:bg-[#0b0e14] px-4 py-2 border-t border-slate-200 dark:border-white/10 flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+                  <span>Envíos Listos: <strong className="text-cyan-600 dark:text-[#00f2fe]">{filasFiltradas.filter(f => f.checkShipping).length}</strong></span>
+                  <span>Capturados: <strong className="text-emerald-600 dark:text-[#39ff14]">{filasFiltradas.filter(f => f.checkCaptura || calcularEstadoFormulaJerarquica(f).checkAuto).length}</strong></span>
                 </div>
               </div>
             );
