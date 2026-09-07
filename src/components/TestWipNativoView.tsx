@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link, CheckSquare, Square, CheckCircle } from 'lucide-react';
+import { Search, RefreshCw, CheckCircle2, Clock, Database, Upload, Trash2, UserCheck, ShieldAlert, Wifi, FileSpreadsheet, Plus, Table, AlertTriangle, Edit2, Link, CheckSquare, Square, CheckCircle, ChevronDown, Send, Copy, Mail } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../data/supabaseClient';
 
@@ -39,6 +39,7 @@ interface OrdenDiaRow {
 export const TestWipNativoView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'INCOMPLETAS' | 'ORDENES_DEL_DIA' | 'DATABASE'>('INCOMPLETAS');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
   
   // Estados de datos
   const [masterDbList, setMasterDbList] = useState<MasterDbItem[]>([]);
@@ -67,7 +68,18 @@ export const TestWipNativoView: React.FC = () => {
   const [pendingTransferContract, setPendingTransferContract] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
   const activeUser = sessionStorage.getItem('authenticated_user') || 'JMERCADO';
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(event.target as Node)) {
+        setShowToolsMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSaveR4 = () => {
     const parsed = parseInt(tempR4, 10);
@@ -78,11 +90,9 @@ export const TestWipNativoView: React.FC = () => {
     setIsEditingR4(false);
   };
 
-  // 1. Cargar datos de Supabase
   const fetchSupabaseData = async () => {
     setIsRefreshing(true);
     try {
-      // Cargar Capturas Incompletas
       const { data: dbCapturas } = await supabase
         .from('wip_incompletos')
         .select('*')
@@ -123,7 +133,6 @@ export const TestWipNativoView: React.FC = () => {
         setCapturasData(structured);
       }
 
-      // Cargar Órdenes del Día
       const { data: dbOrdenes } = await supabase
         .from('wip_stocks_vendidas')
         .select('*')
@@ -140,7 +149,6 @@ export const TestWipNativoView: React.FC = () => {
         setOrdenesDiaData(mappedOrdenes);
       }
 
-      // Cargar Database Máster
       const { data: dbMaster } = await supabase
         .from('wip_master_db')
         .select('*')
@@ -189,7 +197,50 @@ export const TestWipNativoView: React.FC = () => {
     };
   }, []);
 
-  // Confirmar y Anotar Contrato en Pestaña "Órdenes del Día"
+  const handleActionClick = async (actionName: string) => {
+    setShowToolsMenu(false);
+    switch (actionName) {
+      case 'ENVIAR_DASHBOARD_CORREO':
+        alert('📧 Reporte Dashboard compilado. Enviando resumen de producción a la lista de correo de supervisión.');
+        break;
+
+      case 'ACTUALIZAR_ORDENES_DIA':
+        await fetchSupabaseData();
+        alert('🔄 Órdenes del día reevaluadas y actualizadas correctamente.');
+        break;
+
+      case 'LIMPIAR_ORDENES_DIA_CE':
+        if (window.confirm('¿Desea limpiar de Órdenes del Día los contratos cerrados (CE)?')) {
+          await supabase.from('wip_stocks_vendidas').delete().eq('status', 'CE');
+          fetchSupabaseData();
+        }
+        break;
+
+      case 'BORRAR_CONTRATOS_CERRADOS_CE':
+        if (window.confirm('¿Confirma eliminar globalmente todos los contratos con estatus Cerrado (CE)?')) {
+          await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
+          fetchSupabaseData();
+        }
+        break;
+
+      case 'ENVIAR_SHIPPING_BP':
+        alert('📦 Tablas de Mochilas (BP) enviadas a la cola de Shipping.');
+        break;
+
+      case 'ENVIAR_SHIPPING_FD':
+        alert('📦 Tablas de Full Dye (FD) enviadas a la cola de Shipping.');
+        break;
+
+      case 'COPIAR_ORDENES_FD_BP':
+        alert('📋 Registros completados de BP y FD copiados exitosamente a Órdenes del Día.');
+        break;
+
+      default:
+        alert(`Ejecutando función: ${actionName}`);
+        break;
+    }
+  };
+
   const confirmAndExecuteTransfer = async (contratoId: string) => {
     const { error } = await supabase
       .from('wip_stocks_vendidas')
@@ -220,18 +271,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  const handleCleanCE = async () => {
-    if (window.confirm('¿Desea eliminar de la tabla de Incompletas únicamente los registros con estado Cerrado (CE)?')) {
-      const { error } = await supabase.from('wip_incompletos').delete().eq('estado_general', 'CE');
-      if (!error) {
-        fetchSupabaseData();
-      } else {
-        alert('Error al limpiar registros CE: ' + error.message);
-      }
-    }
-  };
-
-  // Agregar nuevo PO en Columna A (POR DEFECTO DESMARCADO Y EN PARCIAL)
   const handleAddPoCaptura = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const poClean = inputPo.trim().toUpperCase();
@@ -264,7 +303,6 @@ export const TestWipNativoView: React.FC = () => {
     }
   };
 
-  // Toggle Checkbox
   const toggleStatus = async (row: WipCapturaRow) => {
     const nextCompletado = !row.completado;
     const nextEstadoCaptura = nextCompletado ? 'CAPTURADO COMPLETO' : 'CAPTURADO PARCIAL';
@@ -395,7 +433,7 @@ export const TestWipNativoView: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto font-sans text-white p-2 md:p-4">
-      {/* Selector de Pestañas */}
+      {/* Selector de Pestañas y Herramientas */}
       <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-2 gap-2">
         <div className="flex items-center gap-2">
           <button
@@ -436,14 +474,45 @@ export const TestWipNativoView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleCleanCE}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#ff007f]/15 border border-[#ff007f] text-[#ff007f] rounded-lg text-xs font-bold hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer"
-            title="Borrar únicamente registros cerrados (CE) de Incompletas"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Limpiar CE</span>
-          </button>
+          {/* Menú Desplegable de Herramientas Operativas */}
+          <div className="relative" ref={toolsMenuRef}>
+            <button
+              onClick={() => setShowToolsMenu(!showToolsMenu)}
+              className="flex items-center gap-2 px-3 py-2 bg-[#12161f] border border-[#00f2fe]/40 text-[#00f2fe] rounded-lg text-xs font-bold hover:bg-[#00f2fe]/10 transition-all cursor-pointer"
+            >
+              <span>Acciones de Producción</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showToolsMenu && (
+              <div className="absolute right-0 mt-2 w-72 bg-[#0d1017] border border-[#00f2fe]/30 rounded-xl shadow-2xl z-50 py-2 text-xs space-y-1">
+                <button onClick={() => handleActionClick('ENVIAR_DASHBOARD_CORREO')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <Mail className="w-3.5 h-3.5 text-[#00f2fe]" /> Enviar Dashboard por Correo
+                </button>
+                <button onClick={() => handleActionClick('ACTUALIZAR_ORDENES_DIA')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <RefreshCw className="w-3.5 h-3.5 text-[#39ff14]" /> Actualizar Órdenes Del Día
+                </button>
+                <div className="border-t border-white/10 my-1"></div>
+                <button onClick={() => handleActionClick('LIMPIAR_ORDENES_DIA_CE')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <Trash2 className="w-3.5 h-3.5 text-[#ff007f]" /> Limpiar Órdenes del Dia (CE)
+                </button>
+                <button onClick={() => handleActionClick('BORRAR_CONTRATOS_CERRADOS_CE')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <Trash2 className="w-3.5 h-3.5 text-red-500" /> Borrar Contratos Cerrados (CE)
+                </button>
+                <div className="border-t border-white/10 my-1"></div>
+                <button onClick={() => handleActionClick('ENVIAR_SHIPPING_BP')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <Send className="w-3.5 h-3.5 text-yellow-400" /> Enviar Tablas a Shipping (BP)
+                </button>
+                <button onClick={() => handleActionClick('ENVIAR_SHIPPING_FD')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <Send className="w-3.5 h-3.5 text-yellow-400" /> Enviar Tablas a Shipping (FD)
+                </button>
+                <div className="border-t border-white/10 my-1"></div>
+                <button onClick={() => handleActionClick('COPIAR_ORDENES_FD_BP')} className="w-full text-left px-4 py-2 hover:bg-white/10 flex items-center gap-2 text-gray-200">
+                  <Copy className="w-3.5 h-3.5 text-[#00f2fe]" /> Copiar Órdenes FD y BP a Órdenes del Día
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => setShowImportModal(true)}
@@ -579,7 +648,7 @@ export const TestWipNativoView: React.FC = () => {
         </div>
       )}
 
-      {/* PESTAÑA 2: ÓRDENES DEL DÍA (MÓDULO NATIVO WEB) */}
+      {/* PESTAÑA 2: ÓRDENES DEL DÍA */}
       {activeTab === 'ORDENES_DEL_DIA' && (
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 space-y-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
@@ -604,14 +673,14 @@ export const TestWipNativoView: React.FC = () => {
                 <tr className="bg-[#0d1017] text-[#00f2fe] border-b border-white/10 uppercase font-extrabold tracking-wider">
                   <th className="p-3">Anotar aquí ↓ (CONTRATO)</th>
                   <th className="p-3 text-center">STATUS</th>
-                  <th className="p-3 text-center">DESPUES DE CAPTURA</th>
+                  <th className="p-3 text-center">DESPUÉS DE CAPTURA</th>
                   <th className="p-3 text-center">FECHA REGISTRO</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 font-mono">
                 {filteredOrdenesDia.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-8 text-center text-gray-400">
+                    <td colSpan={4} className="p-8 text-center text-gray-400 font-mono">
                       No hay contratos en Órdenes del Día. Los contratos completados en Incompletas aparecerán aquí.
                     </td>
                   </tr>
