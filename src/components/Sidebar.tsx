@@ -16,6 +16,7 @@ import {
   Users,
   HardHat,
   Database,
+  BarChart2,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -156,11 +157,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           Hojas Operativas WIP & Cuadre
         </div>
 
+        {/* WIP Stocks & Vendidas Nativo */}
+        <button
+          onClick={() => onSelectTab('wip-stocks-vendidas', undefined, 'WIP STOCKS & VENDIDAS')}
+          className={`flex items-center gap-3 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
+            activeTab === 'wip-stocks-vendidas'
+              ? 'text-[#39ff14] bg-[#39ff14]/10 border-[#39ff14] shadow-[inset_0_0_12px_rgba(57,255,20,0.15)]'
+              : 'text-[#39ff14]/80 border-transparent hover:text-[#39ff14] hover:bg-white/5'
+          }`}
+        >
+          <BarChart2 className="w-3.5 h-3.5 text-[#39ff14]" />
+          <span>📊 WIP STOCKS & VENDIDAS</span>
+        </button>
+
         {/* WIP Demo Nativo (PRUEBA SEGUIRA) */}
         <button
-          onClick={() => onSelectTab('wip-demo' as TabType, undefined, 'CONTROL WIP (DEMO)')}
+          onClick={() => onSelectTab('wip-demo', undefined, 'CONTROL WIP (DEMO)')}
           className={`flex items-center gap-3 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
-            activeTab === ('wip-demo' as TabType)
+            activeTab === 'wip-demo'
               ? 'text-[#39ff14] bg-[#39ff14]/10 border-[#39ff14] shadow-[inset_0_0_12px_rgba(57,255,20,0.15)]'
               : 'text-[#39ff14]/80 border-transparent hover:text-[#39ff14] hover:bg-white/5'
           }`}
@@ -250,7 +264,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <div className="flex items-center gap-2.5">
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>WIP Stocks & Vendidas</span>
+              <span>WIP Stocks & Vendidas (Sheet)</span>
             </div>
             <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openGroups['wip-stocks'] ? 'rotate-180' : ''}`} />
           </button>
