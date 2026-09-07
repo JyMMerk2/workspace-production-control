@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, ChevronUp, RefreshCw, Shield, LogOut, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Menu, ChevronUp, RefreshCw, Shield, LogOut, Sun, Moon } from 'lucide-react';
 
 interface HeaderProps {
   currentTitle: string;
@@ -13,6 +13,8 @@ interface HeaderProps {
   isLiveConnection?: boolean;
   onLogout: () => void;
   authenticatedUser: string;
+  darkMode?: boolean;
+  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,6 +29,8 @@ export const Header: React.FC<HeaderProps> = ({
   isLiveConnection,
   onLogout,
   authenticatedUser,
+  darkMode = true,
+  onToggleTheme,
 }) => {
   if (!headerVisible) {
     return (
@@ -47,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onToggleSidebar}
           className="flex items-center justify-center p-1.5 px-2.5 rounded-md border border-[#00f2fe]/40 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all shadow-[0_0_8px_rgba(0,242,254,0.25)] text-sm font-bold cursor-pointer"
-          title={sidebarOpen ? "Colapsar menú lateral" : "Expandir menú lateral"}
+          title={sidebarOpen ? 'Colapsar menú lateral' : 'Expandir menú lateral'}
         >
           <Menu className="w-4 h-4" />
         </button>
@@ -67,8 +71,12 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-sm font-black italic tracking-tighter text-[#00f2fe]">B</span>
           </div>
           <div className="hidden md:flex flex-col">
-            <span className="text-xs font-black tracking-widest text-[#00f2fe] uppercase leading-tight">BOOMBAH</span>
-            <span className="text-[9px] font-bold tracking-wider text-[#8f9ba8] uppercase">PRODUCTION CONTROL</span>
+            <span className="text-xs font-black tracking-widest text-[#00f2fe] uppercase leading-tight">
+              BOOMBAH
+            </span>
+            <span className="text-[9px] font-bold tracking-wider text-[#8f9ba8] uppercase">
+              PRODUCTION CONTROL
+            </span>
           </div>
         </div>
       </div>
@@ -80,8 +88,29 @@ export const Header: React.FC<HeaderProps> = ({
         </h1>
       </div>
 
-      {/* Right User and sync status */}
+      {/* Right User, Theme Switcher and sync status */}
       <div className="flex items-center gap-3">
+        {/* Toggle Modo Día / Modo Noche */}
+        {onToggleTheme && (
+          <button
+            onClick={onToggleTheme}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs font-bold text-gray-300 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+            title={darkMode ? 'Cambiar a Modo Día' : 'Cambiar a Modo Noche'}
+          >
+            {darkMode ? (
+              <>
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden md:inline">Día</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden md:inline">Noche</span>
+              </>
+            )}
+          </button>
+        )}
+
         {onRefreshDashboard && (
           <button
             onClick={onRefreshDashboard}
@@ -95,7 +124,13 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#0d1017] border border-white/5 text-[11px] text-[#8f9ba8]">
-          <span className={`w-2 h-2 rounded-full ${isLiveConnection ? 'bg-[#39ff14] shadow-[0_0_8px_#39ff14]' : 'bg-[#ffe600] shadow-[0_0_8px_#ffe600]'}`}></span>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              isLiveConnection
+                ? 'bg-[#39ff14] shadow-[0_0_8px_#39ff14]'
+                : 'bg-[#ffe600] shadow-[0_0_8px_#ffe600]'
+            }`}
+          ></span>
           <span>{isLiveConnection ? 'En Vivo' : 'Local Sync'}</span>
           {lastSyncTime && <span className="text-white/40">({lastSyncTime})</span>}
         </div>
