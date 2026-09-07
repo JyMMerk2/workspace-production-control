@@ -43,16 +43,8 @@ const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
     console.error('Error cargando tablas BP', e);
   }
   return {
-    'CUSTOM BAGS': [
-      { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-      { id: 'bp-2', po: '427432A', contrato: '427432', qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-      { id: 'bp-3', po: '427797A', contrato: '427797', qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-      { id: 'bp-4', po: '427418A', contrato: '427418', qty: 14, style: 'FD-9006', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-      { id: 'bp-5', po: '419211A', contrato: '419211', qty: 10, style: 'PS-9100', color: 'M/O/FLE', tipo: 'STOCK', checkShipping: false, checkCaptura: false },
-    ],
-    'SPUT 1': [
-      { id: 'bp-6', po: '426281A', contrato: '426281', qty: 22, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-    ],
+    'CUSTOM BAGS': [],
+    'SPUT 1': [],
     'SPUT 2': [],
     'BIG BAG UTILITY 1': [],
     'BIG BAG UTILITY 2': [],
@@ -99,19 +91,39 @@ const cargarQueueInicial = (): FilaQueue[] => {
   return [];
 };
 
-// Función para normalizar texto de fecha a "M/d/yyyy"
-const limpiarFechaTexto = (val: string): string => {
+// Normalizador universal de fechas para NetSuite (Soporta ISO "2026-09-07T00:00:00", "9/7/2026", "09/07/2026")
+const normalizarFechaNetSuite = (val: string): string => {
   if (!val) return '';
-  const str = String(val).trim();
-  const partes = str.split('/');
-  if (partes.length === 3) {
-    const mes = parseInt(partes[0], 10);
-    const dia = parseInt(partes[1], 10);
-    const anio = parseInt(partes[2], 10);
-    if (!isNaN(mes) && !isNaN(dia) && !isNaN(anio)) {
-      return `${mes}/${dia}/${anio}`;
+  let str = String(val).trim();
+  
+  if (str.includes('T')) {
+    str = str.split('T')[0];
+  }
+
+  if (str.includes('-')) {
+    const partes = str.split('-');
+    if (partes.length === 3) {
+      const anio = parseInt(partes[0], 10);
+      const mes = parseInt(partes[1], 10);
+      const dia = parseInt(partes[2], 10);
+      if (!isNaN(mes) && !isNaN(dia) && !isNaN(anio)) {
+        return `${mes}/${dia}/${anio}`;
+      }
     }
   }
+
+  if (str.includes('/')) {
+    const partes = str.split('/');
+    if (partes.length === 3) {
+      const mes = parseInt(partes[0], 10);
+      const dia = parseInt(partes[1], 10);
+      const anio = parseInt(partes[2], 10);
+      if (!isNaN(mes) && !isNaN(dia) && !isNaN(anio)) {
+        return `${mes}/${dia}/${anio}`;
+      }
+    }
+  }
+
   return str;
 };
 
@@ -201,10 +213,10 @@ export const WipStocksVendidasView: React.FC = () => {
   }).length;
   const resta = totalOrders - capturados;
 
-  // Lógica Replicada de Apps Script: Actualizar_Ordenes_Del_Dia()
+  // Lógica de Procesamiento de Órdenes del Día (Fiel al Script de Google Sheets)
   const ejecutarActualizarOrdenesDelDia = () => {
     if (queueResults.length === 0) {
-      alert("Error: La hoja 'CustomizationQueue2Results' está vacía. Carga primero la cola en la pestaña 'CUSTOMIZATION QUEUE'.");
+      alert("Error: La hoja 'CustomizationQueue2Results' está vacía. Carga primero el archivo en la pestaña 'QUEUE RESULTS'.");
       return;
     }
 
@@ -214,11 +226,11 @@ export const WipStocksVendidasView: React.FC = () => {
     const contratosHoy: string[] = [];
 
     queueResults.forEach(fila => {
-      const dpto = fila.department.trim().toUpperCase();
+      const dpto = (fila.department || '').trim().toUpperCase();
       if (dpto === 'TEAM SPIRIT (QUEUED)') return;
 
-      const fechaLimpia = limpiarFechaTexto(fila.dueDate);
-      const contratoLimpio = fila.po.replace(/[A-Za-z]/g, '').trim();
+      const fechaLimpia = normalizarFechaNetSuite(fila.dueDate);
+      const contratoLimpio = (fila.po || '').replace(/[A-Za-z]/g, '').trim();
 
       if (fechaLimpia === targetHoy && contratoLimpio) {
         contratosHoy.push(contratoLimpio);
@@ -228,10 +240,10 @@ export const WipStocksVendidasView: React.FC = () => {
     const nuevosContratos = Array.from(new Set([...contratosHoy, ...ordenesDelDiaAnotadas]));
     setOrdenesDelDiaAnotadas(nuevosContratos);
 
-    alert(`✅ Órdenes del día actualizadas correctamente.\n\nSe filtraron las de HOY (${targetHoy}), omitiendo 'Team Spirit (Queued)'. Contratos totales activos: ${nuevosContratos.length}`);
+    alert(`✅ Órdenes del día actualizadas correctamente.\n\nContratos identificados para HOY (${targetHoy}): ${contratosHoy.length}\nOmitidos: 'Team Spirit (Queued)'.\nTotal contratos en Órdenes del Día: ${nuevosContratos.length}`);
   };
 
-  // Carga del reporte CustomizationQueue2Results
+  // Parser Universal para NetSuite XML SpreadsheetML y CSV
   const handleFileUploadQueue = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -241,34 +253,73 @@ export const WipStocksVendidasView: React.FC = () => {
       const text = event.target?.result as string;
       if (!text) return;
 
-      const lineas = text.split(/\r\n|\n/);
       const queueImportado: FilaQueue[] = [];
 
-      lineas.slice(1).forEach(linea => {
-        const cols = linea.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/);
-        if (cols.length >= 8) {
-          queueImportado.push({
-            department: cols[0]?.replace(/"/g, '').trim() || '',
-            po: cols[1]?.replace(/"/g, '').trim() || '',
-            units: Number(cols[2]) || 1,
-            styles: cols[3]?.replace(/"/g, '').trim() || '',
-            name: cols[4]?.replace(/"/g, '').trim() || '',
-            teamName: cols[5]?.replace(/"/g, '').trim() || '',
-            date: cols[6]?.replace(/"/g, '').trim() || '',
-            dueDate: cols[7]?.replace(/"/g, '').trim() || '',
-            memo: cols[8]?.replace(/"/g, '').trim() || '',
-            readyForDr: cols[9]?.replace(/"/g, '').trim() || '',
-            createdFrom: cols[10]?.replace(/"/g, '').trim() || '',
-            classType: cols[11]?.replace(/"/g, '').trim() || '',
-          });
+      // Detección de XML Spreadsheet (NetSuite .xls Export)
+      if (text.includes('<Workbook') || text.includes('xmlns="urn:schemas-microsoft-com:office:spreadsheet"')) {
+        try {
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(text, 'text/xml');
+          const rows = xmlDoc.getElementsByTagName('Row');
+
+          for (let i = 1; i < rows.length; i++) {
+            const cells = rows[i].getElementsByTagName('Cell');
+            const rowValues: string[] = [];
+
+            for (let j = 0; j < cells.length; j++) {
+              const dataTag = cells[j].getElementsByTagName('Data')[0];
+              rowValues.push(dataTag ? dataTag.textContent || '' : '');
+            }
+
+            if (rowValues.length >= 8) {
+              queueImportado.push({
+                department: rowValues[0] || '',
+                po: rowValues[1] || '',
+                units: Number(rowValues[2]) || 1,
+                styles: rowValues[3] || '',
+                name: rowValues[4] || '',
+                teamName: rowValues[5] || '',
+                date: rowValues[6] || '',
+                dueDate: rowValues[7] || '',
+                memo: rowValues[8] || '',
+                readyForDr: rowValues[9] || '',
+                createdFrom: rowValues[10] || '',
+                classType: rowValues[11] || '',
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Error leyendo XML NetSuite', err);
         }
-      });
+      } else {
+        // Formato CSV Estándar
+        const lineas = text.split(/\r\n|\n/);
+        lineas.slice(1).forEach(linea => {
+          const cols = linea.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/);
+          if (cols.length >= 8) {
+            queueImportado.push({
+              department: cols[0]?.replace(/"/g, '').trim() || '',
+              po: cols[1]?.replace(/"/g, '').trim() || '',
+              units: Number(cols[2]) || 1,
+              styles: cols[3]?.replace(/"/g, '').trim() || '',
+              name: cols[4]?.replace(/"/g, '').trim() || '',
+              teamName: cols[5]?.replace(/"/g, '').trim() || '',
+              date: cols[6]?.replace(/"/g, '').trim() || '',
+              dueDate: cols[7]?.replace(/"/g, '').trim() || '',
+              memo: cols[8]?.replace(/"/g, '').trim() || '',
+              readyForDr: cols[9]?.replace(/"/g, '').trim() || '',
+              createdFrom: cols[10]?.replace(/"/g, '').trim() || '',
+              classType: cols[11]?.replace(/"/g, '').trim() || '',
+            });
+          }
+        });
+      }
 
       if (queueImportado.length > 0) {
         setQueueResults(queueImportado);
-        alert(`✅ Carga exitosa: Se importaron ${queueImportado.length} registros en CustomizationQueue2Results.`);
+        alert(`✅ Carga exitosa: Se procesaron correctamente ${queueImportado.length} filas de CustomizationQueue2Results.`);
       } else {
-        alert('No se pudieron leer registros válidos del archivo CSV/Excel.');
+        alert('No se pudieron leer registros del archivo. Verifica el archivo exportado.');
       }
     };
 
@@ -384,7 +435,7 @@ export const WipStocksVendidasView: React.FC = () => {
         type="file"
         ref={fileInputQueueRef}
         onChange={handleFileUploadQueue}
-        accept=".csv, .txt"
+        accept=".xls, .xlsx, .csv, .xml, .txt"
         className="hidden"
       />
 
@@ -435,7 +486,6 @@ export const WipStocksVendidasView: React.FC = () => {
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* Botón Exacto del Apps Script */}
           <button
             onClick={ejecutarActualizarOrdenesDelDia}
             className="px-3 py-1.5 bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
@@ -517,7 +567,7 @@ export const WipStocksVendidasView: React.FC = () => {
             <div>
               <h2 className="text-lg font-black text-purple-400">📥 CustomizationQueue2Results</h2>
               <p className="text-xs text-gray-400">
-                Sube el reporte extraído de NetSuite. Al presionar <strong>Actualizar Órdenes del Día</strong>, el sistema extraerá automáticamente los contratos de hoy excluyendo <em>Team Spirit (Queued)</em>.
+                Sube el archivo <code>CustomizationQueue2Results.xls</code> exportado de NetSuite.
               </p>
             </div>
 
@@ -525,7 +575,7 @@ export const WipStocksVendidasView: React.FC = () => {
               onClick={() => fileInputQueueRef.current?.click()}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-2"
             >
-              📂 Cargar CustomizationQueue2Results CSV
+              📂 Cargar CustomizationQueue2Results (.xls / .csv)
             </button>
           </div>
 
@@ -556,7 +606,7 @@ export const WipStocksVendidasView: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-gray-500 italic text-xs">
-                      No hay datos cargados en CustomizationQueue2Results. Haz clic arriba para cargar el archivo.
+                      No hay datos cargados. Haz clic arriba para cargar el archivo <code>CustomizationQueue2Results.xls</code>.
                     </td>
                   </tr>
                 )}
@@ -573,7 +623,7 @@ export const WipStocksVendidasView: React.FC = () => {
             <div>
               <h2 className="text-lg font-black text-[#00f2fe]">📋 ÓRDENES DEL DÍA (COL A)</h2>
               <p className="text-xs text-gray-400">
-                Lista de contratos activos. Las órdenes registradas aquí marcan automáticamente en las tablas de BP y FD el estado <strong>CAPTURADO COMPLETO</strong>.
+                Lista de contratos activos. Presiona <strong>Actualizar Órdenes del Día</strong> para importar automáticamente los contratos de hoy desde la cola de NetSuite.
               </p>
             </div>
 
@@ -629,7 +679,7 @@ export const WipStocksVendidasView: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={4} className="p-8 text-center text-gray-500 italic text-xs">
-                      No hay contratos activos en Órdenes del Día. Presiona "Actualizar Órdenes del Día" arriba o anota uno manualmente.
+                      No hay contratos activos en Órdenes del Día. Carga la cola y presiona "Actualizar Órdenes del Día" arriba.
                     </td>
                   </tr>
                 )}
