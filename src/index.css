@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* =========================================================
-   PALETA PROFESIONAL MODO CLARO (LIGHT THEME SOFT)
+   ESTILOS ESPECÍFICOS MODO CLARO (LIGHT THEME)
    ========================================================= */
 
 html.light,
@@ -10,14 +10,6 @@ body.light {
   color: #1e293b !important;
 }
 
-/* Redefinición suave de contenedores principales */
-html.light .app-container,
-html.light main {
-  background-color: #f8fafc !important;
-  color: #1e293b !important;
-}
-
-/* Sidebar y Header Limpios */
 html.light header,
 html.light aside {
   background-color: #ffffff !important;
@@ -25,22 +17,20 @@ html.light aside {
   color: #1e293b !important;
 }
 
-/* Tarjetas y Contenedores */
-html.light div.bg-\[\#121826\],
-html.light div.bg-\[\#0b0e14\],
-html.light div.bg-\[\#121620\],
-html.light div.bg-\[\#0d1017\] {
+/* Aplicar tema blanco SOLO a las vistas de trabajo (WIP Stocks / Control WIP), respetando el Dashboard */
+html.light .wip-stocks-container,
+html.light .wip-card,
+html.light .wip-table-card {
   background-color: #ffffff !important;
-  border-color: #e2e8f0 !important;
-  color: #1e293b !important;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1) !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1) !important;
 }
 
-/* Tablas Profesionales Sin Bloques de Color Chocantes */
+/* Ajustes de Tablas en Modo Claro */
 html.light table th {
   background-color: #f1f5f9 !important;
   color: #334155 !important;
-  font-weight: 700 !important;
   border-bottom: 2px solid #e2e8f0 !important;
 }
 
@@ -54,64 +44,41 @@ html.light table tbody tr:hover td {
   background-color: #f8fafc !important;
 }
 
-/* Neutralización de Fondos de Columnas Azules / Verdes Chocantes */
+/* Neutralizar fondos azules/verdes oscuros en modo claro dentro de las tablas */
 html.light .bg-blue-950\/40,
 html.light .bg-blue-950\/20,
-html.light .bg-blue-100,
-html.light .bg-blue-50,
 html.light .bg-emerald-950\/40,
-html.light .bg-emerald-950\/20,
-html.light .bg-emerald-100,
-html.light .bg-emerald-50 {
+html.light .bg-emerald-950\/20 {
   background-color: transparent !important;
 }
 
-/* Textos de Estado con Contraste Suave */
+/* Badges e Identificadores en Modo Claro */
 html.light .text-\[\#00f2fe\] {
   color: #0284c7 !important;
-  font-weight: 700 !important;
 }
 
 html.light .text-\[\#39ff14\] {
   color: #16a34a !important;
-  font-weight: 700 !important;
 }
 
 html.light .text-amber-300,
 html.light .text-amber-400 {
   color: #d97706 !important;
-  font-weight: 700 !important;
 }
 
-html.light .text-white,
-html.light .text-gray-300,
-html.light .text-gray-400 {
-  color: #334155 !important;
-}
-
-/* Badges de Estatus Suaves */
 html.light .bg-rose-500\/20 {
   background-color: #fef2f2 !important;
   color: #dc2626 !important;
   border: 1px solid #fca5a5 !important;
-  font-weight: 700 !important;
 }
 
 html.light .bg-emerald-500\/20 {
   background-color: #f0fdf4 !important;
   color: #16a34a !important;
   border: 1px solid #86efac !important;
-  font-weight: 700 !important;
 }
 
-html.light .bg-amber-500\/20 {
-  background-color: #fffbeb !important;
-  color: #d97706 !important;
-  border: 1px solid #fcd34d !important;
-  font-weight: 700 !important;
-}
-
-/* Inputs Limpios */
+/* Inputs de texto en Modo Claro */
 html.light input[type="text"] {
   background-color: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
@@ -123,7 +90,7 @@ html.light input[type="text"]::placeholder {
 }
 
 /* =========================================================
-   MODO NOCHE (DARK MODE)
+   ESTILOS MODO OSCURO (DARK THEME)
    ========================================================= */
 
 html.dark,
