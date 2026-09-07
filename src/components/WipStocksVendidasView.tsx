@@ -278,8 +278,6 @@ export const WipStocksVendidasView: React.FC = () => {
   const restaHoyCount = totalOrdenesHoy - capturadosHoyCount;
 
   const totalOrders = todasOrdenesTablas.length;
-  const ctmOrders = todasOrdenesTablas.filter(o => o.tipo === 'CUSTOM').length;
-  const stockOrders = todasOrdenesTablas.filter(o => o.tipo === 'STOCK').length;
 
   const handleAnotarColAManual = (e: React.FormEvent) => {
     e.preventDefault();
@@ -476,22 +474,51 @@ export const WipStocksVendidasView: React.FC = () => {
     setLoadingBusqueda(true);
 
     try {
-      let detalles: any = null;
+      const contratoSoloNumeros = valorInput.replace(/[A-Za-z]/g, '');
 
+      // 1. Buscar coincidencia primero en ÓRDENES DEL DÍA
+      const coincidenciaOrdenDia = filasOrdenesDia.find(
+        f => f.po.toUpperCase() === valorInput || f.po.replace(/[A-Za-z]/g, '').trim() === contratoSoloNumeros
+      );
+
+      // 2. Buscar en QUEUE RESULTS
+      const coincidenciaQueue = queueResults.find(
+        q => q.po.toUpperCase() === valorInput || q.po.replace(/[A-Za-z]/g, '').trim() === contratoSoloNumeros
+      );
+
+      // 3. Consultar servicio WIP opcional
+      let detallesServicio: any = null;
       if (wipEngineService && typeof wipEngineService.buscarDetallesPO === 'function') {
-        detalles = await wipEngineService.buscarDetallesPO(valorInput);
+        detallesServicio = await wipEngineService.buscarDetallesPO(valorInput);
       }
 
-      const contratoSoloNumeros = valorInput.replace(/[A-Za-z]/g, '');
+      const qtyEncontrado = coincidenciaOrdenDia
+        ? coincidenciaOrdenDia.qty
+        : coincidenciaQueue
+        ? coincidenciaQueue.units
+        : detallesServicio
+        ? detallesServicio.qty
+        : 1;
+
+      const estiloEncontrado = coincidenciaOrdenDia
+        ? coincidenciaOrdenDia.styles
+        : coincidenciaQueue
+        ? coincidenciaQueue.styles
+        : detallesServicio
+        ? detallesServicio.style
+        : 'FD-STANDARD';
+
+      const colorEncontrado = detallesServicio && detallesServicio.color ? detallesServicio.color : 'CUSTOM';
+      const esCustom = colorEncontrado.toUpperCase().includes('CUSTOM') || estiloEncontrado.toUpperCase().includes('CUSTOM');
 
       const itemNuevo: OrdenItem = {
         id: Date.now().toString(),
         po: valorInput,
         contrato: contratoSoloNumeros || valorInput,
-        qty: detalles ? detalles.qty : 1,
-        style: detalles ? detalles.style : 'FD-STANDARD',
-        color: detalles ? detalles.color : 'CUSTOM',
-        tipo: detalles ? detalles.tipo : 'CUSTOM',
+        qty: qtyEncontrado,
+        style: estiloEncontrado,
+        color: colorEncontrado,
+        tipo: esCustom ? 'CUSTOM' : 'STOCK',
         checkShipping: false,
         checkCaptura: false,
       };
@@ -510,7 +537,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
       setInputsPorTabla(prev => ({ ...prev, [nombreTabla]: '' }));
     } catch (error) {
-      console.error(error);
+      console.error('Error buscando detalles de PO:', error);
     } finally {
       setLoadingBusqueda(false);
     }
