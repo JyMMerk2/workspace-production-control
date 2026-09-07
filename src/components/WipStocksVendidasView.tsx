@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { wipEngineService } from '../services/wipEngineService';
 
-type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'database-contratos';
+type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'queue-results';
 
 interface OrdenItem {
   id: string;
@@ -15,9 +15,25 @@ interface OrdenItem {
   checkCaptura: boolean;
 }
 
+interface FilaQueue {
+  department: string;
+  po: string;
+  units: number;
+  styles: string;
+  name: string;
+  teamName: string;
+  date: string;
+  dueDate: string;
+  memo: string;
+  readyForDr: string;
+  createdFrom: string;
+  classType: string;
+}
+
 const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
 const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
 const STORAGE_ORDENES_DIA_KEY = 'wip_ordenes_dia_anotadas_v1';
+const STORAGE_QUEUE_KEY = 'wip_customization_queue_v1';
 
 const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
   try {
@@ -73,6 +89,32 @@ const cargarOrdenesDiaIniciales = (): string[] => {
   return [];
 };
 
+const cargarQueueInicial = (): FilaQueue[] => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_QUEUE_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando queue', e);
+  }
+  return [];
+};
+
+// Función para normalizar texto de fecha a "M/d/yyyy"
+const limpiarFechaTexto = (val: string): string => {
+  if (!val) return '';
+  const str = String(val).trim();
+  const partes = str.split('/');
+  if (partes.length === 3) {
+    const mes = parseInt(partes[0], 10);
+    const dia = parseInt(partes[1], 10);
+    const anio = parseInt(partes[2], 10);
+    if (!isNaN(mes) && !isNaN(dia) && !isNaN(anio)) {
+      return `${mes}/${dia}/${anio}`;
+    }
+  }
+  return str;
+};
+
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
@@ -84,8 +126,9 @@ export const WipStocksVendidasView: React.FC = () => {
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialBP);
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialFD);
   const [ordenesDelDiaAnotadas, setOrdenesDelDiaAnotadas] = useState<string[]>(cargarOrdenesDiaIniciales);
+  const [queueResults, setQueueResults] = useState<FilaQueue[]>(cargarQueueInicial);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputQueueRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
@@ -99,10 +142,14 @@ export const WipStocksVendidasView: React.FC = () => {
     localStorage.setItem(STORAGE_ORDENES_DIA_KEY, JSON.stringify(ordenesDelDiaAnotadas));
   }, [ordenesDelDiaAnotadas]);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_QUEUE_KEY, JSON.stringify(queueResults));
+  }, [queueResults]);
+
   const activeTablas = activeSubTab === 'buscar-bp' ? tablasBP : tablasFD;
   const todasOrdenes = Object.values(activeTablas).flat();
 
-  // Evaluación Jerárquica
+  // Evaluación Jerárquica de Estatus
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const estaEnOrdenesDelDiaLocal = ordenesDelDiaAnotadas.includes(item.contrato);
 
@@ -154,8 +201,38 @@ export const WipStocksVendidasView: React.FC = () => {
   }).length;
   const resta = totalOrders - capturados;
 
-  // Carga e Importación desde Archivo Excel / CSV
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Lógica Replicada de Apps Script: Actualizar_Ordenes_Del_Dia()
+  const ejecutarActualizarOrdenesDelDia = () => {
+    if (queueResults.length === 0) {
+      alert("Error: La hoja 'CustomizationQueue2Results' está vacía. Carga primero la cola en la pestaña 'CUSTOMIZATION QUEUE'.");
+      return;
+    }
+
+    const ahora = new Date();
+    const targetHoy = `${ahora.getMonth() + 1}/${ahora.getDate()}/${ahora.getFullYear()}`;
+
+    const contratosHoy: string[] = [];
+
+    queueResults.forEach(fila => {
+      const dpto = fila.department.trim().toUpperCase();
+      if (dpto === 'TEAM SPIRIT (QUEUED)') return;
+
+      const fechaLimpia = limpiarFechaTexto(fila.dueDate);
+      const contratoLimpio = fila.po.replace(/[A-Za-z]/g, '').trim();
+
+      if (fechaLimpia === targetHoy && contratoLimpio) {
+        contratosHoy.push(contratoLimpio);
+      }
+    });
+
+    const nuevosContratos = Array.from(new Set([...contratosHoy, ...ordenesDelDiaAnotadas]));
+    setOrdenesDelDiaAnotadas(nuevosContratos);
+
+    alert(`✅ Órdenes del día actualizadas correctamente.\n\nSe filtraron las de HOY (${targetHoy}), omitiendo 'Team Spirit (Queued)'. Contratos totales activos: ${nuevosContratos.length}`);
+  };
+
+  // Carga del reporte CustomizationQueue2Results
+  const handleFileUploadQueue = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -164,32 +241,39 @@ export const WipStocksVendidasView: React.FC = () => {
       const text = event.target?.result as string;
       if (!text) return;
 
-      // Lectura por líneas (formato CSV/Texto)
       const lineas = text.split(/\r\n|\n/);
-      const contratosExtraidos: string[] = [];
+      const queueImportado: FilaQueue[] = [];
 
-      lineas.forEach(linea => {
-        const primeraColumna = linea.split(',')[0]?.split(';')[0]?.trim();
-        if (primeraColumna) {
-          const contratoLimpio = primeraColumna.replace(/[A-Za-z]/g, '');
-          if (contratoLimpio && !isNaN(Number(contratoLimpio))) {
-            contratosExtraidos.push(contratoLimpio);
-          }
+      lineas.slice(1).forEach(linea => {
+        const cols = linea.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/);
+        if (cols.length >= 8) {
+          queueImportado.push({
+            department: cols[0]?.replace(/"/g, '').trim() || '',
+            po: cols[1]?.replace(/"/g, '').trim() || '',
+            units: Number(cols[2]) || 1,
+            styles: cols[3]?.replace(/"/g, '').trim() || '',
+            name: cols[4]?.replace(/"/g, '').trim() || '',
+            teamName: cols[5]?.replace(/"/g, '').trim() || '',
+            date: cols[6]?.replace(/"/g, '').trim() || '',
+            dueDate: cols[7]?.replace(/"/g, '').trim() || '',
+            memo: cols[8]?.replace(/"/g, '').trim() || '',
+            readyForDr: cols[9]?.replace(/"/g, '').trim() || '',
+            createdFrom: cols[10]?.replace(/"/g, '').trim() || '',
+            classType: cols[11]?.replace(/"/g, '').trim() || '',
+          });
         }
       });
 
-      if (contratosExtraidos.length > 0) {
-        setOrdenesDelDiaAnotadas(prev => Array.from(new Set([...contratosExtraidos, ...prev])));
-        alert(`✅ Se importaron correctamente ${contratosExtraidos.length} contratos a Órdenes del Día.`);
+      if (queueImportado.length > 0) {
+        setQueueResults(queueImportado);
+        alert(`✅ Carga exitosa: Se importaron ${queueImportado.length} registros en CustomizationQueue2Results.`);
       } else {
-        alert('No se encontraron contratos numéricos válidos en la Columna A del archivo.');
+        alert('No se pudieron leer registros válidos del archivo CSV/Excel.');
       }
     };
 
     reader.readAsText(file);
-
-    // Resetear valor para permitir cargar el mismo archivo
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (fileInputQueueRef.current) fileInputQueueRef.current.value = '';
   };
 
   const ejecutarAgregarOrdenEnTabla = async (nombreTabla: string) => {
@@ -295,12 +379,12 @@ export const WipStocksVendidasView: React.FC = () => {
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* Input Oculto para Cargar Archivo Excel / CSV */}
+      {/* Input Oculto Cargar Queue */}
       <input
         type="file"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        accept=".csv, .xlsx, .xls, text/plain"
+        ref={fileInputQueueRef}
+        onChange={handleFileUploadQueue}
+        accept=".csv, .txt"
         className="hidden"
       />
 
@@ -339,13 +423,24 @@ export const WipStocksVendidasView: React.FC = () => {
           📋 ÓRDENES DEL DÍA ({ordenesDelDiaAnotadas.length})
         </button>
 
+        <button
+          onClick={() => setActiveSubTab('queue-results')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeSubTab === 'queue-results'
+              ? 'bg-purple-500 text-white font-extrabold shadow-lg shadow-purple-500/20'
+              : 'bg-[#121620] text-gray-400 hover:text-white border border-white/5'
+          }`}
+        >
+          📥 QUEUE RESULTS ({queueResults.length})
+        </button>
+
         <div className="ml-auto flex items-center gap-2">
-          {/* Botón para Cargar Excel / CSV */}
+          {/* Botón Exacto del Apps Script */}
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={ejecutarActualizarOrdenesDelDia}
             className="px-3 py-1.5 bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
           >
-            📂 Cargar Excel / CSV
+            🔄 Actualizar Órdenes del Día
           </button>
 
           <input
@@ -380,7 +475,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner de Totales Generales */}
+      {/* 2. Banner de Totales */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -415,41 +510,88 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Sub-Pestaña ÓRDENES DEL DÍA (Carga y Anotaciones) */}
+      {/* 3. Sub-Pestaña CUSTOMIZATION QUEUE RESULTS */}
+      {activeSubTab === 'queue-results' && (
+        <div className="w-full bg-[#121826] border border-purple-500/40 rounded-xl p-6 shadow-2xl space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <h2 className="text-lg font-black text-purple-400">📥 CustomizationQueue2Results</h2>
+              <p className="text-xs text-gray-400">
+                Sube el reporte extraído de NetSuite. Al presionar <strong>Actualizar Órdenes del Día</strong>, el sistema extraerá automáticamente los contratos de hoy excluyendo <em>Team Spirit (Queued)</em>.
+              </p>
+            </div>
+
+            <button
+              onClick={() => fileInputQueueRef.current?.click()}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-2"
+            >
+              📂 Cargar CustomizationQueue2Results CSV
+            </button>
+          </div>
+
+          <div className="overflow-x-auto max-h-96 custom-scrollbar">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr className="bg-[#0b0e14] text-gray-400 font-bold border-b border-white/10 uppercase text-[11px] sticky top-0">
+                  <th className="p-2.5">Department</th>
+                  <th className="p-2.5 text-[#00f2fe]">PO</th>
+                  <th className="p-2.5 text-center">Units</th>
+                  <th className="p-2.5">Styles</th>
+                  <th className="p-2.5 text-amber-300">Due Date</th>
+                  <th className="p-2.5">Memo / Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {queueResults.length > 0 ? (
+                  queueResults.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-white/5 transition-colors">
+                      <td className="p-2.5 font-bold text-gray-300">{row.department}</td>
+                      <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{row.po}</td>
+                      <td className="p-2.5 text-center font-mono">{row.units}</td>
+                      <td className="p-2.5 font-mono text-gray-400">{row.styles}</td>
+                      <td className="p-2.5 font-mono font-bold text-amber-300">{row.dueDate}</td>
+                      <td className="p-2.5 text-gray-400">{row.memo}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-gray-500 italic text-xs">
+                      No hay datos cargados en CustomizationQueue2Results. Haz clic arriba para cargar el archivo.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Sub-Pestaña ÓRDENES DEL DÍA (COL A) */}
       {activeSubTab === 'ordenes-dia' && (
         <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-6 shadow-2xl space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
             <div>
               <h2 className="text-lg font-black text-[#00f2fe]">📋 ÓRDENES DEL DÍA (COL A)</h2>
               <p className="text-xs text-gray-400">
-                Sube tu archivo Excel/CSV o anota contratos manualmente. Cualquier orden en las tablas con estos contratos cambiará a <strong>CAPTURADO COMPLETO</strong>.
+                Lista de contratos activos. Las órdenes registradas aquí marcan automáticamente en las tablas de BP y FD el estado <strong>CAPTURADO COMPLETO</strong>.
               </p>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <form onSubmit={handleAnotarOrdenDiaManual} className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Anotar Contrato Manual..."
+                value={inputOrdenDiaManual}
+                onChange={e => setInputOrdenDiaManual(e.target.value)}
+                className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
+              />
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer flex items-center gap-1.5"
+                type="submit"
+                className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
               >
-                📂 Subir Excel / CSV
+                + Registrar
               </button>
-
-              <form onSubmit={handleAnotarOrdenDiaManual} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Anotar Contrato en Col A..."
-                  value={inputOrdenDiaManual}
-                  onChange={e => setInputOrdenDiaManual(e.target.value)}
-                  className="bg-[#0b0e14] border border-[#00f2fe]/50 rounded-lg px-3 py-1.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none w-56 font-mono font-bold"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow transition-all cursor-pointer"
-                >
-                  + Registrar
-                </button>
-              </form>
-            </div>
+            </form>
           </div>
 
           <div className="overflow-x-auto">
@@ -470,7 +612,7 @@ export const WipStocksVendidasView: React.FC = () => {
                       <td className="p-3 font-mono font-bold text-amber-300 text-sm">{contrato}</td>
                       <td className="p-3 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] border font-mono bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40">
-                          VALIDANDO TABLAS BP / FD
+                          VALIDADO EN ÓRDENES DEL DÍA
                         </span>
                       </td>
                       <td className="p-3 text-center">
@@ -487,7 +629,7 @@ export const WipStocksVendidasView: React.FC = () => {
                 ) : (
                   <tr>
                     <td colSpan={4} className="p-8 text-center text-gray-500 italic text-xs">
-                      No hay contratos en Órdenes del Día. Haz clic en "Subir Excel / CSV" o anota un contrato arriba para marcar automáticamente como capturadas sus órdenes correspondientes.
+                      No hay contratos activos en Órdenes del Día. Presiona "Actualizar Órdenes del Día" arriba o anota uno manualmente.
                     </td>
                   </tr>
                 )}
@@ -497,7 +639,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       )}
 
-      {/* 4. Renderizado de Tablas BP y FD */}
+      {/* 5. Renderizado de Tablas BP y FD */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
