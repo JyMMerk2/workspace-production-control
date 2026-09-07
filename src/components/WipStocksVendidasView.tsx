@@ -15,12 +15,6 @@ interface OrdenItem {
   checkCaptura: boolean;
 }
 
-interface RegistroIncompleto {
-  po: string;
-  completado: boolean;
-  piezasFaltantes: number;
-}
-
 export const WipStocksVendidasView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,31 +22,7 @@ export const WipStocksVendidasView: React.FC = () => {
   const [tablaTargetSelect, setTablaTargetSelect] = useState('CUSTOM BAGS');
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
-  // Diccionario centralizado para autocompletar al digitar una PO en cualquier línea
-  const baseDatosInventario: Record<string, { qty: number; style: string; color: string; tipo: 'CUSTOM' | 'STOCK' }> = {
-    '427769B': { qty: 1, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
-    '419217A': { qty: 10, style: 'PS-9100', color: 'TL/N/HCR', tipo: 'CUSTOM' },
-    '427713B': { qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
-    '427432A': { qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM' },
-    '427797A': { qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
-    '427418A': { qty: 14, style: 'FD-9006', color: 'CUSTOM', tipo: 'CUSTOM' },
-    '419211A': { qty: 10, style: 'PS-9100', color: 'M/O/FLE', tipo: 'STOCK' },
-    '426281A': { qty: 22, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
-  };
-
-  // Base de Incompletos compartida para la evaluación de estatus (Soporta llaves con y sin sufijo)
-  const [baseIncompletos] = useState<Record<string, RegistroIncompleto>>({
-    '427769B': { po: '427769B', completado: false, piezasFaltantes: 1 },
-    '427797A': { po: '427797A', completado: false, piezasFaltantes: 2 },
-    '427797': { po: '427797', completado: false, piezasFaltantes: 2 },
-    '427713B': { po: '427713B', completado: true, piezasFaltantes: 0 },
-    '427432A': { po: '427432A', completado: true, piezasFaltantes: 0 },
-  });
-
-  // Lista de contratos validados que han ingresado a Órdenes del Día
-  const [ordenesDelDiaRegistradas] = useState<string[]>(['427713', '427432']);
-
-  // 1. Las 7 Tablas de BUSCAR BP
+  // 1. Tablas de Mochilas (BUSCAR BP)
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>({
     'CUSTOM BAGS': [
       { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
@@ -71,14 +41,10 @@ export const WipStocksVendidasView: React.FC = () => {
     'LINEA 7 (CN)': [],
   });
 
-  // 2. Las 7 Tablas de BUSCAR FD
+  // 2. Tablas de Full Dye (BUSCAR FD)
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>({
-    'FULL DYE CELDA 1': [
-      { id: 'fd-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-    ],
-    'FULL DYE CELDA 2': [
-      { id: 'fd-2', po: '427797A', contrato: '427797', qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
-    ],
+    'FULL DYE CELDA 1': [],
+    'FULL DYE CELDA 2': [],
     'FULL DYE CELDA 3': [],
     'FULL DYE CELDA 4': [],
     'PANTS LINE 1': [],
@@ -86,6 +52,7 @@ export const WipStocksVendidasView: React.FC = () => {
     'HATS LINE': [],
   });
 
+  // Pestañas / Tablas dinámicas
   const lineasBPNames = Object.keys(tablasBP);
   const lineasFDNames = Object.keys(tablasFD);
 
@@ -97,9 +64,9 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica Jerárquica Universal aplicada a todas las filas de BP y FD
+  // Lógica de Evaluación Exacta descrita por ti:
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
-    // Regla Prioritaria: Marca manual en la interfaz
+    // A) Si la casilla manual fue marcada en la tabla
     if (item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
@@ -108,29 +75,12 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    const registroIncompleto = baseIncompletos[item.po] || baseIncompletos[item.contrato];
-    const estaEnOrdenesDia = ordenesDelDiaRegistradas.includes(item.contrato);
+    // B) Consultar en el servicio global del sistema (Incompletos y Órdenes del Día Reales)
+    const datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po, item.contrato);
+    const estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
 
-    // Regla 1: Existe en Incompletos pero aún no se completa el conteo
-    if (registroIncompleto && !registroIncompleto.completado) {
-      return {
-        texto: 'PARCIAL / EN PROCESO',
-        estiloClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-        checkAuto: false,
-      };
-    }
-
-    // Regla 2: Completado en Incompletos pero sin registrar en Órdenes del Día
-    if (registroIncompleto && registroIncompleto.completado && !estaEnOrdenesDia) {
-      return {
-        texto: 'REVISAR WIP E INCOMPLETOS',
-        estiloClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-        checkAuto: false,
-      };
-    }
-
-    // Regla 3: Completado en Incompletos Y presente en Órdenes del Día
-    if (registroIncompleto && registroIncompleto.completado && estaEnOrdenesDia) {
+    // B.1) Si está en Órdenes del Día (Col A) O si está completado en la hoja de Incompletos -> CAPTURADO COMPLETO
+    if (estaEnOrdenesDelDia || (datosIncompletos && datosIncompletos.completado)) {
       return {
         texto: 'CAPTURADO COMPLETO',
         estiloClass: 'bg-[#39ff14]/20 text-[#39ff14] border-[#39ff14]/40',
@@ -138,7 +88,16 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // Regla por defecto: No hay avance o no se encuentra en Incompletos
+    // B.2) Si SÍ está en la hoja de Incompletos pero NO está completado -> CAPTURA PARCIAL
+    if (datosIncompletos && !datosIncompletos.completado) {
+      return {
+        texto: 'PARCIAL / EN PROCESO',
+        estiloClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        checkAuto: false,
+      };
+    }
+
+    // B.3) Si NO se encuentra en Incompletos ni en ningún otro lado -> FALTA CAPTURA
     return {
       texto: 'FALTA CAPTURA',
       estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
@@ -146,7 +105,7 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Función de consulta e inserción automática de órdenes
+  // Agregar una orden al pulsar ENTER o Clic en botón
   const ejecutarAgregarOrden = async () => {
     const poLimpia = poInput.trim().toUpperCase();
 
@@ -158,13 +117,8 @@ export const WipStocksVendidasView: React.FC = () => {
     setLoadingBusqueda(true);
 
     try {
-      let detalles = baseDatosInventario[poLimpia];
-
-      if (!detalles) {
-        const resService = await wipEngineService.buscarDetallesPO(poLimpia);
-        if (resService) detalles = resService;
-      }
-
+      // Buscar detalles de la orden en la BD
+      const detalles = await wipEngineService.buscarDetallesPO(poLimpia);
       const contratoCalculado = poLimpia.replace(/[A-Za-z]/g, '');
 
       const itemNuevo: OrdenItem = {
@@ -172,7 +126,7 @@ export const WipStocksVendidasView: React.FC = () => {
         po: poLimpia,
         contrato: contratoCalculado || poLimpia,
         qty: detalles ? detalles.qty : 1,
-        style: detalles ? detalles.style : 'FD-9031',
+        style: detalles ? detalles.style : 'FD-STANDARD',
         color: detalles ? detalles.color : 'CUSTOM',
         tipo: detalles ? detalles.tipo : 'CUSTOM',
         checkShipping: false,
@@ -236,7 +190,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* Selector de Sub-pestañas */}
+      {/* 1. Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => {
@@ -295,7 +249,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* Banner con Indicadores y Formulario de Alta */}
+      {/* 2. Banner con Estadísticas y Barra para Agregar */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -353,7 +307,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* Grid de Tablas Paralelas (7 BP y 7 FD) */}
+      {/* 3. Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
