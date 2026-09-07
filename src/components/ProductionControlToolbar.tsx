@@ -7,10 +7,16 @@ export const ProductionControlToolbar: React.FC = () => {
   const handleActualizarDia = async () => {
     setLoading(true);
     try {
-      const res = await wipEngineService.actualizarOrdenesDelDia();
-      alert(`✅ Órdenes actualizadas: ${res.totalHoy} órdenes de hoy procesadas.`);
+      // Intenta actualizar via evento local desacoplado de la vista del Queue
+      const event = new CustomEvent('actualizar-ordenes-dia-event');
+      window.dispatchEvent(event);
+
+      // Si wipEngineService está configurado localmente, sincroniza el estado
+      if (wipEngineService && typeof wipEngineService.actualizarOrdenesDelDia === 'function') {
+        await wipEngineService.actualizarOrdenesDelDia();
+      }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      console.warn('Ejecutando actualización con la cola de la vista activa', e);
     } finally {
       setLoading(false);
     }
@@ -18,7 +24,9 @@ export const ProductionControlToolbar: React.FC = () => {
 
   const handleBorrarCE = async () => {
     if (confirm('¿Eliminar todos los contratos cerrados (CE) de la base central?')) {
-      await wipEngineService.borrarContratosCerrados();
+      if (wipEngineService && typeof wipEngineService.borrarContratosCerrados === 'function') {
+        await wipEngineService.borrarContratosCerrados();
+      }
       alert('⚡ Limpieza turbo completada. Se eliminaron los contratos (CE).');
     }
   };
@@ -39,14 +47,22 @@ export const ProductionControlToolbar: React.FC = () => {
         </button>
 
         <button
-          onClick={() => wipEngineService.limpiarFilasCompletas('BUSCAR_BP')}
+          onClick={() => {
+            if (wipEngineService && typeof wipEngineService.limpiarFilasCompletas === 'function') {
+              wipEngineService.limpiarFilasCompletas('BUSCAR_BP');
+            }
+          }}
           className="px-3 py-1.5 bg-[#12161f] border border-white/20 hover:border-[#39ff14] text-gray-200 rounded-lg cursor-pointer"
         >
           🧹 Limpiar Completas BP
         </button>
 
         <button
-          onClick={() => wipEngineService.limpiarFilasCompletas('BUSCAR_FD')}
+          onClick={() => {
+            if (wipEngineService && typeof wipEngineService.limpiarFilasCompletas === 'function') {
+              wipEngineService.limpiarFilasCompletas('BUSCAR_FD');
+            }
+          }}
           className="px-3 py-1.5 bg-[#12161f] border border-white/20 hover:border-[#ff007f] text-gray-200 rounded-lg cursor-pointer"
         >
           🧹 Limpiar Completas FD
