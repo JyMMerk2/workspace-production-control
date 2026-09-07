@@ -1,1 +1,116 @@
 @import "tailwindcss";
+
+/* =========================================================
+   VARIABLES Y MODO CLARO (LIGHT THEME) ESTRUCTURADO
+   ========================================================= */
+
+html.light,
+body.light {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Encabezados y Navegación Principal */
+html.light header,
+html.light aside {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Tarjetas y Paneles de Tablas en Modo Claro */
+html.light .wip-card,
+html.light .wip-table-card,
+html.light div[class*="bg-[#121826]"],
+html.light div[class*="bg-[#0b0e14]"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Tablas con Alto Contraste */
+html.light table th {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+html.light table td {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+html.light table tbody tr:hover td {
+  background-color: #f8fafc !important;
+}
+
+/* Normalización de Textos Oscuros en Modo Día */
+html.light .text-white,
+html.light .text-gray-300,
+html.light .text-gray-400,
+html.light .text-slate-500 {
+  color: #1e293b !important;
+}
+
+html.light .text-[#00f2fe] {
+  color: #0284c7 !important;
+  font-weight: 800 !important;
+}
+
+html.light .text-amber-300,
+html.light .text-amber-400 {
+  color: #b45309 !important;
+  font-weight: 800 !important;
+}
+
+html.light .text-[#39ff14] {
+  color: #15803d !important;
+  font-weight: 800 !important;
+}
+
+/* Badges de Estatus */
+html.light .bg-rose-500\/20 {
+  background-color: #fef2f2 !important;
+  color: #be123c !important;
+  border: 1px solid #fca5a5 !important;
+  font-weight: 800 !important;
+}
+
+html.light .bg-emerald-500\/20 {
+  background-color: #f0fdf4 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+  font-weight: 800 !important;
+}
+
+html.light .bg-amber-500\/20 {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border: 1px solid #fcd34d !important;
+  font-weight: 800 !important;
+}
+
+/* Inputs de Texto */
+html.light input[type="text"] {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+html.light input[type="text"]::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* =========================================================
+   PROTECCIÓN DASHBOARD NEÓN Y MODO OSCURO
+   ========================================================= */
+
+html.dark,
+body.dark {
+  background-color: #0b0e14 !important;
+  color: #f8fafc !important;
+}
