@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { wipEngineService } from '../services/wipEngineService';
 
 type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'database-contratos';
@@ -15,15 +15,18 @@ interface OrdenItem {
   checkCaptura: boolean;
 }
 
-export const WipStocksVendidasView: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [poInput, setPoInput] = useState('');
-  const [tablaTargetSelect, setTablaTargetSelect] = useState('CUSTOM BAGS');
-  const [loadingBusqueda, setLoadingBusqueda] = useState(false);
+const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
+const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
 
-  // 1. Tablas Mochilas (BUSCAR BP)
-  const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>({
+// Carga inicial persistente desde LocalStorage
+const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_BP_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando tablas BP de localStorage', e);
+  }
+  return {
     'CUSTOM BAGS': [
       { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
       { id: 'bp-2', po: '427432A', contrato: '427432', qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
@@ -39,10 +42,17 @@ export const WipStocksVendidasView: React.FC = () => {
     'BIG BAG UTILITY 2': [],
     'UTILITY BAG LINE 3': [],
     'LINEA 7 (CN)': [],
-  });
+  };
+};
 
-  // 2. Tablas Full Dye (BUSCAR FD)
-  const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>({
+const cargarEstadoInicialFD = (): Record<string, OrdenItem[]> => {
+  try {
+    const guardado = localStorage.getItem(STORAGE_FD_KEY);
+    if (guardado) return JSON.parse(guardado);
+  } catch (e) {
+    console.error('Error cargando tablas FD de localStorage', e);
+  }
+  return {
     'FULL DYE CELDA 1': [],
     'FULL DYE CELDA 2': [],
     'FULL DYE CELDA 3': [],
@@ -50,7 +60,35 @@ export const WipStocksVendidasView: React.FC = () => {
     'PANTS LINE 1': [],
     'PANTS LINE 2': [],
     'HATS LINE': [],
-  });
+  };
+};
+
+export const WipStocksVendidasView: React.FC = () => {
+  const [activeSubTab, setActiveSubTab] = useState<SubPestanaWip>('buscar-bp');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [poInput, setPoInput] = useState('');
+  const [tablaTargetSelect, setTablaTargetSelect] = useState('CUSTOM BAGS');
+  const [loadingBusqueda, setLoadingBusqueda] = useState(false);
+
+  const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialBP);
+  const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialFD);
+
+  // Guardado automático constante en LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
+    } catch (e) {
+      console.error('Error guardando tablas BP', e);
+    }
+  }, [tablasBP]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_FD_KEY, JSON.stringify(tablasFD));
+    } catch (e) {
+      console.error('Error guardando tablas FD', e);
+    }
+  }, [tablasFD]);
 
   const lineasBPNames = Object.keys(tablasBP);
   const lineasFDNames = Object.keys(tablasFD);
@@ -63,9 +101,8 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica de Evaluación Jerárquica A Prueba de Fallos (Safe Render)
+  // Lógica de Evaluación Jerárquica
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
-    // Si la casilla fue marcada manualmente en la tabla
     if (item.checkCaptura) {
       return {
         texto: 'CAPTURADO COMPLETO',
@@ -77,7 +114,6 @@ export const WipStocksVendidasView: React.FC = () => {
     let datosIncompletos: any = null;
     let estaEnOrdenesDelDia = false;
 
-    // Obtención segura de datos desde el servicio
     try {
       if (wipEngineService && typeof wipEngineService.obtenerEstadoIncompleto === 'function') {
         datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po, item.contrato);
@@ -86,10 +122,9 @@ export const WipStocksVendidasView: React.FC = () => {
         estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
       }
     } catch (e) {
-      console.warn('Servicio de evaluación no disponible de forma síncrona', e);
+      console.warn('Servicio de evaluación no disponible', e);
     }
 
-    // 1. Si está en Órdenes del Día O si está completado en Incompletos -> CAPTURADO COMPLETO
     if (estaEnOrdenesDelDia || (datosIncompletos && datosIncompletos.completado)) {
       return {
         texto: 'CAPTURADO COMPLETO',
@@ -98,7 +133,6 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // 2. Si SÍ está en Incompletos pero NO está completado -> PARCIAL / EN PROCESO
     if (datosIncompletos && !datosIncompletos.completado) {
       return {
         texto: 'PARCIAL / EN PROCESO',
@@ -107,7 +141,6 @@ export const WipStocksVendidasView: React.FC = () => {
       };
     }
 
-    // 3. Por defecto si NO está en Incompletos -> FALTA CAPTURA
     return {
       texto: 'FALTA CAPTURA',
       estiloClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
@@ -115,7 +148,7 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Función para agregar PO al presionar Enter o Clic
+  // Agregar Orden con Persistencia Reactiva
   const ejecutarAgregarOrden = async () => {
     const poLimpia = poInput.trim().toUpperCase();
 
@@ -191,19 +224,25 @@ export const WipStocksVendidasView: React.FC = () => {
     }));
   };
 
+  // Eliminar orden de la lista permanentemente
   const handleEliminarOrden = (tabla: string, id: string) => {
-    if (confirm('¿Deseas eliminar esta orden de la lista?')) {
+    if (confirm('¿Deseas eliminar esta orden de forma definitiva?')) {
       const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
       setter(prev => ({
         ...prev,
         [tabla]: prev[tabla].filter(item => item.id !== id),
       }));
+
+      // Notificar al servicio remoto si existe la función
+      if (wipEngineService && typeof wipEngineService.eliminarOrdenServidor === 'function') {
+        wipEngineService.eliminarOrdenServidor(id);
+      }
     }
   };
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* Selector de Sub-pestañas */}
+      {/* 1. Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => {
@@ -255,8 +294,19 @@ export const WipStocksVendidasView: React.FC = () => {
 
           <button
             onClick={() => {
-              if (wipEngineService && typeof wipEngineService.limpiarFilasCompletas === 'function') {
-                wipEngineService.limpiarFilasCompletas(activeSubTab === 'buscar-bp' ? 'BUSCAR_BP' : 'BUSCAR_FD');
+              if (confirm('¿Limpiar todas las órdenes de las tablas?')) {
+                if (activeSubTab === 'buscar-bp') {
+                  setTablasBP({
+                    'CUSTOM BAGS': [], 'SPUT 1': [], 'SPUT 2': [],
+                    'BIG BAG UTILITY 1': [], 'BIG BAG UTILITY 2': [],
+                    'UTILITY BAG LINE 3': [], 'LINEA 7 (CN)': []
+                  });
+                } else {
+                  setTablasFD({
+                    'FULL DYE CELDA 1': [], 'FULL DYE CELDA 2': [], 'FULL DYE CELDA 3': [],
+                    'FULL DYE CELDA 4': [], 'PANTS LINE 1': [], 'PANTS LINE 2': [], 'HATS LINE': []
+                  });
+                }
               }
             }}
             className="px-3 py-1.5 bg-[#39ff14]/20 border border-[#39ff14]/40 text-[#39ff14] hover:bg-[#39ff14] hover:text-black font-extrabold text-xs rounded-lg transition-all cursor-pointer whitespace-nowrap"
@@ -266,7 +316,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* Banner de Control */}
+      {/* 2. Banner Módulo de Búsqueda y Agregar */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -324,7 +374,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* Renderizado de Tablas */}
+      {/* 3. Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
