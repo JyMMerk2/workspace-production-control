@@ -18,13 +18,12 @@ interface OrdenItem {
 const STORAGE_BP_KEY = 'wip_stocks_tablas_bp_v1';
 const STORAGE_FD_KEY = 'wip_stocks_tablas_fd_v1';
 
-// Carga inicial persistente desde LocalStorage
 const cargarEstadoInicialBP = (): Record<string, OrdenItem[]> => {
   try {
     const guardado = localStorage.getItem(STORAGE_BP_KEY);
     if (guardado) return JSON.parse(guardado);
   } catch (e) {
-    console.error('Error cargando tablas BP de localStorage', e);
+    console.error('Error cargando tablas BP', e);
   }
   return {
     'CUSTOM BAGS': [
@@ -50,7 +49,7 @@ const cargarEstadoInicialFD = (): Record<string, OrdenItem[]> => {
     const guardado = localStorage.getItem(STORAGE_FD_KEY);
     if (guardado) return JSON.parse(guardado);
   } catch (e) {
-    console.error('Error cargando tablas FD de localStorage', e);
+    console.error('Error cargando tablas FD', e);
   }
   return {
     'FULL DYE CELDA 1': [],
@@ -73,21 +72,12 @@ export const WipStocksVendidasView: React.FC = () => {
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialBP);
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>(cargarEstadoInicialFD);
 
-  // Guardado automático constante en LocalStorage
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
-    } catch (e) {
-      console.error('Error guardando tablas BP', e);
-    }
+    localStorage.setItem(STORAGE_BP_KEY, JSON.stringify(tablasBP));
   }, [tablasBP]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_FD_KEY, JSON.stringify(tablasFD));
-    } catch (e) {
-      console.error('Error guardando tablas FD', e);
-    }
+    localStorage.setItem(STORAGE_FD_KEY, JSON.stringify(tablasFD));
   }, [tablasFD]);
 
   const lineasBPNames = Object.keys(tablasBP);
@@ -115,9 +105,12 @@ export const WipStocksVendidasView: React.FC = () => {
     let estaEnOrdenesDelDia = false;
 
     try {
+      // 1. Incompletas busca usando la PO CON LETRA (item.po)
       if (wipEngineService && typeof wipEngineService.obtenerEstadoIncompleto === 'function') {
-        datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po, item.contrato);
+        datosIncompletos = wipEngineService.obtenerEstadoIncompleto(item.po);
       }
+
+      // 2. Órdenes del Día busca usando ÚNICAMENTE EL CONTRATO SIN LETRA (item.contrato)
       if (wipEngineService && typeof wipEngineService.estaEnOrdenesDelDia === 'function') {
         estaEnOrdenesDelDia = wipEngineService.estaEnOrdenesDelDia(item.contrato);
       }
@@ -148,11 +141,11 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Agregar Orden con Persistencia Reactiva
+  // Agregar Orden: Consulta BD usando PO CON LETRA y extrae el CONTRATO SIN LETRA para Órdenes del Día
   const ejecutarAgregarOrden = async () => {
-    const poLimpia = poInput.trim().toUpperCase();
+    const poCompleta = poInput.trim().toUpperCase();
 
-    if (!poLimpia) {
+    if (!poCompleta) {
       alert('Ingresa un número de PO/Contrato válido.');
       return;
     }
@@ -161,16 +154,19 @@ export const WipStocksVendidasView: React.FC = () => {
 
     try {
       let detalles: any = null;
+
+      // Consulta en BD con la PO COMPLETA CON LETRA
       if (wipEngineService && typeof wipEngineService.buscarDetallesPO === 'function') {
-        detalles = await wipEngineService.buscarDetallesPO(poLimpia);
+        detalles = await wipEngineService.buscarDetallesPO(poCompleta);
       }
 
-      const contratoCalculado = poLimpia.replace(/[A-Za-z]/g, '');
+      // Contrato es estrictamente numérico (SIN LETRA)
+      const contratoSoloNumeros = poCompleta.replace(/[A-Za-z]/g, '');
 
       const itemNuevo: OrdenItem = {
         id: Date.now().toString(),
-        po: poLimpia,
-        contrato: contratoCalculado || poLimpia,
+        po: poCompleta,
+        contrato: contratoSoloNumeros || poCompleta,
         qty: detalles ? detalles.qty : 1,
         style: detalles ? detalles.style : 'FD-STANDARD',
         color: detalles ? detalles.color : 'CUSTOM',
@@ -224,25 +220,19 @@ export const WipStocksVendidasView: React.FC = () => {
     }));
   };
 
-  // Eliminar orden de la lista permanentemente
   const handleEliminarOrden = (tabla: string, id: string) => {
-    if (confirm('¿Deseas eliminar esta orden de forma definitiva?')) {
+    if (confirm('¿Deseas eliminar esta orden de la lista?')) {
       const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
       setter(prev => ({
         ...prev,
         [tabla]: prev[tabla].filter(item => item.id !== id),
       }));
-
-      // Notificar al servicio remoto si existe la función
-      if (wipEngineService && typeof wipEngineService.eliminarOrdenServidor === 'function') {
-        wipEngineService.eliminarOrdenServidor(id);
-      }
     }
   };
 
   return (
     <div className="w-full space-y-4 font-sans text-slate-100 px-1">
-      {/* 1. Sub-pestañas */}
+      {/* Selector de Sub-pestañas */}
       <div className="flex items-center gap-2 border-b border-white/10 pb-2 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => {
@@ -294,7 +284,7 @@ export const WipStocksVendidasView: React.FC = () => {
 
           <button
             onClick={() => {
-              if (confirm('¿Limpiar todas las órdenes de las tablas?')) {
+              if (confirm('¿Limpiar las tablas activas?')) {
                 if (activeSubTab === 'buscar-bp') {
                   setTablasBP({
                     'CUSTOM BAGS': [], 'SPUT 1': [], 'SPUT 2': [],
@@ -316,7 +306,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Banner Módulo de Búsqueda y Agregar */}
+      {/* Banner Superior con Búsqueda e Inserción */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -374,7 +364,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </form>
       </div>
 
-      {/* 3. Renderizado de Tablas */}
+      {/* Renderizado de Tablas */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
