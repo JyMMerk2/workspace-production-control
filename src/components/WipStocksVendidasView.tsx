@@ -6,7 +6,6 @@ type SubPestanaWip = 'buscar-bp' | 'buscar-fd' | 'ordenes-dia' | 'database-contr
 interface OrdenItem {
   id: string;
   po: string;
-  part?: string;
   contrato: string;
   qty: number;
   style: string;
@@ -27,13 +26,13 @@ export const WipStocksVendidasView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingBusqueda, setLoadingBusqueda] = useState(false);
 
-  // Formulario rápido (Solo digitas la PO)
+  // Formulario rápido
   const [nuevaOrden, setNuevaOrden] = useState({
     tablaTarget: 'CUSTOM BAGS',
     po: '',
   });
 
-  // Base de Datos Centralizada de Mock / Supabase para Autocompletado Instantáneo
+  // Base de Datos Centralizada para autocompletado
   const baseDatosInventario: Record<string, { qty: number; style: string; color: string; tipo: 'CUSTOM' | 'STOCK' }> = {
     '427713B': { qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM' },
     '427432A': { qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM' },
@@ -59,7 +58,7 @@ export const WipStocksVendidasView: React.FC = () => {
     '426281',
   ]);
 
-  // Tablas de Mochilas
+  // Tablas Mochilas (BUSCAR BP)
   const [tablasBP, setTablasBP] = useState<Record<string, OrdenItem[]>>({
     'CUSTOM BAGS': [
       { id: 'bp-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
@@ -78,12 +77,15 @@ export const WipStocksVendidasView: React.FC = () => {
     'LINEA 7 (CN)': [],
   });
 
-  // Tablas de Full Dye
+  // Tablas Full Dye (BUSCAR FD)
   const [tablasFD, setTablasFD] = useState<Record<string, OrdenItem[]>>({
     'FULL DYE CELDA 1': [
-      { id: 'fd-1', po: '427713', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
+      { id: 'fd-1', po: '427713B', contrato: '427713', qty: 20, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: true },
+      { id: 'fd-2', po: '427432A', contrato: '427432', qty: 10, style: 'FD-9010', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
     ],
-    'FULL DYE CELDA 2': [],
+    'FULL DYE CELDA 2': [
+      { id: 'fd-3', po: '427797A', contrato: '427797', qty: 3, style: 'FD-9031', color: 'CUSTOM', tipo: 'CUSTOM', checkShipping: false, checkCaptura: false },
+    ],
     'FULL DYE CELDA 3': [],
     'FULL DYE CELDA 4': [],
     'PANTS LINE 1': [],
@@ -102,7 +104,7 @@ export const WipStocksVendidasView: React.FC = () => {
   const capturados = todasOrdenes.filter(o => o.checkCaptura).length;
   const resta = totalOrders - capturados;
 
-  // Lógica de Fórmulas Jerárquicas
+  // Lógica Jerárquica
   const calcularEstadoFormulaJerarquica = (item: OrdenItem): { texto: string; estiloClass: string; checkAuto: boolean } => {
     const registroIncompleto = baseIncompletos[item.po];
     const estaEnOrdenesDia = ordenesDelDiaRegistradas.includes(item.contrato);
@@ -138,7 +140,7 @@ export const WipStocksVendidasView: React.FC = () => {
     };
   };
 
-  // Función Principal: Buscar datos en BD e insertar inmediatamente al escribir la PO
+  // Buscar en BD e Insertar
   const handleAgregarOrdenBuscandoEnBD = async (e: React.FormEvent) => {
     e.preventDefault();
     const poBuscada = nuevaOrden.po.trim().toUpperCase();
@@ -150,18 +152,13 @@ export const WipStocksVendidasView: React.FC = () => {
     setLoadingBusqueda(true);
 
     try {
-      // 1. Consultar detalles en la base de datos
       let detalles = baseDatosInventario[poBuscada];
 
       if (!detalles) {
-        // Intento de fallback por servicio de Supabase
         const resService = await wipEngineService.buscarDetallesPO(poBuscada);
-        if (resService) {
-          detalles = resService;
-        }
+        if (resService) detalles = resService;
       }
 
-      // 2. Armar el objeto con datos de BD o valores por defecto
       const contratoLimpio = poBuscada.replace(/[A-Za-z]/g, '');
       const itemNuevo: OrdenItem = {
         id: Date.now().toString(),
@@ -175,7 +172,6 @@ export const WipStocksVendidasView: React.FC = () => {
         checkCaptura: false,
       };
 
-      // 3. Insertar inmediatamente en la tabla correspondiente
       const setter = activeSubTab === 'buscar-bp' ? setTablasBP : setTablasFD;
       const target = nuevaOrden.tablaTarget;
 
@@ -184,7 +180,6 @@ export const WipStocksVendidasView: React.FC = () => {
         [target]: [itemNuevo, ...(prev[target] || [])],
       }));
 
-      // Limpiar input para la siguiente orden
       setNuevaOrden(prev => ({ ...prev, po: '' }));
     } catch (err) {
       console.error(err);
@@ -284,7 +279,7 @@ export const WipStocksVendidasView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Formulario de Búsqueda Rápida e Inserción Automática */}
+      {/* 2. Banner Totales y Alta de Órdenes */}
       <div className="w-full bg-[#121826] border border-[#00f2fe]/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div>
@@ -313,7 +308,6 @@ export const WipStocksVendidasView: React.FC = () => {
           </div>
         </div>
 
-        {/* Escribes la PO + Enter / Botón y consulta la BD para armar la fila */}
         <form onSubmit={handleAgregarOrdenBuscandoEnBD} className="flex items-center gap-2 flex-wrap">
           <select
             value={nuevaOrden.tablaTarget}
@@ -338,18 +332,19 @@ export const WipStocksVendidasView: React.FC = () => {
             disabled={loadingBusqueda}
             className="px-4 py-1.5 bg-[#00f2fe] hover:bg-[#00c8d4] text-black font-extrabold text-xs rounded-lg shadow-md cursor-pointer transition-all flex items-center gap-1"
           >
-            {loadingBusqueda ? '🔍 Buscando en BD...' : '⚡ Agregar y Autocompletar'}
+            {loadingBusqueda ? '🔍 Buscando...' : '⚡ Agregar Orden'}
           </button>
         </form>
       </div>
 
-      {/* 3. Renderizado de Tablas */}
+      {/* 3. Renderizado de Tablas con columna CONTRATO visible */}
       {(activeSubTab === 'buscar-bp' || activeSubTab === 'buscar-fd') && (
         <div className="w-full grid grid-cols-1 xl:grid-cols-2 gap-6">
           {Object.entries(activeTablas).map(([nombreLinea, filas]) => {
             const filasFiltradas = filas.filter(
               f =>
                 f.po.includes(searchTerm) ||
+                f.contrato.includes(searchTerm) ||
                 f.style.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 f.color.toLowerCase().includes(searchTerm.toLowerCase())
             );
@@ -384,7 +379,8 @@ export const WipStocksVendidasView: React.FC = () => {
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
                         <tr className="bg-[#0b0e14]/60 text-gray-400 border-b border-white/10 font-bold uppercase text-[11px]">
-                          <th className="p-2.5">PO / Contrato</th>
+                          <th className="p-2.5">PO / Orden</th>
+                          <th className="p-2.5 text-amber-300">Contrato</th>
                           <th className="p-2.5 text-center">QTY</th>
                           <th className="p-2.5">Estilo</th>
                           <th className="p-2.5">Color</th>
@@ -404,6 +400,7 @@ export const WipStocksVendidasView: React.FC = () => {
                             return (
                               <tr key={f.id} className="hover:bg-white/5 transition-colors">
                                 <td className="p-2.5 font-mono font-bold text-[#00f2fe]">{f.po}</td>
+                                <td className="p-2.5 font-mono font-bold text-amber-300">{f.contrato}</td>
                                 <td className="p-2.5 text-center font-mono font-bold text-white">{f.qty}</td>
                                 <td className="p-2.5 font-mono text-gray-300">{f.style}</td>
                                 <td className="p-2.5 text-gray-300">{f.color}</td>
@@ -457,7 +454,7 @@ export const WipStocksVendidasView: React.FC = () => {
                           })
                         ) : (
                           <tr>
-                            <td colSpan={9} className="p-6 text-center text-gray-500 italic text-xs">
+                            <td colSpan={10} className="p-6 text-center text-gray-500 italic text-xs">
                               Sin órdenes registradas en {nombreLinea}
                             </td>
                           </tr>
