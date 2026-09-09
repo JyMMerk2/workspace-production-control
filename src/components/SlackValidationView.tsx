@@ -13,7 +13,9 @@ import {
   Trash2, 
   Download, 
   Printer,
-  Scan
+  Scan,
+  UserCheck,
+  Calendar
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import Tesseract from 'tesseract.js';
@@ -24,24 +26,16 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SUBPROCESOS_CONOCIDOS = [
-  'CORTE ZUND',
-  'CORTE',
-  'ENTRADA ALMACEN',
-  'ENTRADA ALMACÉN',
-  'SALIDA ALMACEN',
-  'SALIDA ALMACÉN',
-  'PRINTING',
-  'PRENSA',
-  'SORTEO',
-  'MANUFACTURA',
-  'COSTURA',
-  'EMPAQUE'
+  'CORTE ZUND', 'CORTE', 'ENTRADA ALMACEN', 'ENTRADA ALMACÉN',
+  'SALIDA ALMACEN', 'SALIDA ALMACÉN', 'PRINTING', 'PRENSA',
+  'SORTEO', 'MANUFACTURA', 'COSTURA', 'EMPAQUE'
 ];
 
 interface StoredValidation {
   id: string;
   created_at: string;
   updated_at?: string;
+  fecha_registro?: string;
   contrato: string;
   area: string;
   modulo: string;
@@ -49,12 +43,15 @@ interface StoredValidation {
   estado: string;
   anomalias: string[];
   texto_slack: string;
-  usuario: string;
+  usuario: string; // Digitador App
+  usuario_responsable: string; // Responsable del flujo
 }
 
 export const SlackValidationView: React.FC = () => {
   const [textoSlack, setTextoSlack] = useState('');
   const [subprocesosManuales, setSubprocesosManuales] = useState('');
+  const [usuarioResponsable, setUsuarioResponsable] = useState('');
+  const [fechaEvaluacion, setFechaEvaluacion] = useState(new Date().toISOString().slice(0, 10));
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,6 +61,7 @@ export const SlackValidationView: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editEstado, setEditEstado] = useState<string>('');
   const [editAnomalias, setEditAnomalias] = useState<string>('');
+  const [editResponsable, setEditResponsable] = useState<string>('');
 
   const fetchHistorial = async () => {
     try {
@@ -85,6 +83,7 @@ export const SlackValidationView: React.FC = () => {
   const limpiarFormulario = () => {
     setTextoSlack('');
     setSubprocesosManuales('');
+    setUsuarioResponsable('');
     setImageBase64(null);
   };
 
@@ -101,6 +100,8 @@ export const SlackValidationView: React.FC = () => {
           anomalias: res.anomalias,
           texto_slack: texto,
           usuario: currentUser,
+          usuario_responsable: usuarioResponsable.trim() || 'Sin Especificar',
+          fecha_registro: fechaEvaluacion,
           updated_at: new Date().toISOString(),
         },
       ]);
@@ -144,7 +145,6 @@ export const SlackValidationView: React.FC = () => {
     }
   };
 
-  // OCR Gratuito con Tesseract v7
   const handleValidacionTesseract = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!imageBase64 || !textoSlack.trim()) return;
@@ -181,6 +181,7 @@ export const SlackValidationView: React.FC = () => {
     setEditingId(row.id);
     setEditEstado(row.estado);
     setEditAnomalias(Array.isArray(row.anomalias) ? row.anomalias.join(', ') : '');
+    setEditResponsable(row.usuario_responsable || '');
   };
 
   const saveEdit = async (id: string) => {
@@ -195,6 +196,7 @@ export const SlackValidationView: React.FC = () => {
         .update({
           estado: editEstado,
           anomalias: listaAnomalias,
+          usuario_responsable: editResponsable,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id);
@@ -220,15 +222,16 @@ export const SlackValidationView: React.FC = () => {
 
   const exportarCSV = () => {
     if (historial.length === 0) return;
-    const headers = ['Fecha Creacion', 'Fecha Edicion', 'Contrato', 'Area', 'Modulo', 'Estado', 'Anomalias', 'Usuario'];
+    const headers = ['Fecha Registro', 'Fecha Creacion', 'Contrato', 'Area', 'Modulo', 'Estado', 'Anomalias', 'Responsable Flujo', 'Digitador App'];
     const rows = historial.map((h) => [
+      `"${h.fecha_registro || ''}"`,
       `"${new Date(h.created_at).toLocaleString()}"`,
-      `"${h.updated_at ? new Date(h.updated_at).toLocaleString() : ''}"`,
       `"${h.contrato}"`,
       `"${h.area}"`,
       `"${h.modulo}"`,
       `"${h.estado}"`,
       `"${Array.isArray(h.anomalias) ? h.anomalias.join('; ') : ''}"`,
+      `"${h.usuario_responsable || 'Sin Asignar'}"`,
       `"${h.usuario}"`,
     ]);
 
@@ -242,19 +245,53 @@ export const SlackValidationView: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Exportar PDF nativo con la estética neón de la App
   const exportarPDF = () => {
     window.print();
   };
 
+  // CÁLCULO DE KPIS Y AGRUPACIONES PARA AUDITORÍA
   const totalAnalizados = historial.length;
   const totalCorrectos = historial.filter((h) => h.estado === 'CORRECTO').length;
-  const pctCumplimiento = totalAnalizados > 0 ? Math.round((totalCorrectos / totalAnalizados) * 100) : 0;
   const totalAnomalias = historial.filter((h) => h.estado === 'INCONGRUENTE').length;
+
+  // Agrupar Incongruencias por Área
+  const porArea = historial.reduce((acc, h) => {
+    if (h.estado === 'INCONGRUENTE') {
+      acc[h.area] = (acc[h.area] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Agrupar Incongruencias por Módulo
+  const porModulo = historial.reduce((acc, h) => {
+    if (h.estado === 'INCONGRUENTE') {
+      acc[h.modulo] = (acc[h.modulo] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Agrupar Incongruencias por Proceso Faltante/Anomalía
+  const porAnomalia = historial.reduce((acc, h) => {
+    if (h.estado === 'INCONGRUENTE' && Array.isArray(h.anomalias)) {
+      h.anomalias.forEach((a) => {
+        acc[a] = (acc[a] || 0) + 1;
+      });
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Agrupar Incongruencias por Responsable del Flujo
+  const porResponsable = historial.reduce((acc, h) => {
+    if (h.estado === 'INCONGRUENTE') {
+      const resp = h.usuario_responsable || 'Sin Asignar';
+      acc[resp] = (acc[resp] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="p-4 md:p-6 w-full text-white space-y-6 print:p-0 print:bg-[#0b0e14]" onPaste={handlePaste}>
-      {/* ESTILOS DE IMPRESIÓN/PDF PARA PRESERVAR EL DISEÑO OBSCURO NEÓN */}
+      {/* ESTILOS DE IMPRESIÓN/PDF: Oculta los formularios e imprime solo Gráficas e Historial */}
       <style>{`
         @media print {
           body {
@@ -265,6 +302,10 @@ export const SlackValidationView: React.FC = () => {
           }
           .no-print {
             display: none !important;
+          }
+          .print-full-width {
+            width: 100% !important;
+            grid-column: span 12 / span 12 !important;
           }
         }
       `}</style>
@@ -278,7 +319,7 @@ export const SlackValidationView: React.FC = () => {
               Validación de Rutas y Flujos (Slack / OCR)
             </h1>
             <p className="text-xs text-gray-400">
-              Análisis persistente para auditoría semanal y mensual con OCR Tesseract Integrado.
+              Informe de auditoría operativa y control de incongruencias de producción.
             </p>
           </div>
         </div>
@@ -295,196 +336,290 @@ export const SlackValidationView: React.FC = () => {
             onClick={exportarPDF}
             className="flex items-center gap-2 px-3 py-2 bg-[#ff007f]/10 border border-[#ff007f] text-[#ff007f] font-bold text-xs rounded-lg hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer"
           >
-            <Printer className="w-4 h-4" /> Descargar PDF
+            <Printer className="w-4 h-4" /> Descargar PDF Reporte
           </button>
         </div>
       </div>
 
-      {/* LAYOUT PRINCIPAL */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* KPIS LATERALES */}
-        <div className="xl:col-span-3 space-y-4">
-          <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-4 flex items-center gap-4">
-            <div className="p-3 bg-[#00f2fe]/10 rounded-xl text-[#00f2fe]">
-              <BarChart3 className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">Total Evaluaciones</span>
-              <span className="text-3xl font-black text-white">{totalAnalizados}</span>
-            </div>
-          </div>
+      {/* SECCIÓN FORMULARIO DE EVALUACIÓN (SE OCULTA EN EL PDF) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 no-print">
+        <form autoComplete="off" className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
+          <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
+            <FileText className="w-4 h-4" /> Evaluador de Orden
+          </h2>
 
-          <div className="bg-[#12161f] border border-[#39ff14]/30 rounded-2xl p-4 flex items-center gap-4">
-            <div className="p-3 bg-[#39ff14]/10 rounded-xl text-[#39ff14]">
-              <CheckCircle className="w-6 h-6" />
-            </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">% Cumplimiento Global</span>
-              <span className="text-3xl font-black text-[#39ff14]">{pctCumplimiento}%</span>
-            </div>
-          </div>
-
-          <div className="bg-[#12161f] border border-[#ff007f]/30 rounded-2xl p-4 flex items-center gap-4">
-            <div className="p-3 bg-[#ff007f]/10 rounded-xl text-[#ff007f]">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">Incongruencias</span>
-              <span className="text-3xl font-black text-[#ff007f]">{totalAnomalias}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* FORMULARIO Y DIAGNÓSTICO */}
-        <div className="xl:col-span-9 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <form autoComplete="off" className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
-            <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
-              <FileText className="w-4 h-4" /> Evaluador de Orden
-            </h2>
-
-            <div>
-              <label className="block text-[11px] font-bold uppercase text-gray-400 mb-1">
-                Texto del Mensaje de Slack
+              <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-[#00f2fe]" /> Fecha de la Orden
               </label>
-              <textarea
-                rows={3}
-                value={textoSlack}
-                onChange={(e) => setTextoSlack(e.target.value)}
-                placeholder="Ejemplo: SPUT2 425623A..."
-                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+              <input
+                type="date"
+                value={fechaEvaluacion}
+                onChange={(e) => setFechaEvaluacion(e.target.value)}
+                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase text-gray-400 mb-1">
-                Subprocesos Manuales (Separados por coma)
+              <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1 flex items-center gap-1">
+                <UserCheck className="w-3 h-3 text-[#ff007f]" /> Responsable del Mensaje/Flujo
               </label>
               <input
                 type="text"
-                value={subprocesosManuales}
-                onChange={(e) => setSubprocesosManuales(e.target.value)}
-                placeholder="ENTRADA ALMACEN, SORTEO, SALIDA ALMACEN"
-                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+                value={usuarioResponsable}
+                onChange={(e) => setUsuarioResponsable(e.target.value)}
+                placeholder="Ej: Emely Jimenez, Nicole M."
+                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-gray-400 mb-1">
+              Texto del Mensaje de Slack
+            </label>
+            <textarea
+              rows={2}
+              value={textoSlack}
+              onChange={(e) => setTextoSlack(e.target.value)}
+              placeholder="Ejemplo: SPUT2 425623A..."
+              className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-gray-400 mb-1">
+              Subprocesos Manuales (Separados por coma)
+            </label>
+            <input
+              type="text"
+              value={subprocesosManuales}
+              onChange={(e) => setSubprocesosManuales(e.target.value)}
+              placeholder="ENTRADA ALMACEN, SORTEO, SALIDA ALMACEN"
+              className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+            />
+          </div>
+
+          <button
+            onClick={handleValidacionManual}
+            type="button"
+            className="w-full py-2.5 bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] font-black text-xs uppercase rounded-lg hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer"
+          >
+            Evaluar y Guardar Registro
+          </button>
+
+          {/* SECCIÓN OCR TESSERACT GRATIS */}
+          <div className="pt-3 border-t border-white/10 space-y-2">
+            <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">
+              OCR Gratuito Integrado (Tesseract)
+            </span>
+            <div className="border border-dashed border-white/20 rounded-lg p-2 text-center bg-[#0d1017]">
+              {imageBase64 ? (
+                <div className="space-y-1">
+                  <img src={imageBase64} alt="Captura" className="max-h-24 mx-auto rounded border border-white/20" />
+                  <button type="button" onClick={() => setImageBase64(null)} className="text-[10px] text-red-400 underline">
+                    Quitar imagen
+                  </button>
+                </div>
+              ) : (
+                <label className="cursor-pointer space-y-1 block py-1">
+                  <Upload className="w-4 h-4 mx-auto text-[#00f2fe]" />
+                  <span className="text-[10px] text-gray-400 block font-semibold">
+                    Subir o presionar <kbd className="bg-white/10 px-1 rounded text-[#00f2fe]">Ctrl + V</kbd>
+                  </span>
+                </label>
+              )}
             </div>
 
             <button
-              onClick={handleValidacionManual}
+              onClick={handleValidacionTesseract}
               type="button"
-              className="w-full py-2.5 bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] font-black text-xs uppercase rounded-lg hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer no-print"
+              disabled={loading || !imageBase64 || !textoSlack.trim()}
+              className="w-full py-2.5 bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] font-bold text-xs uppercase rounded-lg hover:bg-[#39ff14] hover:text-[#0b0e14] disabled:opacity-40 transition-all cursor-pointer flex items-center justify-center gap-2"
             >
-              Evaluar y Guardar Manualmente
+              <Scan className="w-4 h-4" />
+              {loading ? 'Escaneando con Tesseract...' : 'Escanear Captura con Tesseract (Gratis)'}
             </button>
+          </div>
+        </form>
 
-            {/* SECCIÓN OCR TESSERACT GRATIS */}
-            <div className="pt-3 border-t border-white/10 space-y-2">
-              <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">
-                OCR Gratuito Integrado (Tesseract)
-              </span>
-              <div className="border border-dashed border-white/20 rounded-lg p-2 text-center bg-[#0d1017]">
-                {imageBase64 ? (
-                  <div className="space-y-1">
-                    <img src={imageBase64} alt="Captura" className="max-h-24 mx-auto rounded border border-white/20" />
-                    <button type="button" onClick={() => setImageBase64(null)} className="text-[10px] text-red-400 underline no-print">
-                      Quitar imagen
-                    </button>
+        {/* DIAGNÓSTICO EN TIEMPO REAL */}
+        <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 flex flex-col justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-[#00f2fe] mb-4">Resultado del Diagnóstico</h2>
+
+            {resultado ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
+                    <span className="text-[9px] uppercase text-gray-500 block">Contrato</span>
+                    <span className="text-xs font-black text-white">{resultado.contrato}</span>
                   </div>
-                ) : (
-                  <label className="cursor-pointer space-y-1 block py-1">
-                    <Upload className="w-4 h-4 mx-auto text-[#00f2fe]" />
-                    <span className="text-[10px] text-gray-400 block font-semibold">
-                      Subir o presionar <kbd className="bg-white/10 px-1 rounded text-[#00f2fe]">Ctrl + V</kbd>
+                  <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
+                    <span className="text-[9px] uppercase text-gray-500 block">Área</span>
+                    <span className="text-xs font-black text-[#00f2fe]">{resultado.area}</span>
+                  </div>
+                  <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
+                    <span className="text-[9px] uppercase text-gray-500 block">Módulo</span>
+                    <span className="text-xs font-black text-[#ff007f]">{resultado.modulo}</span>
+                  </div>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl border flex items-center gap-2 ${
+                    resultado.estado === 'CORRECTO'
+                      ? 'bg-[#39ff14]/10 border-[#39ff14]/40 text-[#39ff14]'
+                      : 'bg-[#ff007f]/10 border-[#ff007f]/40 text-[#ff007f]'
+                  }`}
+                >
+                  {resultado.estado === 'CORRECTO' ? (
+                    <CheckCircle className="w-5 h-5 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-black text-xs block">ESTADO: {resultado.estado}</span>
+                    <span className="text-[10px]">
+                      {resultado.estado === 'CORRECTO'
+                        ? 'Validado y guardado correctamente.'
+                        : 'Anomalía registrada en la base de datos.'}
                     </span>
-                  </label>
+                  </div>
+                </div>
+
+                {resultado.anomalias.length > 0 && (
+                  <div className="bg-[#0d1017] p-3 rounded-xl border border-red-500/30">
+                    <span className="text-[10px] font-bold text-red-400 uppercase block mb-1">
+                      Anomalías Detectadas:
+                    </span>
+                    <ul className="list-disc list-inside space-y-1">
+                      {resultado.anomalias.map((anomalia, idx) => (
+                        <li key={idx} className="text-xs text-red-300 font-semibold">
+                          {anomalia}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-
-              <button
-                onClick={handleValidacionTesseract}
-                type="button"
-                disabled={loading || !imageBase64 || !textoSlack.trim()}
-                className="w-full py-2.5 bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] font-bold text-xs uppercase rounded-lg hover:bg-[#39ff14] hover:text-[#0b0e14] disabled:opacity-40 transition-all cursor-pointer flex items-center justify-center gap-2 no-print"
-              >
-                <Scan className="w-4 h-4" />
-                {loading ? 'Escaneando con Tesseract...' : 'Escanear Captura con Tesseract (Gratis)'}
-              </button>
-            </div>
-          </form>
-
-          {/* DIAGNÓSTICO */}
-          <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-[#00f2fe] mb-4">Resultado de la Evaluación</h2>
-
-              {resultado ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
-                      <span className="text-[9px] uppercase text-gray-500 block">Contrato</span>
-                      <span className="text-xs font-black text-white">{resultado.contrato}</span>
-                    </div>
-                    <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
-                      <span className="text-[9px] uppercase text-gray-500 block">Área</span>
-                      <span className="text-xs font-black text-[#00f2fe]">{resultado.area}</span>
-                    </div>
-                    <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
-                      <span className="text-[9px] uppercase text-gray-500 block">Módulo</span>
-                      <span className="text-xs font-black text-[#ff007f]">{resultado.modulo}</span>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`p-3 rounded-xl border flex items-center gap-2 ${
-                      resultado.estado === 'CORRECTO'
-                        ? 'bg-[#39ff14]/10 border-[#39ff14]/40 text-[#39ff14]'
-                        : 'bg-[#ff007f]/10 border-[#ff007f]/40 text-[#ff007f]'
-                    }`}
-                  >
-                    {resultado.estado === 'CORRECTO' ? (
-                      <CheckCircle className="w-5 h-5 shrink-0" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 shrink-0" />
-                    )}
-                    <div>
-                      <span className="font-black text-xs block">ESTADO: {resultado.estado}</span>
-                      <span className="text-[10px]">
-                        {resultado.estado === 'CORRECTO'
-                          ? 'Validado y guardado correctamente.'
-                          : 'Anomalía registrada en la base de datos.'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {resultado.anomalias.length > 0 && (
-                    <div className="bg-[#0d1017] p-3 rounded-xl border border-red-500/30">
-                      <span className="text-[10px] font-bold text-red-400 uppercase block mb-1">
-                        Anomalías Detectadas:
-                      </span>
-                      <ul className="list-disc list-inside space-y-1">
-                        {resultado.anomalias.map((anomalia, idx) => (
-                          <li key={idx} className="text-xs text-red-300 font-semibold">
-                            {anomalia}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="h-48 flex items-center justify-center text-xs text-gray-500 italic text-center">
-                  Ingresa un texto o escanéa con Tesseract para realizar el diagnóstico.
-                </div>
-              )}
-            </div>
+            ) : (
+              <div className="h-48 flex items-center justify-center text-xs text-gray-500 italic text-center">
+                Ingresa una orden o escanéa con Tesseract para realizar el diagnóstico.
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* HISTORIAL SUPABASE */}
+      {/* SECCIÓN KPIS Y DESGLOSE AUDITORÍA (SE MUESTRA EN EL PDF) */}
+      <div className="space-y-4">
+        <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
+          <BarChart3 className="w-4 h-4" /> Desglose de KPIs e Incongruencias para Reporte
+        </h2>
+
+        {/* METRICAS PRINCIPALES */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-xl p-3 flex items-center gap-3">
+            <div className="p-2.5 bg-[#00f2fe]/10 rounded-lg text-[#00f2fe]">
+              <BarChart3 className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[9px] font-bold uppercase text-gray-400 block">Total Evaluaciones</span>
+              <span className="text-2xl font-black text-white">{totalAnalizados}</span>
+            </div>
+          </div>
+
+          <div className="bg-[#12161f] border border-[#39ff14]/30 rounded-xl p-3 flex items-center gap-3">
+            <div className="p-2.5 bg-[#39ff14]/10 rounded-lg text-[#39ff14]">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[9px] font-bold uppercase text-gray-400 block">Flujos Correctos</span>
+              <span className="text-2xl font-black text-[#39ff14]">{totalCorrectos}</span>
+            </div>
+          </div>
+
+          <div className="bg-[#12161f] border border-[#ff007f]/30 rounded-xl p-3 flex items-center gap-3">
+            <div className="p-2.5 bg-[#ff007f]/10 rounded-lg text-[#ff007f]">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[9px] font-bold uppercase text-gray-400 block">Incongruencias Totales</span>
+              <span className="text-2xl font-black text-[#ff007f]">{totalAnomalias}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* CUADROS DE DESGLOSE DE INCONGRUENCIAS (POR ÁREA, MÓDULO, ANOMALÍA Y RESPONSABLE) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* POR ÁREA */}
+          <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
+            <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Área</span>
+            {Object.keys(porArea).length === 0 ? (
+              <span className="text-[10px] text-gray-500 italic block">Sin registros</span>
+            ) : (
+              Object.entries(porArea).map(([area, cant]) => (
+                <div key={area} className="flex justify-between text-xs border-b border-white/5 pb-1">
+                  <span className="text-gray-300 font-medium">{area}</span>
+                  <span className="font-bold text-[#ff007f]">{cant}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* POR MÓDULO */}
+          <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
+            <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Módulo</span>
+            {Object.keys(porModulo).length === 0 ? (
+              <span className="text-[10px] text-gray-500 italic block">Sin registros</span>
+            ) : (
+              Object.entries(porModulo).map(([modulo, cant]) => (
+                <div key={modulo} className="flex justify-between text-xs border-b border-white/5 pb-1">
+                  <span className="text-gray-300 font-medium">{modulo}</span>
+                  <span className="font-bold text-[#ff007f]">{cant}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* POR PROCESO FALTANTE / ANOMALÍA */}
+          <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
+            <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Proceso Faltante</span>
+            {Object.keys(porAnomalia).length === 0 ? (
+              <span className="text-[10px] text-gray-500 italic block">Sin registros</span>
+            ) : (
+              Object.entries(porAnomalia).map(([anom, cant]) => (
+                <div key={anom} className="flex justify-between text-xs border-b border-white/5 pb-1 gap-2">
+                  <span className="text-gray-300 font-medium truncate">{anom}</span>
+                  <span className="font-bold text-[#ff007f] shrink-0">{cant}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* POR USUARIO RESPONSABLE DEL FLUJO */}
+          <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
+            <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Responsable Flujo</span>
+            {Object.keys(porResponsable).length === 0 ? (
+              <span className="text-[10px] text-gray-500 italic block">Sin registros</span>
+            ) : (
+              Object.entries(porResponsable).map(([resp, cant]) => (
+                <div key={resp} className="flex justify-between text-xs border-b border-white/5 pb-1">
+                  <span className="text-gray-300 font-medium">{resp}</span>
+                  <span className="font-bold text-[#ff007f]">{cant}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* HISTORIAL SUPABASE (SE MUESTRA EN EL PDF) */}
       <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
-            <History className="w-4 h-4" /> Historial de Validaciones (Edición, Control y Exportación)
+            <History className="w-4 h-4" /> Historial de Validaciones (Acumulado Semanal / Mensual)
           </h2>
           <span className="text-xs text-gray-400">Total registros: {historial.length}</span>
         </div>
@@ -493,20 +628,21 @@ export const SlackValidationView: React.FC = () => {
           <table className="w-full text-left text-xs text-gray-300">
             <thead className="bg-[#0d1017] text-[10px] uppercase font-bold text-[#00f2fe]">
               <tr>
-                <th className="p-2.5">Fecha Creación / Edición</th>
+                <th className="p-2.5">Fecha Orden / Creado</th>
                 <th className="p-2.5">Contrato</th>
                 <th className="p-2.5">Área</th>
                 <th className="p-2.5">Módulo</th>
                 <th className="p-2.5">Estado</th>
                 <th className="p-2.5">Anomalías / Observaciones</th>
-                <th className="p-2.5">Usuario</th>
+                <th className="p-2.5">Responsable Flujo</th>
+                <th className="p-2.5">Digitador</th>
                 <th className="p-2.5 text-center no-print">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {historial.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-6 text-gray-500 italic">
+                  <td colSpan={9} className="text-center py-6 text-gray-500 italic">
                     Aún no hay registros en la base de datos.
                   </td>
                 </tr>
@@ -514,16 +650,8 @@ export const SlackValidationView: React.FC = () => {
                 historial.map((row) => (
                   <tr key={row.id} className="hover:bg-white/5 transition-colors">
                     <td className="p-2.5 whitespace-nowrap text-gray-400 text-[10px]">
-                      <div>
-                        <span className="text-gray-300 font-bold">Creado:</span>{' '}
-                        {new Date(row.created_at).toLocaleString()}
-                      </div>
-                      {row.updated_at && row.updated_at !== row.created_at && (
-                        <div className="text-[#00f2fe]">
-                          <span className="font-bold">Editado:</span>{' '}
-                          {new Date(row.updated_at).toLocaleString()}
-                        </div>
-                      )}
+                      <div className="text-white font-bold">{row.fecha_registro || 'N/A'}</div>
+                      <div className="text-gray-500">{new Date(row.created_at).toLocaleTimeString()}</div>
                     </td>
 
                     <td className="p-2.5 font-bold text-white">{row.contrato}</td>
@@ -566,6 +694,20 @@ export const SlackValidationView: React.FC = () => {
                         row.anomalias.join(', ')
                       ) : (
                         'Ninguna'
+                      )}
+                    </td>
+
+                    {/* USUARIO RESPONSABLE DEL FLUJO */}
+                    <td className="p-2.5 text-white font-semibold">
+                      {editingId === row.id ? (
+                        <input
+                          type="text"
+                          value={editResponsable}
+                          onChange={(e) => setEditResponsable(e.target.value)}
+                          className="w-full bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded"
+                        />
+                      ) : (
+                        row.usuario_responsable || 'Sin Especificar'
                       )}
                     </td>
 
