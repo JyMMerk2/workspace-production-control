@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import Tesseract from 'tesseract.js';
-import { evaluarFlujoOrden, ValidationResult } from '../services/orderValidationService';
+import { evaluarFlujoOrden, ValidationResult, DICCIONARIO_MODULOS } from '../services/orderValidationService';
 
 const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
@@ -58,13 +58,16 @@ export const SlackValidationView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [historial, setHistorial] = useState<StoredValidation[]>([]);
 
-  // Filtros de Auditoría
+  // Filtros
   const [filtroPeriodo, setFiltroPeriodo] = useState<'TODOS' | 'SEMANA' | 'MES' | 'CUSTOM'>('TODOS');
   const [fechaInicioFilter, setFechaInicioFilter] = useState('');
   const [fechaFinFilter, setFechaFinFilter] = useState('');
 
-  // Edición
+  // Edición Completa en Tabla
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFecha, setEditFecha] = useState<string>('');
+  const [editArea, setEditArea] = useState<string>('');
+  const [editModulo, setEditModulo] = useState<string>('');
   const [editEstado, setEditEstado] = useState<string>('');
   const [editAnomalias, setEditAnomalias] = useState<string>('');
   const [editResponsable, setEditResponsable] = useState<string>('');
@@ -86,7 +89,6 @@ export const SlackValidationView: React.FC = () => {
     fetchHistorial();
   }, []);
 
-  // Extraer lista única de responsables para sugerencias
   const responsablesSugeridos = Array.from(
     new Set(
       historial
@@ -194,6 +196,9 @@ export const SlackValidationView: React.FC = () => {
 
   const startEditing = (row: StoredValidation) => {
     setEditingId(row.id);
+    setEditFecha(row.fecha_registro || new Date(row.created_at).toISOString().slice(0, 10));
+    setEditArea(row.area);
+    setEditModulo(row.modulo);
     setEditEstado(row.estado);
     setEditAnomalias(Array.isArray(row.anomalias) ? row.anomalias.join(', ') : '');
     setEditResponsable(row.usuario_responsable || '');
@@ -209,6 +214,9 @@ export const SlackValidationView: React.FC = () => {
       const { error } = await supabase
         .from('slack_validations')
         .update({
+          fecha_registro: editFecha,
+          area: editArea,
+          modulo: editModulo,
           estado: editEstado,
           anomalias: listaAnomalias,
           usuario_responsable: editResponsable,
@@ -324,7 +332,6 @@ export const SlackValidationView: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full text-white space-y-6 print:p-0 print:bg-[#0b0e14]" onPaste={handlePaste}>
-      {/* DATALIST DE SUGERENCIAS DE RESPONSABLES */}
       <datalist id="lista-responsables">
         {responsablesSugeridos.map((resp, idx) => (
           <option key={idx} value={resp} />
@@ -363,7 +370,6 @@ export const SlackValidationView: React.FC = () => {
           </div>
         </div>
 
-        {/* BOTONES EXPORTACIÓN */}
         <div className="flex items-center gap-2 no-print">
           <button
             onClick={exportarCSV}
@@ -720,7 +726,7 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* HISTORIAL */}
+      {/* HISTORIAL TABLA */}
       <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
@@ -753,15 +759,60 @@ export const SlackValidationView: React.FC = () => {
               ) : (
                 historialFiltrado.map((row) => (
                   <tr key={row.id} className="hover:bg-white/5 transition-colors">
+                    {/* FECHA EDITABLE */}
                     <td className="p-2.5 whitespace-nowrap text-gray-400 text-[10px]">
-                      <div className="text-white font-bold">{row.fecha_registro || 'N/A'}</div>
-                      <div className="text-gray-500">{new Date(row.created_at).toLocaleTimeString()}</div>
+                      {editingId === row.id ? (
+                        <input
+                          type="date"
+                          value={editFecha}
+                          onClick={(e) => (e.currentTarget as any).showPicker?.()}
+                          onChange={(e) => setEditFecha(e.target.value)}
+                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded cursor-pointer"
+                        />
+                      ) : (
+                        <>
+                          <div className="text-white font-bold">{row.fecha_registro || 'N/A'}</div>
+                          <div className="text-gray-500">{new Date(row.created_at).toLocaleTimeString()}</div>
+                        </>
+                      )}
                     </td>
 
                     <td className="p-2.5 font-bold text-white">{row.contrato}</td>
-                    <td className="p-2.5 text-[#00f2fe] font-semibold">{row.area}</td>
-                    <td className="p-2.5">{row.modulo}</td>
 
+                    {/* ÁREA EDITABLE */}
+                    <td className="p-2.5 text-[#00f2fe] font-semibold">
+                      {editingId === row.id ? (
+                        <select
+                          value={editArea}
+                          onChange={(e) => setEditArea(e.target.value)}
+                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded"
+                        >
+                          <option value="APPAREL">APPAREL</option>
+                          <option value="MOCHILAS">MOCHILAS</option>
+                          <option value="GENERAL">GENERAL</option>
+                          <option value="TEAM SPIRIT">TEAM SPIRIT</option>
+                          <option value="SIZING PACK">SIZING PACK</option>
+                        </select>
+                      ) : (
+                        row.area
+                      )}
+                    </td>
+
+                    {/* MÓDULO EDITABLE */}
+                    <td className="p-2.5">
+                      {editingId === row.id ? (
+                        <input
+                          type="text"
+                          value={editModulo}
+                          onChange={(e) => setEditModulo(e.target.value)}
+                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded w-28"
+                        />
+                      ) : (
+                        row.modulo
+                      )}
+                    </td>
+
+                    {/* ESTADO EDITABLE */}
                     <td className="p-2.5">
                       {editingId === row.id ? (
                         <select
@@ -785,6 +836,7 @@ export const SlackValidationView: React.FC = () => {
                       )}
                     </td>
 
+                    {/* ANOMALÍAS EDITABLES */}
                     <td className="p-2.5 text-red-300">
                       {editingId === row.id ? (
                         <input
@@ -801,6 +853,7 @@ export const SlackValidationView: React.FC = () => {
                       )}
                     </td>
 
+                    {/* RESPONSABLE EDITABLE */}
                     <td className="p-2.5 text-white font-semibold">
                       {editingId === row.id ? (
                         <input
