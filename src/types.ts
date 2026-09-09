@@ -4,6 +4,7 @@ export type TabType =
   | 'sizing-calculator'
   | 'wip-stocks-vendidas'
   | 'wip-demo'
+  | 'slack-validation' // <--- AQUÍ SE AGREGA
   | 'wip'
   | 'cuadre-fd'
   | 'cuadre-mochilas'
