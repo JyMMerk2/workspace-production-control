@@ -16,11 +16,12 @@ import {
   Scan,
   UserCheck,
   Calendar,
-  Filter
+  Filter,
+  User
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import Tesseract from 'tesseract.js';
-import { evaluarFlujoOrden, ValidationResult, DICCIONARIO_MODULOS } from '../services/orderValidationService';
+import { evaluarFlujoOrden, ValidationResult } from '../services/orderValidationService';
 
 const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
@@ -44,7 +45,8 @@ interface StoredValidation {
   estado: string;
   anomalias: string[];
   texto_slack: string;
-  usuario: string;
+  usuario: string; // Digitador Creador
+  editado_por?: string; // Trazabilidad de Edición
   usuario_responsable: string;
 }
 
@@ -66,6 +68,7 @@ export const SlackValidationView: React.FC = () => {
   // Edición Completa en Tabla
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFecha, setEditFecha] = useState<string>('');
+  const [editContrato, setEditContrato] = useState<string>('');
   const [editArea, setEditArea] = useState<string>('');
   const [editModulo, setEditModulo] = useState<string>('');
   const [editEstado, setEditEstado] = useState<string>('');
@@ -197,6 +200,7 @@ export const SlackValidationView: React.FC = () => {
   const startEditing = (row: StoredValidation) => {
     setEditingId(row.id);
     setEditFecha(row.fecha_registro || new Date(row.created_at).toISOString().slice(0, 10));
+    setEditContrato(row.contrato);
     setEditArea(row.area);
     setEditModulo(row.modulo);
     setEditEstado(row.estado);
@@ -206,6 +210,7 @@ export const SlackValidationView: React.FC = () => {
 
   const saveEdit = async (id: string) => {
     try {
+      const currentUser = sessionStorage.getItem('authenticated_user') || 'operador';
       const listaAnomalias = editAnomalias
         .split(',')
         .map((a) => a.trim())
@@ -215,11 +220,13 @@ export const SlackValidationView: React.FC = () => {
         .from('slack_validations')
         .update({
           fecha_registro: editFecha,
+          contrato: editContrato,
           area: editArea,
           modulo: editModulo,
           estado: editEstado,
           anomalias: listaAnomalias,
           usuario_responsable: editResponsable,
+          editado_por: currentUser,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id);
@@ -273,7 +280,7 @@ export const SlackValidationView: React.FC = () => {
 
   const exportarCSV = () => {
     if (historialFiltrado.length === 0) return;
-    const headers = ['Fecha Registro', 'Fecha Creacion', 'Contrato', 'Area', 'Modulo', 'Estado', 'Anomalias', 'Responsable Flujo', 'Digitador App'];
+    const headers = ['Fecha Registro', 'Fecha Creacion', 'Contrato', 'Area', 'Modulo', 'Estado', 'Anomalias', 'Responsable Flujo', 'Creado Por', 'Editado Por'];
     const rows = historialFiltrado.map((h) => [
       `"${h.fecha_registro || ''}"`,
       `"${new Date(h.created_at).toLocaleString()}"`,
@@ -284,6 +291,7 @@ export const SlackValidationView: React.FC = () => {
       `"${Array.isArray(h.anomalias) ? h.anomalias.join('; ') : ''}"`,
       `"${h.usuario_responsable || 'Sin Asignar'}"`,
       `"${h.usuario}"`,
+      `"${h.editado_por || 'Sin Cambios'}"`,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -745,7 +753,7 @@ export const SlackValidationView: React.FC = () => {
                 <th className="p-2.5">Estado</th>
                 <th className="p-2.5">Anomalías / Observaciones</th>
                 <th className="p-2.5">Responsable Flujo</th>
-                <th className="p-2.5">Digitador</th>
+                <th className="p-2.5">Trazabilidad / Digitador</th>
                 <th className="p-2.5 text-center no-print">Acciones</th>
               </tr>
             </thead>
@@ -777,7 +785,19 @@ export const SlackValidationView: React.FC = () => {
                       )}
                     </td>
 
-                    <td className="p-2.5 font-bold text-white">{row.contrato}</td>
+                    {/* CONTRATO EDITABLE */}
+                    <td className="p-2.5 font-bold text-white">
+                      {editingId === row.id ? (
+                        <input
+                          type="text"
+                          value={editContrato}
+                          onChange={(e) => setEditContrato(e.target.value)}
+                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded w-24 font-bold"
+                        />
+                      ) : (
+                        row.contrato
+                      )}
+                    </td>
 
                     {/* ÁREA EDITABLE */}
                     <td className="p-2.5 text-[#00f2fe] font-semibold">
@@ -868,7 +888,19 @@ export const SlackValidationView: React.FC = () => {
                       )}
                     </td>
 
-                    <td className="p-2.5 text-gray-400">{row.usuario}</td>
+                    {/* TRAZABILIDAD DIGITADOR Y EDITOR */}
+                    <td className="p-2.5 text-[10px]">
+                      <div>
+                        <span className="text-gray-400">Creado:</span>{' '}
+                        <span className="text-white font-semibold">{row.usuario}</span>
+                      </div>
+                      {row.editado_por && (
+                        <div className="text-[#00f2fe]">
+                          <span>Editado por:</span>{' '}
+                          <span className="font-bold">{row.editado_por}</span>
+                        </div>
+                      )}
+                    </td>
 
                     <td className="p-2.5 text-center whitespace-nowrap no-print">
                       {editingId === row.id ? (
