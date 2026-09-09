@@ -26,16 +26,20 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const GOOGLE_CLIENT_ID = "530061438374-1fp6i7sfguub0jsqfb47n8bb6equmuga.apps.googleusercontent.com";
 
+// Diapositivas con las rutas locales de tu carpeta public/
 const SLIDES_PRODUCCION = [
   {
+    url: '/carrusel-1.jpg',
     tag: 'CONTROL WIP',
     titulo: 'Seguimiento de mochilas y prendas en tiempo real.',
   },
   {
+    url: '/carrusel-2.jpg',
     tag: 'SUBLIMACIÓN & FULL DYE',
     titulo: 'Sincronización automatizada con Google Sheets.',
   },
   {
+    url: '/carrusel-3.jpg',
     tag: 'BOOMBAH WORKSPACE',
     titulo: 'Gestión por usuario y asignación directa de permisos.',
   },
@@ -277,25 +281,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
       <div className="relative w-full max-w-4xl bg-[#12161f] border border-[#00f2fe] rounded-3xl overflow-hidden shadow-[0_0_35px_rgba(0,242,254,0.25)] grid grid-cols-1 md:grid-cols-2 min-h-[520px]">
         
-        {/* LADO IZQUIERDO: FONDO NEÓN CON LOGO BOOMBAH Y CARRUSEL */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#0b0e14] via-[#12161f] to-[#0d1017] hidden md:flex flex-col justify-between p-8 border-r border-white/5">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,242,254,0.15)_0,transparent_70%)] pointer-events-none" />
+        {/* LADO IZQUIERDO: CARRUSEL CON IMÁGENES LOCALES + MARCA DE AGUA DEL LOGO */}
+        <div className="relative overflow-hidden bg-slate-950 hidden md:flex flex-col justify-end p-8 border-r border-white/5">
+          
+          {/* FOTOS DEL CARRUSEL EN TRANSICIÓN SUAVE */}
+          {SLIDES_PRODUCCION.map((slide, i) => (
+            <div
+              key={i}
+              className={`absolute inset-0 transition-opacity duration-1000 bg-cover bg-center ${
+                i === currentSlide ? 'opacity-40 scale-105' : 'opacity-0 scale-100'
+              }`}
+              style={{ backgroundImage: `url(${slide.url})` }}
+            />
+          ))}
 
-          {/* Logo Corporativo de Boombah */}
-          <div className="relative z-10 flex items-center justify-center my-auto py-6">
+          {/* GRADIENTE DE OSCURECIMIENTO */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e14] via-[#0b0e14]/40 to-transparent pointer-events-none" />
+
+          {/* MARCA DE AGUA GIGANTE Y DIFUMINADA CON LOGO.PNG */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden">
             <img 
-              src="/apple-touch-icon.png" 
-              alt="Boombah Logo" 
-              className="w-40 h-40 object-contain drop-shadow-[0_0_25px_rgba(255,0,127,0.4)] animate-pulse"
+              src="/logo.png" 
+              alt="" 
+              className="w-80 h-80 object-contain opacity-30 blur-[1px] filter drop-shadow-[0_0_30px_rgba(0,242,254,0.5)]"
               onError={(e) => {
-                // Fallback a web-app-manifest-512x512.png si no se encuentra la primera
-                (e.target as HTMLImageElement).src = '/web-app-manifest-512x512.png';
+                (e.target as HTMLImageElement).src = '/apple-touch-icon.png';
               }}
             />
           </div>
 
-          {/* Banner con texto interactivo del carrusel */}
-          <div className="relative z-10 space-y-2 bg-[#0b0e14]/60 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
+          {/* TARJETA INFORMATIVA DEL CARRUSEL */}
+          <div className="relative z-20 space-y-2 bg-[#0b0e14]/80 p-4 rounded-2xl border border-[#00f2fe]/20 backdrop-blur-md shadow-2xl">
             <span className="px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-[#00f2fe] bg-[#00f2fe]/10 border border-[#00f2fe]/30 uppercase">
               {SLIDES_PRODUCCION[currentSlide].tag}
             </span>
