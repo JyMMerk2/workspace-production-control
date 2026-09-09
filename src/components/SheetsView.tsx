@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ExternalLink, RefreshCw, Maximize2, Minimize2, FileSpreadsheet, AlertCircle } from 'lucide-react';
-import { SheetConfig, SubmenuItem } from '../types';
+import { ExternalLink, RefreshCw, Maximize2, Minimize2, FileSpreadsheet } from 'lucide-react';
+import { SheetConfig } from '../types';
 
 interface SheetsViewProps {
   config: SheetConfig;
@@ -29,9 +29,20 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
   };
 
   return (
-    <div className={`space-y-4 flex flex-col ${isFullscreen ? 'fixed inset-0 z-50 bg-[#0b0e14] p-4' : 'h-[calc(100vh-120px)]'}`}>
+    /* 
+      AL ACTIVAR PANTALLA COMPLETA:
+      Usa 'fixed inset-x-0 bottom-0 top-16 z-30 p-3'
+      Garantiza que la vista ocupe toda la pantalla pero inicie justo debajo del Header (top-16)
+    */
+    <div
+      className={`space-y-3 flex flex-col transition-all duration-300 ${
+        isFullscreen
+          ? 'fixed inset-x-0 bottom-0 top-16 z-30 bg-[#0b0e14] p-3'
+          : 'h-[calc(100vh-110px)] relative'
+      }`}
+    >
       {/* Subtab Pill Navigation Bar */}
-      <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl p-3 shadow-md flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl p-2.5 shadow-md flex flex-wrap items-center justify-between gap-3 shrink-0 no-print">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-[#00f2fe] uppercase tracking-wider flex items-center gap-1.5 mr-2">
             <FileSpreadsheet className="w-4 h-4" />
@@ -87,7 +98,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
       </div>
 
       {/* Embedded Google Sheet Frame */}
-      <div className="flex-1 bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-2xl relative min-h-[500px]">
+      <div className="flex-1 bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-2xl relative min-h-[400px]">
         {isLoading && (
           <div className="absolute inset-0 bg-[#0d1017] flex flex-col items-center justify-center gap-3 z-10">
             <RefreshCw className="w-8 h-8 text-[#00f2fe] animate-spin" />
