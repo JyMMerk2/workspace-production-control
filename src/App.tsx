@@ -157,13 +157,21 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
+  // Cálculo de Métricas Dinámicas para el Header
+  const totalOrdenesDia = dashboardData?.kpiOrdenesDia?.total || 172;
+  const capturadoOrdenesDia = dashboardData?.kpiOrdenesDia?.captura || 140;
+  const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
+  const pctContenedor = dashboardData?.contenedorPctAcumulado || 64.29;
+  const ordenesMochilas = dashboardData?.kpiMochilas?.ordenesAbiertas || 16;
+  const ordenesApparel = dashboardData?.kpiApparel?.ordenesAbiertas || 8;
+
   return (
     <div
       className={`min-h-screen ${
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
       } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
-      {/* Encabezado Superior */}
+      {/* Encabezado Superior con Métricas Dinámicas */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
@@ -178,6 +186,14 @@ export default function App() {
         authenticatedUser={authenticatedUser}
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
+        metrics={{
+          totalOrdenesDia,
+          capturadoOrdenesDia,
+          restaOrdenesDia,
+          pctContenedor,
+          ordenesMochilas,
+          ordenesApparel,
+        }}
       />
 
       {/* Contenedor de Layout Ajustable */}
@@ -193,7 +209,7 @@ export default function App() {
         />
 
         {/* Área Principal de Trabajo */}
-        <main className="flex-1 min-w-0 flex flex-col overflow-y-auto custom-scrollbar">
+        <main className="flex-1 min-w-0 flex flex-col overflow-y-auto custom-scrollbar pt-16">
           {/* Barra Flotante Global de Control de Producción */}
           <ProductionControlToolbar />
 
