@@ -16,6 +16,7 @@ import {
   Users,
   HardHat,
   Database,
+  Activity,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -148,6 +149,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Calculator className="w-4 h-4 text-[#39ff14]" />
           <span>🧮 CALCULADORA SIZING PACKS</span>
+        </button>
+
+        {/* Módulo de Validación Slack / OCR */}
+        <button
+          onClick={() => onSelectTab('slack-validation', undefined, 'VALIDACIÓN DE RUTAS SLACK')}
+          className={`flex items-center gap-3 px-4 py-3 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
+            activeTab === 'slack-validation'
+              ? 'text-[#ff007f] bg-[#ff007f]/10 border-[#ff007f] shadow-[inset_0_0_12px_rgba(255,0,127,0.15)]'
+              : 'text-[#8f9ba8] border-transparent hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-[#ff007f]" />
+          <span>🔍 VALIDACIÓN SLACK</span>
         </button>
 
         <div className="px-4 pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-[#5f6e7d]">
