@@ -53,8 +53,8 @@ export function evaluarFlujoOrden(textoCompletoSlack: string, subprocesosOCR: st
   const textoLimpio = textoCompletoSlack.toUpperCase();
   const subprocesosUpper = subprocesosOCR.map(s => s.toUpperCase());
   
-  // 1. Extraer Contrato (6 dígitos)
-  const regexContrato = /\b\d{6}[A-Za-z0-9,]*/;
+  // 1. Extraer Contrato (6 dígitos o más)
+  const regexContrato = /\b[A-Za-z0-9]{6,8}\b/;
   const matchContrato = textoCompletoSlack.match(regexContrato);
   const contrato = matchContrato ? matchContrato[0] : "SIN_CONTRATO";
 
@@ -77,14 +77,14 @@ export function evaluarFlujoOrden(textoCompletoSlack: string, subprocesosOCR: st
     area = tieneSorteoOCR ? "APPAREL" : "MOCHILAS";
   }
 
-  // 3. Evaluar Inconsistencias
+  // 3. Evaluar Inconsistencias de forma independiente
   const tieneEntrada = subprocesosUpper.some(s => s.includes("ENTRADA ALMACEN") || s.includes("ENTRADA ALMACÉN"));
   const tieneSalida = subprocesosUpper.some(s => s.includes("SALIDA ALMACEN") || s.includes("SALIDA ALMACÉN"));
   const tieneSorteo = subprocesosUpper.some(s => s.includes("SORTEO"));
 
   const anomalias: string[] = [];
 
-  // Reglas de Almacén
+  // Reglas de Almacén Desagregadas
   if (!tieneEntrada && !tieneSalida) {
     anomalias.push("FALTA ENTRADA Y SALIDA ALMACÉN");
   } else if (!tieneEntrada) {
