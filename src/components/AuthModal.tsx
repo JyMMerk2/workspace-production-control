@@ -24,22 +24,22 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ⚠️ REEMPLAZA CON TU GOOGLE CLIENT ID DE GOOGLE CLOUD CONSOLE
 const GOOGLE_CLIENT_ID = "530061438374-1fp6i7sfguub0jsqfb47n8bb6equmuga.apps.googleusercontent.com";
 
+// Diapositivas con imágenes locales referenciadas desde /public
 const SLIDES_PRODUCCION = [
   {
-    url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800',
+    image: '/apple-touch-icon.png',
     tag: 'CONTROL WIP',
     titulo: 'Seguimiento de mochilas y prendas en tiempo real.',
   },
   {
-    url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800',
+    image: '/web-app-manifest-512x512.png',
     tag: 'SUBLIMACIÓN & FULL DYE',
     titulo: 'Sincronización automatizada con Google Sheets.',
   },
   {
-    url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=800',
+    image: '/apple-touch-icon.png',
     tag: 'BOOMBAH WORKSPACE',
     titulo: 'Gestión por usuario y asignación directa de permisos.',
   },
@@ -62,7 +62,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const [isAdminView, setIsAdminView] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  // Carrusel automático
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % SLIDES_PRODUCCION.length);
@@ -70,7 +69,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // Inicializar Google Identity Services
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).google && mode === 'LOGIN' && !showAdminPinPrompt && !isAdminView) {
       try {
@@ -281,32 +279,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       <div className="absolute w-[500px] h-[500px] bg-[#00f2fe]/5 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute w-[400px] h-[400px] bg-[#ff007f]/5 rounded-full blur-3xl pointer-events-none"></div>
 
-      {/* Contenedor Principal Ajustado con Layout Dividido */}
       <div className="relative w-full max-w-4xl bg-[#12161f] border border-[#00f2fe] rounded-3xl overflow-hidden shadow-[0_0_35px_rgba(0,242,254,0.25)] grid grid-cols-1 md:grid-cols-2 min-h-[520px]">
         
-        {/* LADO IZQUIERDO: CARRUSEL DE IMÁGENES ANIMADO */}
-        <div className="relative overflow-hidden bg-slate-900 hidden md:flex flex-col justify-end p-8 border-r border-white/5">
-          {SLIDES_PRODUCCION.map((slide, i) => (
-            <div
-              key={i}
-              className={`absolute inset-0 transition-all duration-1000 bg-cover bg-center ${
-                i === currentSlide ? 'opacity-60 scale-105' : 'opacity-0 scale-100'
-              }`}
-              style={{ backgroundImage: `url(${slide.url})` }}
+        {/* LADO IZQUIERDO: CARRUSEL CON IMAGEN DE FONDO Y LOGO CON LUZ NEÓN */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#0b0e14] via-[#12161f] to-[#0d1017] hidden md:flex flex-col justify-between p-8 border-r border-white/5">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,242,254,0.15)_0,transparent_70%)] pointer-events-none" />
+
+          {/* Imagen central rotativa/fija del logo */}
+          <div className="relative z-10 flex items-center justify-center my-auto py-6">
+            <img 
+              src={SLIDES_PRODUCCION[currentSlide].image} 
+              alt="Boombah Logo" 
+              className="w-44 h-44 object-contain drop-shadow-[0_0_30px_rgba(0,242,254,0.5)] transition-all duration-700"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/apple-touch-icon.png';
+              }}
             />
-          ))}
+          </div>
 
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e14] via-[#0b0e14]/30 to-transparent" />
-
-          <div className="relative z-10 space-y-2">
+          {/* Tarjeta de texto superpuesta */}
+          <div className="relative z-10 space-y-2 bg-[#0b0e14]/75 p-4 rounded-2xl border border-[#00f2fe]/20 backdrop-blur-md shadow-lg">
             <span className="px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-[#00f2fe] bg-[#00f2fe]/10 border border-[#00f2fe]/30 uppercase">
               {SLIDES_PRODUCCION[currentSlide].tag}
             </span>
-            <h3 className="text-xl font-black text-white leading-snug">
+            <h3 className="text-sm font-black text-white leading-snug">
               {SLIDES_PRODUCCION[currentSlide].titulo}
             </h3>
 
-            <div className="flex gap-2 pt-4">
+            <div className="flex gap-2 pt-2">
               {SLIDES_PRODUCCION.map((_, i) => (
                 <button
                   key={i}
@@ -321,8 +321,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* LADO DERECHO: FORMULARIO Y AUTENTICACIÓN */}
-        <div className="p-7 flex flex-col justify-between text-center">
+        {/* LADO DERECHO: FORMULARIO Y LOGIN */}
+        <div className="p-7 flex flex-col justify-between text-center bg-[#12161f]">
           <div>
             <div className="mx-auto w-12 h-12 rounded-xl bg-gradient-to-br from-[#00f2fe]/20 to-[#ff007f]/20 border border-[#00f2fe] flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.4)] mb-3">
               <span className="text-2xl font-black italic tracking-tighter text-[#00f2fe]">B</span>
@@ -423,7 +423,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               </div>
             ) : (
               <div className="space-y-4 text-left">
-                {/* Botón de Inicio con Google en Modo LOGIN */}
                 {mode === 'LOGIN' && (
                   <div className="space-y-3 pb-3 border-b border-white/10">
                     <div id="googleSignInBtn" className="w-full flex items-center justify-center"></div>
