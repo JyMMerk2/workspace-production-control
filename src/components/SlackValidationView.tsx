@@ -86,6 +86,15 @@ export const SlackValidationView: React.FC = () => {
     fetchHistorial();
   }, []);
 
+  // Extraer lista única de responsables para sugerencias
+  const responsablesSugeridos = Array.from(
+    new Set(
+      historial
+        .map((h) => h.usuario_responsable?.trim())
+        .filter((resp) => resp && resp !== 'Sin Especificar' && resp !== 'Sin Asignar')
+    )
+  );
+
   const limpiarFormulario = () => {
     setTextoSlack('');
     setSubprocesosManuales('');
@@ -315,7 +324,13 @@ export const SlackValidationView: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full text-white space-y-6 print:p-0 print:bg-[#0b0e14]" onPaste={handlePaste}>
-      {/* ESTILOS PARA APERTURA DE CALENDARIO NATIVO Y MODO IMPRESIÓN */}
+      {/* DATALIST DE SUGERENCIAS DE RESPONSABLES */}
+      <datalist id="lista-responsables">
+        {responsablesSugeridos.map((resp, idx) => (
+          <option key={idx} value={resp} />
+        ))}
+      </datalist>
+
       <style>{`
         input[type="date"]::-webkit-calendar-picker-indicator {
           filter: invert(1);
@@ -392,6 +407,7 @@ export const SlackValidationView: React.FC = () => {
               </label>
               <input
                 type="text"
+                list="lista-responsables"
                 value={usuarioResponsable}
                 onChange={(e) => setUsuarioResponsable(e.target.value)}
                 placeholder="Ej: Emely Jimenez, Nicole M."
@@ -789,6 +805,7 @@ export const SlackValidationView: React.FC = () => {
                       {editingId === row.id ? (
                         <input
                           type="text"
+                          list="lista-responsables"
                           value={editResponsable}
                           onChange={(e) => setEditResponsable(e.target.value)}
                           className="w-full bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded"
