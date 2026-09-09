@@ -58,12 +58,12 @@ export const SlackValidationView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [historial, setHistorial] = useState<StoredValidation[]>([]);
 
-  // Estados de Filtro de Tiempo
+  // Filtros de Auditoría
   const [filtroPeriodo, setFiltroPeriodo] = useState<'TODOS' | 'SEMANA' | 'MES' | 'CUSTOM'>('TODOS');
   const [fechaInicioFilter, setFechaInicioFilter] = useState('');
   const [fechaFinFilter, setFechaFinFilter] = useState('');
 
-  // Estados de Edición
+  // Edición
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editEstado, setEditEstado] = useState<string>('');
   const [editAnomalias, setEditAnomalias] = useState<string>('');
@@ -226,7 +226,7 @@ export const SlackValidationView: React.FC = () => {
     }
   };
 
-  // FILTRADO DINÁMICO POR FECHA / SEMANA / MES
+  // Filtrado
   const historialFiltrado = historial.filter((item) => {
     const fechaItem = new Date(item.fecha_registro || item.created_at);
     const hoy = new Date();
@@ -283,7 +283,7 @@ export const SlackValidationView: React.FC = () => {
     window.print();
   };
 
-  // KPIS CALCULADOS CON BASE EN EL FILTRO SELECCIONADO
+  // KPIs
   const totalAnalizados = historialFiltrado.length;
   const totalCorrectos = historialFiltrado.filter((h) => h.estado === 'CORRECTO').length;
   const totalAnomalias = historialFiltrado.filter((h) => h.estado === 'INCONGRUENTE').length;
@@ -315,7 +315,12 @@ export const SlackValidationView: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full text-white space-y-6 print:p-0 print:bg-[#0b0e14]" onPaste={handlePaste}>
+      {/* ESTILOS PARA APERTURA DE CALENDARIO NATIVO Y MODO IMPRESIÓN */}
       <style>{`
+        input[type="date"]::-webkit-calendar-picker-indicator {
+          filter: invert(1);
+          cursor: pointer;
+        }
         @media print {
           body {
             background-color: #0b0e14 !important;
@@ -343,7 +348,7 @@ export const SlackValidationView: React.FC = () => {
           </div>
         </div>
 
-        {/* BOTONES DE EXPORTACIÓN */}
+        {/* BOTONES EXPORTACIÓN */}
         <div className="flex items-center gap-2 no-print">
           <button
             onClick={exportarCSV}
@@ -360,7 +365,7 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* SECCIÓN FORMULARIO (NO SALE EN PDF) */}
+      {/* FORMULARIO */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 no-print">
         <form autoComplete="off" className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
@@ -375,8 +380,9 @@ export const SlackValidationView: React.FC = () => {
               <input
                 type="date"
                 value={fechaEvaluacion}
+                onClick={(e) => (e.currentTarget as any).showPicker?.()}
                 onChange={(e) => setFechaEvaluacion(e.target.value)}
-                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white focus:border-[#00f2fe] focus:outline-none cursor-pointer"
               />
             </div>
 
@@ -531,7 +537,7 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* BARRA DE FILTRO POR SEMANA Y MES */}
+      {/* BARRA DE FILTRO */}
       <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 no-print">
         <div className="flex items-center gap-2 text-xs font-bold text-[#00f2fe] uppercase">
           <Filter className="w-4 h-4" /> Filtro de Auditoría:
@@ -585,27 +591,28 @@ export const SlackValidationView: React.FC = () => {
             <input
               type="date"
               value={fechaInicioFilter}
+              onClick={(e) => (e.currentTarget as any).showPicker?.()}
               onChange={(e) => setFechaInicioFilter(e.target.value)}
-              className="bg-[#0d1017] border border-white/10 rounded p-1 text-xs text-white"
+              className="bg-[#0d1017] border border-white/10 rounded p-1 text-xs text-white cursor-pointer"
             />
             <span className="text-xs text-gray-500">a</span>
             <input
               type="date"
               value={fechaFinFilter}
+              onClick={(e) => (e.currentTarget as any).showPicker?.()}
               onChange={(e) => setFechaFinFilter(e.target.value)}
-              className="bg-[#0d1017] border border-white/10 rounded p-1 text-xs text-white"
+              className="bg-[#0d1017] border border-white/10 rounded p-1 text-xs text-white cursor-pointer"
             />
           </div>
         )}
       </div>
 
-      {/* SECCIÓN KPIS Y DESGLOSE AUDITORÍA */}
+      {/* KPIS */}
       <div className="space-y-4">
         <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
           <BarChart3 className="w-4 h-4" /> Desglose de KPIs e Incongruencias ({filtroPeriodo})
         </h2>
 
-        {/* METRICAS PRINCIPALES */}
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-xl p-3 flex items-center gap-3">
             <div className="p-2.5 bg-[#00f2fe]/10 rounded-lg text-[#00f2fe]">
@@ -638,9 +645,7 @@ export const SlackValidationView: React.FC = () => {
           </div>
         </div>
 
-        {/* CUADROS DE DESGLOSE DE INCONGRUENCIAS */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* POR ÁREA */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Área</span>
             {Object.keys(porArea).length === 0 ? (
@@ -655,7 +660,6 @@ export const SlackValidationView: React.FC = () => {
             )}
           </div>
 
-          {/* POR MÓDULO */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Módulo</span>
             {Object.keys(porModulo).length === 0 ? (
@@ -670,7 +674,6 @@ export const SlackValidationView: React.FC = () => {
             )}
           </div>
 
-          {/* POR PROCESO FALTANTE */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Proceso Faltante</span>
             {Object.keys(porAnomalia).length === 0 ? (
@@ -685,7 +688,6 @@ export const SlackValidationView: React.FC = () => {
             )}
           </div>
 
-          {/* POR USUARIO RESPONSABLE */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Responsable Flujo</span>
             {Object.keys(porResponsable).length === 0 ? (
@@ -702,7 +704,7 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* HISTORIAL SUPABASE */}
+      {/* HISTORIAL */}
       <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
