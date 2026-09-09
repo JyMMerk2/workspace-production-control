@@ -26,20 +26,16 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const GOOGLE_CLIENT_ID = "530061438374-1fp6i7sfguub0jsqfb47n8bb6equmuga.apps.googleusercontent.com";
 
-// Diapositivas con imágenes locales referenciadas desde /public
 const SLIDES_PRODUCCION = [
   {
-    image: '/apple-touch-icon.png',
     tag: 'CONTROL WIP',
     titulo: 'Seguimiento de mochilas y prendas en tiempo real.',
   },
   {
-    image: '/web-app-manifest-512x512.png',
     tag: 'SUBLIMACIÓN & FULL DYE',
     titulo: 'Sincronización automatizada con Google Sheets.',
   },
   {
-    image: '/apple-touch-icon.png',
     tag: 'BOOMBAH WORKSPACE',
     titulo: 'Gestión por usuario y asignación directa de permisos.',
   },
@@ -281,24 +277,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
       <div className="relative w-full max-w-4xl bg-[#12161f] border border-[#00f2fe] rounded-3xl overflow-hidden shadow-[0_0_35px_rgba(0,242,254,0.25)] grid grid-cols-1 md:grid-cols-2 min-h-[520px]">
         
-        {/* LADO IZQUIERDO: CARRUSEL CON IMAGEN DE FONDO Y LOGO CON LUZ NEÓN */}
+        {/* LADO IZQUIERDO: FONDO NEÓN CON LOGO BOOMBAH Y CARRUSEL */}
         <div className="relative overflow-hidden bg-gradient-to-br from-[#0b0e14] via-[#12161f] to-[#0d1017] hidden md:flex flex-col justify-between p-8 border-r border-white/5">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,242,254,0.15)_0,transparent_70%)] pointer-events-none" />
 
-          {/* Imagen central rotativa/fija del logo */}
+          {/* Logo Corporativo de Boombah */}
           <div className="relative z-10 flex items-center justify-center my-auto py-6">
             <img 
-              src={SLIDES_PRODUCCION[currentSlide].image} 
+              src="/apple-touch-icon.png" 
               alt="Boombah Logo" 
-              className="w-44 h-44 object-contain drop-shadow-[0_0_30px_rgba(0,242,254,0.5)] transition-all duration-700"
+              className="w-40 h-40 object-contain drop-shadow-[0_0_25px_rgba(255,0,127,0.4)] animate-pulse"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = '/apple-touch-icon.png';
+                // Fallback a web-app-manifest-512x512.png si no se encuentra la primera
+                (e.target as HTMLImageElement).src = '/web-app-manifest-512x512.png';
               }}
             />
           </div>
 
-          {/* Tarjeta de texto superpuesta */}
-          <div className="relative z-10 space-y-2 bg-[#0b0e14]/75 p-4 rounded-2xl border border-[#00f2fe]/20 backdrop-blur-md shadow-lg">
+          {/* Banner con texto interactivo del carrusel */}
+          <div className="relative z-10 space-y-2 bg-[#0b0e14]/60 p-4 rounded-2xl border border-white/10 backdrop-blur-sm">
             <span className="px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-[#00f2fe] bg-[#00f2fe]/10 border border-[#00f2fe]/30 uppercase">
               {SLIDES_PRODUCCION[currentSlide].tag}
             </span>
