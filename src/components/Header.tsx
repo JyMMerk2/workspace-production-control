@@ -35,7 +35,7 @@ interface HeaderProps {
   authenticatedUser: string;
   darkMode?: boolean;
   onToggleTheme?: () => void;
-  metrics?: HeaderMetrics; // <--- MÉTRICAS DINÁMICAS
+  metrics?: HeaderMetrics;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   metrics = {
     totalOrdenesDia: 172,
-    capturadoOrdenesDia: 140, // Actualizado dinámico
+    capturadoOrdenesDia: 140,
     restaOrdenesDia: 32,
     pctContenedor: 64.29,
     ordenesMochilas: 16,
@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({
   const apparel = metrics.ordenesApparel ?? 8;
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-16 bg-[#12161f] border-b border-[#00f2fe]/20 shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center justify-between px-3 lg:px-5 z-40 transition-transform duration-300 no-print">
+    <header className="fixed top-0 left-0 right-0 h-16 bg-[#12161f] border-b border-[#00f2fe]/20 shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center justify-between px-3 lg:px-5 z-50 transition-transform duration-300 no-print">
       {/* Controles esquinales y Marca */}
       <div className="flex items-center gap-2.5">
         <button
@@ -117,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* METRICOS GLOBALES DINÁMICOS */}
+      {/* METRICOS GLOBALES DINÁMICOS PERMANENTES */}
       <div className="flex items-center gap-3 bg-[#0d1017] border border-white/10 px-3 py-1 rounded-xl shadow-inner">
         {/* 1. Órdenes del día */}
         <div className="flex items-center gap-1.5 border-r border-white/10 pr-3">
