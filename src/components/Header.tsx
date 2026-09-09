@@ -12,6 +12,15 @@ import {
   Shirt
 } from 'lucide-react';
 
+export interface HeaderMetrics {
+  totalOrdenesDia?: number;
+  capturadoOrdenesDia?: number;
+  restaOrdenesDia?: number;
+  pctContenedor?: number;
+  ordenesMochilas?: number;
+  ordenesApparel?: number;
+}
+
 interface HeaderProps {
   currentTitle: string;
   sidebarOpen: boolean;
@@ -26,6 +35,7 @@ interface HeaderProps {
   authenticatedUser: string;
   darkMode?: boolean;
   onToggleTheme?: () => void;
+  metrics?: HeaderMetrics; // <--- MÉTRICAS DINÁMICAS
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,6 +52,14 @@ export const Header: React.FC<HeaderProps> = ({
   authenticatedUser,
   darkMode = true,
   onToggleTheme,
+  metrics = {
+    totalOrdenesDia: 172,
+    capturadoOrdenesDia: 140, // Actualizado dinámico
+    restaOrdenesDia: 32,
+    pctContenedor: 64.29,
+    ordenesMochilas: 16,
+    ordenesApparel: 8,
+  }
 }) => {
   if (!headerVisible) {
     return (
@@ -54,6 +72,13 @@ export const Header: React.FC<HeaderProps> = ({
       </button>
     );
   }
+
+  const total = metrics.totalOrdenesDia ?? 172;
+  const capturado = metrics.capturadoOrdenesDia ?? 140;
+  const resta = metrics.restaOrdenesDia ?? (total - capturado);
+  const pct = metrics.pctContenedor ?? 64.29;
+  const mochilas = metrics.ordenesMochilas ?? 16;
+  const apparel = metrics.ordenesApparel ?? 8;
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-[#12161f] border-b border-[#00f2fe]/20 shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center justify-between px-3 lg:px-5 z-40 transition-transform duration-300 no-print">
@@ -92,20 +117,20 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* METRICOS GLOBALES SIEMPRE VISIBLES */}
+      {/* METRICOS GLOBALES DINÁMICOS */}
       <div className="flex items-center gap-3 bg-[#0d1017] border border-white/10 px-3 py-1 rounded-xl shadow-inner">
         {/* 1. Órdenes del día */}
         <div className="flex items-center gap-1.5 border-r border-white/10 pr-3">
           <Package className="w-3.5 h-3.5 text-[#39ff14] shrink-0" />
           <div className="text-[10px] md:text-[11px] font-bold whitespace-nowrap">
             <span className="text-gray-400">Ordenes del día: </span>
-            <span className="text-[#39ff14] font-black">172</span>
+            <span className="text-[#39ff14] font-black">{total}</span>
             <span className="text-gray-600 mx-1">/</span>
             <span className="text-gray-400">CAPTURADO: </span>
-            <span className="text-[#39ff14] font-black">134</span>
+            <span className="text-[#39ff14] font-black">{capturado}</span>
             <span className="text-gray-600 mx-1">/</span>
             <span className="text-gray-400">RESTA: </span>
-            <span className="text-red-400 font-black">38</span>
+            <span className="text-red-400 font-black">{resta}</span>
           </div>
         </div>
 
@@ -114,12 +139,12 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="space-y-0.5">
             <div className="flex justify-between items-center text-[9px] font-bold gap-2">
               <span className="text-amber-400 uppercase tracking-wide">Acumulado Contenedor</span>
-              <span className="text-amber-400 font-black">64.29%</span>
+              <span className="text-amber-400 font-black">{pct}%</span>
             </div>
             <div className="w-20 bg-[#12161f] h-1.5 rounded-full overflow-hidden border border-amber-500/30">
               <div 
                 className="bg-amber-500 h-full rounded-full transition-all duration-500" 
-                style={{ width: '64.29%' }} 
+                style={{ width: `${Math.min(pct, 100)}%` }} 
               />
             </div>
           </div>
@@ -130,7 +155,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Box className="w-3.5 h-3.5 text-[#00f2fe] shrink-0" />
           <span className="text-[10px] font-bold uppercase text-gray-400">Mochilas:</span>
           <span className="text-[11px] font-black text-[#00f2fe] bg-[#00f2fe]/10 px-1.5 py-0.5 rounded border border-[#00f2fe]/30">
-            16
+            {mochilas}
           </span>
         </div>
 
@@ -139,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Shirt className="w-3.5 h-3.5 text-[#ff007f] shrink-0" />
           <span className="text-[10px] font-bold uppercase text-gray-400">Apparel:</span>
           <span className="text-[11px] font-black text-[#ff007f] bg-[#ff007f]/10 px-1.5 py-0.5 rounded border border-[#ff007f]/30">
-            8
+            {apparel}
           </span>
         </div>
       </div>
