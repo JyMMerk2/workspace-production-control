@@ -20,6 +20,14 @@ export default function App() {
     return sessionStorage.getItem('authenticated_user') || null;
   });
 
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    return sessionStorage.getItem('authenticated_email') || null;
+  });
+
+  const [userPicture, setUserPicture] = useState<string | null>(() => {
+    return sessionStorage.getItem('authenticated_picture') || null;
+  });
+
   const [activeTab, setActiveTab] = useState<TabType>('dashboard-live');
   const [activeSubTabGid, setActiveSubTabGid] = useState<string | undefined>(undefined);
   const [currentTabTitle, setCurrentTabTitle] = useState<string>('DASHBOARD EN VIVO');
@@ -119,15 +127,26 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = (username: string) => {
+  const handleLoginSuccess = (username: string, email?: string, picture?: string) => {
     sessionStorage.setItem('authenticated_user', username);
+    if (email) sessionStorage.setItem('authenticated_email', email);
+    if (picture) sessionStorage.setItem('authenticated_picture', picture);
+
     setAuthenticatedUser(username);
+    if (email) setUserEmail(email);
+    if (picture) setUserPicture(picture);
+
     refreshDashboard();
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem('authenticated_user');
+    sessionStorage.removeItem('authenticated_email');
+    sessionStorage.removeItem('authenticated_picture');
+
     setAuthenticatedUser(null);
+    setUserEmail(null);
+    setUserPicture(null);
   };
 
   if (!authenticatedUser) {
