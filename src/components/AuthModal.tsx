@@ -26,7 +26,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const GOOGLE_CLIENT_ID = "530061438374-1fp6i7sfguub0jsqfb47n8bb6equmuga.apps.googleusercontent.com";
 
-// Diapositivas con las rutas locales de tu carpeta public/
+// Diapositivas apuntando a los archivos en la carpeta public/
 const SLIDES_PRODUCCION = [
   {
     url: '/carrusel-1.jpg',
@@ -275,13 +275,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0b0e14]/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="absolute w-[500px] h-[500px] bg-[#00f2fe]/5 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute w-[400px] h-[400px] bg-[#ff007f]/5 rounded-full blur-3xl pointer-events-none"></div>
+    // CONTENEDOR PRINCIPAL CON FONDO OSCURO Y MARCA DE AGUA GIGANTE DETRÁS
+    <div className="fixed inset-0 z-50 bg-[#0b0e14] flex items-center justify-center p-4 overflow-hidden">
+      
+      {/* MARCA DE AGUA GIGANTE DIFUMINADA EN EL FONDO GENERAL (DETRÁS DE LA TARJETA) */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden">
+        <img 
+          src="/logo.png" 
+          alt="" 
+          className="w-[120vh] h-[120vh] object-contain opacity-[0.03] blur-[2px] filter drop-shadow-[0_0_100px_rgba(255,0,127,0.2)] rotate-[-15deg]"
+          onError={(e) => {
+            // Fallback si logo.png no existe en public/
+            (e.target as HTMLImageElement).src = '/apple-touch-icon.png';
+            (e.target as HTMLImageElement).className = "w-[80vh] h-[80vh] object-contain opacity-[0.02] blur-[1px]";
+          }}
+        />
+      </div>
 
-      <div className="relative w-full max-w-4xl bg-[#12161f] border border-[#00f2fe] rounded-3xl overflow-hidden shadow-[0_0_35px_rgba(0,242,254,0.25)] grid grid-cols-1 md:grid-cols-2 min-h-[520px]">
+      {/* LUCES DE NEÓN DE FONDO (MODIFICADAS PARA NO INTERFERIR CON LA MARCA DE AGUA) */}
+      <div className="absolute w-[600px] h-[600px] bg-[#00f2fe]/5 rounded-full blur-3xl pointer-events-none z-0 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+
+      {/* TARJETA DE LOGIN (CON Z-10 PARA ESTAR SOBRE LA MARCA DE AGUA) */}
+      <div className="relative z-10 w-full max-w-4xl bg-[#12161f] border border-[#00f2fe]/50 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,242,254,0.15)] grid grid-cols-1 md:grid-cols-2 min-h-[520px]">
         
-        {/* LADO IZQUIERDO: CARRUSEL CON IMÁGENES LOCALES + MARCA DE AGUA DEL LOGO */}
+        {/* LADO IZQUIERDO: CARRUSEL DE FOTOS PROFESIONALES */}
         <div className="relative overflow-hidden bg-slate-950 hidden md:flex flex-col justify-end p-8 border-r border-white/5">
           
           {/* FOTOS DEL CARRUSEL EN TRANSICIÓN SUAVE */}
@@ -289,29 +306,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             <div
               key={i}
               className={`absolute inset-0 transition-opacity duration-1000 bg-cover bg-center ${
-                i === currentSlide ? 'opacity-40 scale-105' : 'opacity-0 scale-100'
+                i === currentSlide ? 'opacity-70 scale-105' : 'opacity-0 scale-100'
               }`}
               style={{ backgroundImage: `url(${slide.url})` }}
             />
           ))}
 
-          {/* GRADIENTE DE OSCURECIMIENTO */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e14] via-[#0b0e14]/40 to-transparent pointer-events-none" />
+          {/* GRADIENTE DE OSCURECIMIENTO INFERIOR SOBRE LAS FOTOS */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e14] via-[#0b0e14]/20 to-transparent pointer-events-none" />
 
-          {/* MARCA DE AGUA GIGANTE Y DIFUMINADA CON LOGO.PNG */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 overflow-hidden">
-            <img 
-              src="/logo.png" 
-              alt="" 
-              className="w-80 h-80 object-contain opacity-30 blur-[1px] filter drop-shadow-[0_0_30px_rgba(0,242,254,0.5)]"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/apple-touch-icon.png';
-              }}
-            />
-          </div>
-
-          {/* TARJETA INFORMATIVA DEL CARRUSEL */}
-          <div className="relative z-20 space-y-2 bg-[#0b0e14]/80 p-4 rounded-2xl border border-[#00f2fe]/20 backdrop-blur-md shadow-2xl">
+          {/* TARJETA INFORMATIVA DEL CARRUSEL (SUPERPUESTA SOBRE LAS FOTOS) */}
+          <div className="relative z-20 space-y-2 bg-[#0b0e14]/80 p-5 rounded-2xl border border-[#00f2fe]/20 backdrop-blur-md shadow-2xl">
             <span className="px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-[#00f2fe] bg-[#00f2fe]/10 border border-[#00f2fe]/30 uppercase">
               {SLIDES_PRODUCCION[currentSlide].tag}
             </span>
@@ -319,7 +324,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               {SLIDES_PRODUCCION[currentSlide].titulo}
             </h3>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-3">
               {SLIDES_PRODUCCION.map((_, i) => (
                 <button
                   key={i}
@@ -337,6 +342,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         {/* LADO DERECHO: FORMULARIO Y LOGIN */}
         <div className="p-7 flex flex-col justify-between text-center bg-[#12161f]">
           <div>
+            {/* Logo B Neón */}
             <div className="mx-auto w-12 h-12 rounded-xl bg-gradient-to-br from-[#00f2fe]/20 to-[#ff007f]/20 border border-[#00f2fe] flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.4)] mb-3">
               <span className="text-2xl font-black italic tracking-tighter text-[#00f2fe]">B</span>
             </div>
@@ -354,9 +360,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 ? 'RECUPERAR ACCESO'
                 : 'DEFINIR NUEVA CLAVE'}
             </h2>
-            <p className="text-[11px] text-[#8f9ba8] mb-4">Boombah Sports Tech • Workspace Production</p>
+            <p className="text-[11px] text-[#8f9ba8] mb-5">Boombah Sports Tech • Workspace Production</p>
 
             {showAdminPinPrompt ? (
+              // Formulario PIN Admin
               <form onSubmit={handleVerifyAdminAccess} className="space-y-3.5 text-left">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-[#ffe600] mb-1">
@@ -371,7 +378,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                       value={adminPin}
                       onChange={(e) => setAdminPin(e.target.value)}
                       placeholder="Ingrese contraseña maestra"
-                      className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#ffe600]/40 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#ffe600]"
+                      className="w-full pl-9 pr-3 py-2.5 bg-[#0d1017] border border-[#ffe600]/40 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#ffe600]"
                     />
                   </div>
                 </div>
@@ -395,6 +402,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 </button>
               </form>
             ) : isAdminView ? (
+              // Panel Admin
               <div className="space-y-3 text-left max-h-64 overflow-y-auto custom-scrollbar">
                 {pendingUsers.length === 0 ? (
                   <p className="text-xs text-center text-gray-400 py-4">No hay solicitudes pendientes.</p>
@@ -435,6 +443,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 </button>
               </div>
             ) : (
+              // Login Estándar y Registro
               <div className="space-y-4 text-left">
                 {mode === 'LOGIN' && (
                   <div className="space-y-3 pb-3 border-b border-white/10">
@@ -461,7 +470,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                           value={user}
                           onChange={(e) => setUser(e.target.value)}
                           placeholder={mode === 'REGISTRO' ? 'Ej: jmercado' : 'admin'}
-                          className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
+                          className="w-full pl-9 pr-3 py-2.5 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
                         />
                       </div>
                     </div>
@@ -479,7 +488,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="ejemplo@boombah.com"
-                          className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe]"
+                          className="w-full pl-9 pr-3 py-2.5 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe]"
                         />
                       </div>
                     </div>
@@ -498,7 +507,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                           value={pass}
                           onChange={(e) => setPass(e.target.value)}
                           placeholder="••••••••"
-                          className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
+                          className="w-full pl-9 pr-3 py-2.5 bg-[#0d1017] border border-[#00f2fe]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f2fe] focus:shadow-[0_0_10px_rgba(0,242,254,0.3)] transition-all"
                         />
                       </div>
                     </div>
@@ -517,7 +526,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                           value={passConfirm}
                           onChange={(e) => setPassConfirm(e.target.value)}
                           placeholder="••••••••"
-                          className="w-full pl-9 pr-3 py-2 bg-[#0d1017] border border-[#39ff14]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#39ff14]"
+                          className="w-full pl-9 pr-3 py-2.5 bg-[#0d1017] border border-[#39ff14]/30 rounded-lg text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#39ff14]"
                         />
                       </div>
                     </div>
@@ -526,7 +535,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className={`w-full py-2.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg disabled:opacity-50 mt-2 ${
+                    className={`w-full py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg disabled:opacity-50 mt-2 ${
                       mode === 'REGISTRO'
                         ? 'bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] hover:bg-[#39ff14] hover:text-[#0b0e14] shadow-[0_0_15px_rgba(57,255,20,0.3)]'
                         : mode === 'RECUPERAR'
@@ -549,9 +558,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             )}
           </div>
 
+          {/* Mensajes de Estado */}
           {statusMsg.text && (
             <div
-              className={`mt-3 p-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 ${
+              className={`mt-4 p-2.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 ${
                 statusMsg.type === 'error'
                   ? 'bg-[#ff007f]/10 border border-[#ff007f]/40 text-[#ff007f]'
                   : statusMsg.type === 'success'
@@ -565,8 +575,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
+          {/* Enlaces de navegación inferior */}
           {!showAdminPinPrompt && (
-            <div className="mt-3 pt-3 border-t border-white/5 space-y-1 text-[11px]">
+            <div className="mt-4 pt-3 border-t border-white/5 space-y-1 text-[11px]">
               {mode === 'LOGIN' ? (
                 <>
                   <button
@@ -595,9 +606,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                       setShowAdminPinPrompt(true);
                       setStatusMsg({ type: '', text: '' });
                     }}
-                    className="text-[#ffe600] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold pt-1"
+                    className="text-[#ffe600] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer font-bold pt-1.5"
                   >
-                    <ShieldAlert className="w-3 h-3" />
+                    <ShieldAlert className="w-3.5 h-3.5" />
                     <span>Panel de Autorización Admin</span>
                   </button>
                 </>
