@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
 import { PlanosView } from './components/PlanosView';
 import { SizingCalculatorView } from './components/SizingCalculatorView';
+import { SlackValidationView } from './components/SlackValidationView';
 import { SheetsView } from './components/SheetsView';
 import { ManualView } from './components/ManualView';
 import { ConfigView } from './components/ConfigView';
@@ -95,7 +96,7 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Falla temporal de red. Se conservan datos previos:', err);
-    } finally {
+    } fontally {
       setIsRefreshing(false);
     }
   }, []);
@@ -219,7 +220,10 @@ export default function App() {
             {/* 5. Calculadora de Sizing Packs */}
             {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
 
-            {/* 6. Hojas Google Sheets Embebidas */}
+            {/* 6. Módulo de Validación de Rutas y Flujos (Slack / OCR) */}
+            {activeTab === 'slack-validation' && <SlackValidationView />}
+
+            {/* 7. Hojas Google Sheets Embebidas */}
             {isSheetTab && currentSheetConfig && (
               <SheetsView
                 config={currentSheetConfig}
@@ -231,10 +235,10 @@ export default function App() {
               />
             )}
 
-            {/* 7. Manual de Operaciones */}
+            {/* 8. Manual de Operaciones */}
             {activeTab === 'manual' && <ManualView />}
 
-            {/* 8. Configuración del Sistema */}
+            {/* 9. Configuración del Sistema */}
             {activeTab === 'configuracion' && (
               <ConfigView authenticatedUser={authenticatedUser} />
             )}
