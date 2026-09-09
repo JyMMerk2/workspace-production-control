@@ -96,7 +96,7 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Falla temporal de red. Se conservan datos previos:', err);
-    } fontally {
+    } finally {
       setIsRefreshing(false);
     }
   }, []);
