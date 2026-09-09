@@ -15,7 +15,8 @@ import {
   Printer,
   Scan,
   UserCheck,
-  Calendar
+  Calendar,
+  Filter
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import Tesseract from 'tesseract.js';
@@ -43,8 +44,8 @@ interface StoredValidation {
   estado: string;
   anomalias: string[];
   texto_slack: string;
-  usuario: string; // Digitador App
-  usuario_responsable: string; // Responsable del flujo
+  usuario: string;
+  usuario_responsable: string;
 }
 
 export const SlackValidationView: React.FC = () => {
@@ -56,6 +57,11 @@ export const SlackValidationView: React.FC = () => {
   const [resultado, setResultado] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [historial, setHistorial] = useState<StoredValidation[]>([]);
+
+  // Estados de Filtro de Tiempo
+  const [filtroPeriodo, setFiltroPeriodo] = useState<'TODOS' | 'SEMANA' | 'MES' | 'CUSTOM'>('TODOS');
+  const [fechaInicioFilter, setFechaInicioFilter] = useState('');
+  const [fechaFinFilter, setFechaFinFilter] = useState('');
 
   // Estados de Edición
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -220,10 +226,38 @@ export const SlackValidationView: React.FC = () => {
     }
   };
 
+  // FILTRADO DINÁMICO POR FECHA / SEMANA / MES
+  const historialFiltrado = historial.filter((item) => {
+    const fechaItem = new Date(item.fecha_registro || item.created_at);
+    const hoy = new Date();
+
+    if (filtroPeriodo === 'SEMANA') {
+      const haceUnaSemana = new Date();
+      haceUnaSemana.setDate(hoy.getDate() - 7);
+      return fechaItem >= haceUnaSemana;
+    }
+
+    if (filtroPeriodo === 'MES') {
+      return (
+        fechaItem.getMonth() === hoy.getMonth() &&
+        fechaItem.getFullYear() === hoy.getFullYear()
+      );
+    }
+
+    if (filtroPeriodo === 'CUSTOM') {
+      if (!fechaInicioFilter && !fechaFinFilter) return true;
+      const inicio = fechaInicioFilter ? new Date(fechaInicioFilter) : new Date('2000-01-01');
+      const fin = fechaFinFilter ? new Date(fechaFinFilter + 'T23:59:59') : new Date('2099-12-31');
+      return fechaItem >= inicio && fechaItem <= fin;
+    }
+
+    return true;
+  });
+
   const exportarCSV = () => {
-    if (historial.length === 0) return;
+    if (historialFiltrado.length === 0) return;
     const headers = ['Fecha Registro', 'Fecha Creacion', 'Contrato', 'Area', 'Modulo', 'Estado', 'Anomalias', 'Responsable Flujo', 'Digitador App'];
-    const rows = historial.map((h) => [
+    const rows = historialFiltrado.map((h) => [
       `"${h.fecha_registro || ''}"`,
       `"${new Date(h.created_at).toLocaleString()}"`,
       `"${h.contrato}"`,
@@ -239,7 +273,7 @@ export const SlackValidationView: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Reporte_Validaciones_Slack_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `Reporte_Validaciones_Slack_${filtroPeriodo}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -249,39 +283,29 @@ export const SlackValidationView: React.FC = () => {
     window.print();
   };
 
-  // CÁLCULO DE KPIS Y AGRUPACIONES PARA AUDITORÍA
-  const totalAnalizados = historial.length;
-  const totalCorrectos = historial.filter((h) => h.estado === 'CORRECTO').length;
-  const totalAnomalias = historial.filter((h) => h.estado === 'INCONGRUENTE').length;
+  // KPIS CALCULADOS CON BASE EN EL FILTRO SELECCIONADO
+  const totalAnalizados = historialFiltrado.length;
+  const totalCorrectos = historialFiltrado.filter((h) => h.estado === 'CORRECTO').length;
+  const totalAnomalias = historialFiltrado.filter((h) => h.estado === 'INCONGRUENTE').length;
 
-  // Agrupar Incongruencias por Área
-  const porArea = historial.reduce((acc, h) => {
-    if (h.estado === 'INCONGRUENTE') {
-      acc[h.area] = (acc[h.area] || 0) + 1;
-    }
+  const porArea = historialFiltrado.reduce((acc, h) => {
+    if (h.estado === 'INCONGRUENTE') acc[h.area] = (acc[h.area] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  // Agrupar Incongruencias por Módulo
-  const porModulo = historial.reduce((acc, h) => {
-    if (h.estado === 'INCONGRUENTE') {
-      acc[h.modulo] = (acc[h.modulo] || 0) + 1;
-    }
+  const porModulo = historialFiltrado.reduce((acc, h) => {
+    if (h.estado === 'INCONGRUENTE') acc[h.modulo] = (acc[h.modulo] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
-  // Agrupar Incongruencias por Proceso Faltante/Anomalía
-  const porAnomalia = historial.reduce((acc, h) => {
+  const porAnomalia = historialFiltrado.reduce((acc, h) => {
     if (h.estado === 'INCONGRUENTE' && Array.isArray(h.anomalias)) {
-      h.anomalias.forEach((a) => {
-        acc[a] = (acc[a] || 0) + 1;
-      });
+      h.anomalias.forEach((a) => { acc[a] = (acc[a] || 0) + 1; });
     }
     return acc;
   }, {} as Record<string, number>);
 
-  // Agrupar Incongruencias por Responsable del Flujo
-  const porResponsable = historial.reduce((acc, h) => {
+  const porResponsable = historialFiltrado.reduce((acc, h) => {
     if (h.estado === 'INCONGRUENTE') {
       const resp = h.usuario_responsable || 'Sin Asignar';
       acc[resp] = (acc[resp] || 0) + 1;
@@ -291,7 +315,6 @@ export const SlackValidationView: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 w-full text-white space-y-6 print:p-0 print:bg-[#0b0e14]" onPaste={handlePaste}>
-      {/* ESTILOS DE IMPRESIÓN/PDF: Oculta los formularios e imprime solo Gráficas e Historial */}
       <style>{`
         @media print {
           body {
@@ -302,10 +325,6 @@ export const SlackValidationView: React.FC = () => {
           }
           .no-print {
             display: none !important;
-          }
-          .print-full-width {
-            width: 100% !important;
-            grid-column: span 12 / span 12 !important;
           }
         }
       `}</style>
@@ -341,7 +360,7 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* SECCIÓN FORMULARIO DE EVALUACIÓN (SE OCULTA EN EL PDF) */}
+      {/* SECCIÓN FORMULARIO (NO SALE EN PDF) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 no-print">
         <form autoComplete="off" className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
@@ -409,7 +428,7 @@ export const SlackValidationView: React.FC = () => {
             Evaluar y Guardar Registro
           </button>
 
-          {/* SECCIÓN OCR TESSERACT GRATIS */}
+          {/* OCR TESSERACT */}
           <div className="pt-3 border-t border-white/10 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">
               OCR Gratuito Integrado (Tesseract)
@@ -444,7 +463,7 @@ export const SlackValidationView: React.FC = () => {
           </div>
         </form>
 
-        {/* DIAGNÓSTICO EN TIEMPO REAL */}
+        {/* DIAGNÓSTICO */}
         <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 flex flex-col justify-between">
           <div>
             <h2 className="text-sm font-bold text-[#00f2fe] mb-4">Resultado del Diagnóstico</h2>
@@ -512,10 +531,78 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* SECCIÓN KPIS Y DESGLOSE AUDITORÍA (SE MUESTRA EN EL PDF) */}
+      {/* BARRA DE FILTRO POR SEMANA Y MES */}
+      <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 no-print">
+        <div className="flex items-center gap-2 text-xs font-bold text-[#00f2fe] uppercase">
+          <Filter className="w-4 h-4" /> Filtro de Auditoría:
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setFiltroPeriodo('TODOS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              filtroPeriodo === 'TODOS'
+                ? 'bg-[#00f2fe] text-[#0b0e14]'
+                : 'bg-[#0d1017] border border-white/10 text-gray-400 hover:text-white'
+            }`}
+          >
+            Histórico Completo
+          </button>
+          <button
+            onClick={() => setFiltroPeriodo('SEMANA')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              filtroPeriodo === 'SEMANA'
+                ? 'bg-[#00f2fe] text-[#0b0e14]'
+                : 'bg-[#0d1017] border border-white/10 text-gray-400 hover:text-white'
+            }`}
+          >
+            Últimos 7 Días (Semanal)
+          </button>
+          <button
+            onClick={() => setFiltroPeriodo('MES')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              filtroPeriodo === 'MES'
+                ? 'bg-[#00f2fe] text-[#0b0e14]'
+                : 'bg-[#0d1017] border border-white/10 text-gray-400 hover:text-white'
+            }`}
+          >
+            Este Mes
+          </button>
+          <button
+            onClick={() => setFiltroPeriodo('CUSTOM')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              filtroPeriodo === 'CUSTOM'
+                ? 'bg-[#00f2fe] text-[#0b0e14]'
+                : 'bg-[#0d1017] border border-white/10 text-gray-400 hover:text-white'
+            }`}
+          >
+            Rango de Fechas
+          </button>
+        </div>
+
+        {filtroPeriodo === 'CUSTOM' && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={fechaInicioFilter}
+              onChange={(e) => setFechaInicioFilter(e.target.value)}
+              className="bg-[#0d1017] border border-white/10 rounded p-1 text-xs text-white"
+            />
+            <span className="text-xs text-gray-500">a</span>
+            <input
+              type="date"
+              value={fechaFinFilter}
+              onChange={(e) => setFechaFinFilter(e.target.value)}
+              className="bg-[#0d1017] border border-white/10 rounded p-1 text-xs text-white"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* SECCIÓN KPIS Y DESGLOSE AUDITORÍA */}
       <div className="space-y-4">
         <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
-          <BarChart3 className="w-4 h-4" /> Desglose de KPIs e Incongruencias para Reporte
+          <BarChart3 className="w-4 h-4" /> Desglose de KPIs e Incongruencias ({filtroPeriodo})
         </h2>
 
         {/* METRICAS PRINCIPALES */}
@@ -551,7 +638,7 @@ export const SlackValidationView: React.FC = () => {
           </div>
         </div>
 
-        {/* CUADROS DE DESGLOSE DE INCONGRUENCIAS (POR ÁREA, MÓDULO, ANOMALÍA Y RESPONSABLE) */}
+        {/* CUADROS DE DESGLOSE DE INCONGRUENCIAS */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* POR ÁREA */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
@@ -583,7 +670,7 @@ export const SlackValidationView: React.FC = () => {
             )}
           </div>
 
-          {/* POR PROCESO FALTANTE / ANOMALÍA */}
+          {/* POR PROCESO FALTANTE */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Proceso Faltante</span>
             {Object.keys(porAnomalia).length === 0 ? (
@@ -598,7 +685,7 @@ export const SlackValidationView: React.FC = () => {
             )}
           </div>
 
-          {/* POR USUARIO RESPONSABLE DEL FLUJO */}
+          {/* POR USUARIO RESPONSABLE */}
           <div className="bg-[#12161f] border border-white/10 rounded-xl p-3 space-y-2">
             <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">Por Responsable Flujo</span>
             {Object.keys(porResponsable).length === 0 ? (
@@ -615,13 +702,12 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* HISTORIAL SUPABASE (SE MUESTRA EN EL PDF) */}
+      {/* HISTORIAL SUPABASE */}
       <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
-            <History className="w-4 h-4" /> Historial de Validaciones (Acumulado Semanal / Mensual)
+            <History className="w-4 h-4" /> Historial de Validaciones ({historialFiltrado.length} de {historial.length})
           </h2>
-          <span className="text-xs text-gray-400">Total registros: {historial.length}</span>
         </div>
 
         <div className="overflow-x-auto custom-scrollbar">
@@ -640,14 +726,14 @@ export const SlackValidationView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {historial.length === 0 ? (
+              {historialFiltrado.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-6 text-gray-500 italic">
-                    Aún no hay registros en la base de datos.
+                    No se encontraron registros para el período seleccionado.
                   </td>
                 </tr>
               ) : (
-                historial.map((row) => (
+                historialFiltrado.map((row) => (
                   <tr key={row.id} className="hover:bg-white/5 transition-colors">
                     <td className="p-2.5 whitespace-nowrap text-gray-400 text-[10px]">
                       <div className="text-white font-bold">{row.fecha_registro || 'N/A'}</div>
@@ -697,7 +783,6 @@ export const SlackValidationView: React.FC = () => {
                       )}
                     </td>
 
-                    {/* USUARIO RESPONSABLE DEL FLUJO */}
                     <td className="p-2.5 text-white font-semibold">
                       {editingId === row.id ? (
                         <input
