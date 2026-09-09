@@ -12,7 +12,7 @@ import {
   X, 
   Trash2, 
   Download, 
-  Mail,
+  Printer,
   Scan
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
@@ -23,7 +23,6 @@ const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Lista de subprocesos conocidos para mejorar la detección OCR
 const SUBPROCESOS_CONOCIDOS = [
   'CORTE ZUND',
   'CORTE',
@@ -61,7 +60,7 @@ export const SlackValidationView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [historial, setHistorial] = useState<StoredValidation[]>([]);
 
-  // Estados para Edición
+  // Estados de Edición
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editEstado, setEditEstado] = useState<string>('');
   const [editAnomalias, setEditAnomalias] = useState<string>('');
@@ -145,7 +144,7 @@ export const SlackValidationView: React.FC = () => {
     }
   };
 
-  // OCR Gratuito y Local con Tesseract.js
+  // OCR Gratuito con Tesseract v7
   const handleValidacionTesseract = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!imageBase64 || !textoSlack.trim()) return;
@@ -155,7 +154,7 @@ export const SlackValidationView: React.FC = () => {
     try {
       const { data } = await Tesseract.recognize(imageBase64, 'spa');
       const textoLimpioOCR = data.text.toUpperCase();
-
+      
       const detectados: string[] = [];
       SUBPROCESOS_CONOCIDOS.forEach((subp) => {
         if (textoLimpioOCR.includes(subp) && !detectados.includes(subp)) {
@@ -172,13 +171,12 @@ export const SlackValidationView: React.FC = () => {
       await guardarEnSupabase(res, textoSlack);
     } catch (err) {
       console.error('Error en Tesseract OCR:', err);
-      alert('No se pudo procesar la captura de imagen con Tesseract.');
+      alert('No se pudo procesar la captura con Tesseract.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Funciones de Edición y Eliminación
   const startEditing = (row: StoredValidation) => {
     setEditingId(row.id);
     setEditEstado(row.estado);
@@ -211,7 +209,7 @@ export const SlackValidationView: React.FC = () => {
   };
 
   const deleteRow = async (id: string) => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar este registro de la base de datos?')) return;
+    if (!window.confirm('¿Estás seguro de eliminar este registro?')) return;
     try {
       const { error } = await supabase.from('slack_validations').delete().eq('id', id);
       if (!error) fetchHistorial();
@@ -220,10 +218,9 @@ export const SlackValidationView: React.FC = () => {
     }
   };
 
-  // Exportar a CSV
   const exportarCSV = () => {
     if (historial.length === 0) return;
-    const headers = ['Fecha Creación', 'Fecha Edición', 'Contrato', 'Área', 'Módulo', 'Estado', 'Anomalías', 'Usuario'];
+    const headers = ['Fecha Creacion', 'Fecha Edicion', 'Contrato', 'Area', 'Modulo', 'Estado', 'Anomalias', 'Usuario'];
     const rows = historial.map((h) => [
       `"${new Date(h.created_at).toLocaleString()}"`,
       `"${h.updated_at ? new Date(h.updated_at).toLocaleString() : ''}"`,
@@ -245,22 +242,9 @@ export const SlackValidationView: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Redactar Correo
-  const enviarPorCorreo = () => {
-    const total = historial.length;
-    const correctos = historial.filter((h) => h.estado === 'CORRECTO').length;
-    const anomalias = historial.filter((h) => h.estado === 'INCONGRUENTE').length;
-
-    const subject = encodeURIComponent(`Reporte de Validaciones Slack - Boombah Workspace (${new Date().toLocaleDateString()})`);
-    const body = encodeURIComponent(
-      `Resumen de Auditoría de Validaciones Slack:\n\n` +
-      `- Total Evaluaciones: ${total}\n` +
-      `- Cumplimientos Correctos: ${correctos}\n` +
-      `- Incongruencias Detectadas: ${anomalias}\n\n` +
-      `Se adjunta el reporte detallado generado desde Boombah Workspace.`
-    );
-
-    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  // Exportar PDF nativo con la estética neón de la App
+  const exportarPDF = () => {
+    window.print();
   };
 
   const totalAnalizados = historial.length;
@@ -269,7 +253,22 @@ export const SlackValidationView: React.FC = () => {
   const totalAnomalias = historial.filter((h) => h.estado === 'INCONGRUENTE').length;
 
   return (
-    <div className="p-4 md:p-6 w-full text-white space-y-6" onPaste={handlePaste}>
+    <div className="p-4 md:p-6 w-full text-white space-y-6 print:p-0 print:bg-[#0b0e14]" onPaste={handlePaste}>
+      {/* ESTILOS DE IMPRESIÓN/PDF PARA PRESERVAR EL DISEÑO OBSCURO NEÓN */}
+      <style>{`
+        @media print {
+          body {
+            background-color: #0b0e14 !important;
+            color: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       {/* CABECERA */}
       <div className="flex flex-wrap items-center justify-between border-b border-[#00f2fe]/20 pb-4 gap-4">
         <div className="flex items-center gap-3">
@@ -279,24 +278,24 @@ export const SlackValidationView: React.FC = () => {
               Validación de Rutas y Flujos (Slack / OCR)
             </h1>
             <p className="text-xs text-gray-400">
-              Análisis persistente para auditoría semanal y mensual con OCR Tesseract integrado.
+              Análisis persistente para auditoría semanal y mensual con OCR Tesseract Integrado.
             </p>
           </div>
         </div>
 
         {/* BOTONES DE EXPORTACIÓN */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 no-print">
           <button
             onClick={exportarCSV}
             className="flex items-center gap-2 px-3 py-2 bg-[#00f2fe]/10 border border-[#00f2fe] text-[#00f2fe] font-bold text-xs rounded-lg hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer"
           >
-            <Download className="w-4 h-4" /> Descargar CSV
+            <Download className="w-4 h-4" /> Descargar CSV (Excel)
           </button>
           <button
-            onClick={enviarPorCorreo}
-            className="flex items-center gap-2 px-3 py-2 bg-[#39ff14]/10 border border-[#39ff14] text-[#39ff14] font-bold text-xs rounded-lg hover:bg-[#39ff14] hover:text-[#0b0e14] transition-all cursor-pointer"
+            onClick={exportarPDF}
+            className="flex items-center gap-2 px-3 py-2 bg-[#ff007f]/10 border border-[#ff007f] text-[#ff007f] font-bold text-xs rounded-lg hover:bg-[#ff007f] hover:text-white transition-all cursor-pointer"
           >
-            <Mail className="w-4 h-4" /> Redactar Correo
+            <Printer className="w-4 h-4" /> Descargar PDF
           </button>
         </div>
       </div>
@@ -336,7 +335,7 @@ export const SlackValidationView: React.FC = () => {
           </div>
         </div>
 
-        {/* FORMULARIO Y RESULTADOS */}
+        {/* FORMULARIO Y DIAGNÓSTICO */}
         <div className="xl:col-span-9 grid grid-cols-1 lg:grid-cols-2 gap-6">
           <form autoComplete="off" className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
             <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
@@ -372,9 +371,9 @@ export const SlackValidationView: React.FC = () => {
             <button
               onClick={handleValidacionManual}
               type="button"
-              className="w-full py-2.5 bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] font-black text-xs uppercase rounded-lg hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer"
+              className="w-full py-2.5 bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] font-black text-xs uppercase rounded-lg hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer no-print"
             >
-              Evaluar y Guardar Registro
+              Evaluar y Guardar Manualmente
             </button>
 
             {/* SECCIÓN OCR TESSERACT GRATIS */}
@@ -386,7 +385,7 @@ export const SlackValidationView: React.FC = () => {
                 {imageBase64 ? (
                   <div className="space-y-1">
                     <img src={imageBase64} alt="Captura" className="max-h-24 mx-auto rounded border border-white/20" />
-                    <button type="button" onClick={() => setImageBase64(null)} className="text-[10px] text-red-400 underline">
+                    <button type="button" onClick={() => setImageBase64(null)} className="text-[10px] text-red-400 underline no-print">
                       Quitar imagen
                     </button>
                   </div>
@@ -404,7 +403,7 @@ export const SlackValidationView: React.FC = () => {
                 onClick={handleValidacionTesseract}
                 type="button"
                 disabled={loading || !imageBase64 || !textoSlack.trim()}
-                className="w-full py-2.5 bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] font-bold text-xs uppercase rounded-lg hover:bg-[#39ff14] hover:text-[#0b0e14] disabled:opacity-40 transition-all cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] font-bold text-xs uppercase rounded-lg hover:bg-[#39ff14] hover:text-[#0b0e14] disabled:opacity-40 transition-all cursor-pointer flex items-center justify-center gap-2 no-print"
               >
                 <Scan className="w-4 h-4" />
                 {loading ? 'Escaneando con Tesseract...' : 'Escanear Captura con Tesseract (Gratis)'}
@@ -412,7 +411,7 @@ export const SlackValidationView: React.FC = () => {
             </div>
           </form>
 
-          {/* DIAGNÓSTICO EN TIEMPO REAL */}
+          {/* DIAGNÓSTICO */}
           <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 flex flex-col justify-between">
             <div>
               <h2 className="text-sm font-bold text-[#00f2fe] mb-4">Resultado de la Evaluación</h2>
@@ -473,7 +472,7 @@ export const SlackValidationView: React.FC = () => {
                 </div>
               ) : (
                 <div className="h-48 flex items-center justify-center text-xs text-gray-500 italic text-center">
-                  Ingresa una orden o escanéa con Tesseract para realizar el diagnóstico.
+                  Ingresa un texto o escanéa con Tesseract para realizar el diagnóstico.
                 </div>
               )}
             </div>
@@ -481,7 +480,7 @@ export const SlackValidationView: React.FC = () => {
         </div>
       </div>
 
-      {/* HISTORIAL SUPABASE CON EDICIÓN Y ELIMINACIÓN */}
+      {/* HISTORIAL SUPABASE */}
       <div className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-[#00f2fe] flex items-center gap-2">
@@ -501,7 +500,7 @@ export const SlackValidationView: React.FC = () => {
                 <th className="p-2.5">Estado</th>
                 <th className="p-2.5">Anomalías / Observaciones</th>
                 <th className="p-2.5">Usuario</th>
-                <th className="p-2.5 text-center">Acciones</th>
+                <th className="p-2.5 text-center no-print">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -572,20 +571,18 @@ export const SlackValidationView: React.FC = () => {
 
                     <td className="p-2.5 text-gray-400">{row.usuario}</td>
 
-                    <td className="p-2.5 text-center whitespace-nowrap">
+                    <td className="p-2.5 text-center whitespace-nowrap no-print">
                       {editingId === row.id ? (
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => saveEdit(row.id)}
                             className="p-1 bg-[#39ff14]/20 text-[#39ff14] border border-[#39ff14] rounded hover:bg-[#39ff14] hover:text-[#0b0e14]"
-                            title="Guardar"
                           >
                             <Save className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
                             className="p-1 bg-gray-500/20 text-gray-400 border border-gray-500 rounded hover:bg-gray-500 hover:text-white"
-                            title="Cancelar"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -595,14 +592,12 @@ export const SlackValidationView: React.FC = () => {
                           <button
                             onClick={() => startEditing(row)}
                             className="p-1.5 bg-[#00f2fe]/10 text-[#00f2fe] border border-[#00f2fe]/40 rounded hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer"
-                            title="Editar"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => deleteRow(row.id)}
                             className="p-1.5 bg-red-500/10 text-red-400 border border-red-500/40 rounded hover:bg-red-500 hover:text-white transition-all cursor-pointer"
-                            title="Eliminar"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
