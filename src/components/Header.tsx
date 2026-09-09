@@ -8,7 +8,8 @@ import {
   Sun, 
   Moon, 
   Package, 
-  Box 
+  Box,
+  Shirt
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -91,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* METRICOS GLOBALES SIEMPRE VISIBLES (COMPACTOS Y LIMPIOS) */}
+      {/* METRICOS GLOBALES SIEMPRE VISIBLES */}
       <div className="flex items-center gap-3 bg-[#0d1017] border border-white/10 px-3 py-1 rounded-xl shadow-inner">
         {/* 1. Órdenes del día */}
         <div className="flex items-center gap-1.5 border-r border-white/10 pr-3">
@@ -112,10 +113,10 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden md:flex items-center gap-2 border-r border-white/10 pr-3">
           <div className="space-y-0.5">
             <div className="flex justify-between items-center text-[9px] font-bold gap-2">
-              <span className="text-amber-400 uppercase tracking-wide">Porcentaje Acumulado Total</span>
+              <span className="text-amber-400 uppercase tracking-wide">Acumulado Contenedor</span>
               <span className="text-amber-400 font-black">64.29%</span>
             </div>
-            <div className="w-24 bg-[#12161f] h-1.5 rounded-full overflow-hidden border border-amber-500/30">
+            <div className="w-20 bg-[#12161f] h-1.5 rounded-full overflow-hidden border border-amber-500/30">
               <div 
                 className="bg-amber-500 h-full rounded-full transition-all duration-500" 
                 style={{ width: '64.29%' }} 
@@ -125,11 +126,20 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* 3. Mochilas Abiertas */}
-        <div className="hidden lg:flex items-center gap-1.5">
+        <div className="hidden lg:flex items-center gap-1.5 border-r border-white/10 pr-3">
           <Box className="w-3.5 h-3.5 text-[#00f2fe] shrink-0" />
-          <span className="text-[10px] font-bold uppercase text-gray-400">Mochilas Abiertas:</span>
+          <span className="text-[10px] font-bold uppercase text-gray-400">Mochilas:</span>
           <span className="text-[11px] font-black text-[#00f2fe] bg-[#00f2fe]/10 px-1.5 py-0.5 rounded border border-[#00f2fe]/30">
             16
+          </span>
+        </div>
+
+        {/* 4. Apparel Abiertas */}
+        <div className="hidden lg:flex items-center gap-1.5">
+          <Shirt className="w-3.5 h-3.5 text-[#ff007f] shrink-0" />
+          <span className="text-[10px] font-bold uppercase text-gray-400">Apparel:</span>
+          <span className="text-[11px] font-black text-[#ff007f] bg-[#ff007f]/10 px-1.5 py-0.5 rounded border border-[#ff007f]/30">
+            8
           </span>
         </div>
       </div>
