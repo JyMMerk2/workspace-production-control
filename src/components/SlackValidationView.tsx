@@ -12,14 +12,32 @@ import {
   X, 
   Trash2, 
   Download, 
-  Mail 
+  Mail,
+  Scan
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import Tesseract from 'tesseract.js';
 import { evaluarFlujoOrden, ValidationResult } from '../services/orderValidationService';
 
 const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Lista de subprocesos conocidos para mejorar la detección OCR
+const SUBPROCESOS_CONOCIDOS = [
+  'CORTE ZUND',
+  'CORTE',
+  'ENTRADA ALMACEN',
+  'ENTRADA ALMACÉN',
+  'SALIDA ALMACEN',
+  'SALIDA ALMACÉN',
+  'PRINTING',
+  'PRENSA',
+  'SORTEO',
+  'MANUFACTURA',
+  'COSTURA',
+  'EMPAQUE'
+];
 
 interface StoredValidation {
   id: string;
@@ -39,7 +57,6 @@ export const SlackValidationView: React.FC = () => {
   const [textoSlack, setTextoSlack] = useState('');
   const [subprocesosManuales, setSubprocesosManuales] = useState('');
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState('');
   const [resultado, setResultado] = useState<ValidationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [historial, setHistorial] = useState<StoredValidation[]>([]);
@@ -128,48 +145,34 @@ export const SlackValidationView: React.FC = () => {
     }
   };
 
-  const handleValidacionOpenAI = async (e: React.FormEvent) => {
+  // OCR Gratuito y Local con Tesseract.js
+  const handleValidacionTesseract = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey || !imageBase64) return;
+    if (!imageBase64 || !textoSlack.trim()) return;
+
     setLoading(true);
 
     try {
-      const payload = {
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: "Extrae los subprocesos de la imagen y devuélvelos en JSON como 'subprocesos' (arreglo de strings).",
-              },
-              { type: 'image_url', image_url: { url: imageBase64 } },
-            ],
-          },
-        ],
-        response_format: { type: 'json_object' },
-      };
+      const { data } = await Tesseract.recognize(imageBase64, 'spa');
+      const textoLimpioOCR = data.text.toUpperCase();
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
+      const detectados: string[] = [];
+      SUBPROCESOS_CONOCIDOS.forEach((subp) => {
+        if (textoLimpioOCR.includes(subp) && !detectados.includes(subp)) {
+          detectados.push(subp);
+        }
       });
 
-      const json = await response.json();
-      const parsedContent = JSON.parse(json.choices[0].message.content);
-      const subprocesosExtraidos: string[] = parsedContent.subprocesos || [];
+      const subprocesosFinales = detectados.length > 0 
+        ? detectados 
+        : data.text.split('\n').filter((linea) => linea.trim().length > 3);
 
-      const res = evaluarFlujoOrden(textoSlack, subprocesosExtraidos);
+      const res = evaluarFlujoOrden(textoSlack, subprocesosFinales);
       setResultado(res);
       await guardarEnSupabase(res, textoSlack);
     } catch (err) {
-      console.error(err);
-      alert('Error al procesar la imagen.');
+      console.error('Error en Tesseract OCR:', err);
+      alert('No se pudo procesar la captura de imagen con Tesseract.');
     } finally {
       setLoading(false);
     }
@@ -276,7 +279,7 @@ export const SlackValidationView: React.FC = () => {
               Validación de Rutas y Flujos (Slack / OCR)
             </h1>
             <p className="text-xs text-gray-400">
-              Análisis persistente para auditoría semanal y mensual. Pega capturas con Ctrl + V.
+              Análisis persistente para auditoría semanal y mensual con OCR Tesseract integrado.
             </p>
           </div>
         </div>
@@ -348,14 +351,14 @@ export const SlackValidationView: React.FC = () => {
                 rows={3}
                 value={textoSlack}
                 onChange={(e) => setTextoSlack(e.target.value)}
-                placeholder="Ejemplo: Orden 123456C1 enviada a Celda 1..."
+                placeholder="Ejemplo: SPUT2 425623A..."
                 className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
               />
             </div>
 
             <div>
               <label className="block text-[11px] font-bold uppercase text-gray-400 mb-1">
-                Subprocesos (Separados por coma)
+                Subprocesos Manuales (Separados por coma)
               </label>
               <input
                 type="text"
@@ -374,10 +377,10 @@ export const SlackValidationView: React.FC = () => {
               Evaluar y Guardar Registro
             </button>
 
-            {/* SECCIÓN OCR OPIONAL */}
+            {/* SECCIÓN OCR TESSERACT GRATIS */}
             <div className="pt-3 border-t border-white/10 space-y-2">
-              <span className="text-[10px] font-bold uppercase text-gray-400 block">
-                OCR por Imagen (Pega con Ctrl + V)
+              <span className="text-[10px] font-bold uppercase text-[#00f2fe] block">
+                OCR Gratuito Integrado (Tesseract)
               </span>
               <div className="border border-dashed border-white/20 rounded-lg p-2 text-center bg-[#0d1017]">
                 {imageBase64 ? (
@@ -397,21 +400,14 @@ export const SlackValidationView: React.FC = () => {
                 )}
               </div>
 
-              <input
-                type="password"
-                placeholder="OpenAI API Key (Opcional)"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white"
-              />
-
               <button
-                onClick={handleValidacionOpenAI}
+                onClick={handleValidacionTesseract}
                 type="button"
-                disabled={loading || !apiKey || !imageBase64}
-                className="w-full py-2 bg-[#ff007f]/20 border border-[#ff007f] text-[#ff007f] font-bold text-xs uppercase rounded-lg hover:bg-[#ff007f] hover:text-white disabled:opacity-40 cursor-pointer"
+                disabled={loading || !imageBase64 || !textoSlack.trim()}
+                className="w-full py-2.5 bg-[#39ff14]/20 border border-[#39ff14] text-[#39ff14] font-bold text-xs uppercase rounded-lg hover:bg-[#39ff14] hover:text-[#0b0e14] disabled:opacity-40 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                {loading ? 'Procesando...' : 'Escanear Imagen con GPT-4o-mini'}
+                <Scan className="w-4 h-4" />
+                {loading ? 'Escaneando con Tesseract...' : 'Escanear Captura con Tesseract (Gratis)'}
               </button>
             </div>
           </form>
@@ -477,7 +473,7 @@ export const SlackValidationView: React.FC = () => {
                 </div>
               ) : (
                 <div className="h-48 flex items-center justify-center text-xs text-gray-500 italic text-center">
-                  Ingresa una orden para realizar el diagnóstico.
+                  Ingresa una orden o escanéa con Tesseract para realizar el diagnóstico.
                 </div>
               )}
             </div>
@@ -518,7 +514,6 @@ export const SlackValidationView: React.FC = () => {
               ) : (
                 historial.map((row) => (
                   <tr key={row.id} className="hover:bg-white/5 transition-colors">
-                    {/* FECHAS */}
                     <td className="p-2.5 whitespace-nowrap text-gray-400 text-[10px]">
                       <div>
                         <span className="text-gray-300 font-bold">Creado:</span>{' '}
@@ -536,7 +531,6 @@ export const SlackValidationView: React.FC = () => {
                     <td className="p-2.5 text-[#00f2fe] font-semibold">{row.area}</td>
                     <td className="p-2.5">{row.modulo}</td>
 
-                    {/* ESTADO */}
                     <td className="p-2.5">
                       {editingId === row.id ? (
                         <select
@@ -560,7 +554,6 @@ export const SlackValidationView: React.FC = () => {
                       )}
                     </td>
 
-                    {/* ANOMALÍAS */}
                     <td className="p-2.5 text-red-300">
                       {editingId === row.id ? (
                         <input
@@ -579,7 +572,6 @@ export const SlackValidationView: React.FC = () => {
 
                     <td className="p-2.5 text-gray-400">{row.usuario}</td>
 
-                    {/* ACCIONES (EDITAR Y ELIMINAR) */}
                     <td className="p-2.5 text-center whitespace-nowrap">
                       {editingId === row.id ? (
                         <div className="flex items-center justify-center gap-1">
