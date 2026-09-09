@@ -16,8 +16,7 @@ import {
   Scan,
   UserCheck,
   Calendar,
-  Filter,
-  User
+  Filter
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import Tesseract from 'tesseract.js';
@@ -46,7 +45,7 @@ interface StoredValidation {
   anomalias: string[];
   texto_slack: string;
   usuario: string; // Digitador Creador
-  editado_por?: string; // Trazabilidad de Edición
+  editado_por?: string; // Editor
   usuario_responsable: string;
 }
 
@@ -95,8 +94,8 @@ export const SlackValidationView: React.FC = () => {
   const responsablesSugeridos = Array.from(
     new Set(
       historial
-        .map((h) => h.usuario_responsable?.trim())
-        .filter((resp) => resp && resp !== 'Sin Especificar' && resp !== 'Sin Asignar')
+        .map((h) => h.usuario_responsable?.trim().toUpperCase())
+        .filter((resp) => resp && resp !== 'SIN ESPECIFICAR' && resp !== 'SIN ASIGNAR')
     )
   );
 
@@ -109,18 +108,18 @@ export const SlackValidationView: React.FC = () => {
 
   const guardarEnSupabase = async (res: ValidationResult, texto: string) => {
     try {
-      const currentUser = sessionStorage.getItem('authenticated_user') || 'operador';
+      const currentUser = (sessionStorage.getItem('authenticated_user') || 'operador').toUpperCase();
       const { error } = await supabase.from('slack_validations').insert([
         {
-          contrato: res.contrato,
-          area: res.area,
-          modulo: res.modulo,
+          contrato: res.contrato.toUpperCase(),
+          area: res.area.toUpperCase(),
+          modulo: res.modulo.toUpperCase(),
           subprocesos: res.subprocesosDetectados,
           estado: res.estado,
           anomalias: res.anomalias,
           texto_slack: texto,
           usuario: currentUser,
-          usuario_responsable: usuarioResponsable.trim() || 'Sin Especificar',
+          usuario_responsable: usuarioResponsable.trim().toUpperCase() || 'SIN ESPECIFICAR',
           fecha_registro: fechaEvaluacion,
           updated_at: new Date().toISOString(),
         },
@@ -200,17 +199,17 @@ export const SlackValidationView: React.FC = () => {
   const startEditing = (row: StoredValidation) => {
     setEditingId(row.id);
     setEditFecha(row.fecha_registro || new Date(row.created_at).toISOString().slice(0, 10));
-    setEditContrato(row.contrato);
-    setEditArea(row.area);
-    setEditModulo(row.modulo);
+    setEditContrato(row.contrato.toUpperCase());
+    setEditArea(row.area.toUpperCase());
+    setEditModulo(row.modulo.toUpperCase());
     setEditEstado(row.estado);
     setEditAnomalias(Array.isArray(row.anomalias) ? row.anomalias.join(', ') : '');
-    setEditResponsable(row.usuario_responsable || '');
+    setEditResponsable(row.usuario_responsable ? row.usuario_responsable.toUpperCase() : '');
   };
 
   const saveEdit = async (id: string) => {
     try {
-      const currentUser = sessionStorage.getItem('authenticated_user') || 'operador';
+      const currentUser = (sessionStorage.getItem('authenticated_user') || 'operador').toUpperCase();
       const listaAnomalias = editAnomalias
         .split(',')
         .map((a) => a.trim())
@@ -220,12 +219,12 @@ export const SlackValidationView: React.FC = () => {
         .from('slack_validations')
         .update({
           fecha_registro: editFecha,
-          contrato: editContrato,
-          area: editArea,
-          modulo: editModulo,
+          contrato: editContrato.toUpperCase(),
+          area: editArea.toUpperCase(),
+          modulo: editModulo.toUpperCase(),
           estado: editEstado,
           anomalias: listaAnomalias,
-          usuario_responsable: editResponsable,
+          usuario_responsable: editResponsable.toUpperCase(),
           editado_por: currentUser,
           updated_at: new Date().toISOString(),
         })
@@ -284,14 +283,14 @@ export const SlackValidationView: React.FC = () => {
     const rows = historialFiltrado.map((h) => [
       `"${h.fecha_registro || ''}"`,
       `"${new Date(h.created_at).toLocaleString()}"`,
-      `"${h.contrato}"`,
-      `"${h.area}"`,
-      `"${h.modulo}"`,
+      `"${h.contrato.toUpperCase()}"`,
+      `"${h.area.toUpperCase()}"`,
+      `"${h.modulo.toUpperCase()}"`,
       `"${h.estado}"`,
       `"${Array.isArray(h.anomalias) ? h.anomalias.join('; ') : ''}"`,
-      `"${h.usuario_responsable || 'Sin Asignar'}"`,
-      `"${h.usuario}"`,
-      `"${h.editado_por || 'Sin Cambios'}"`,
+      `"${(h.usuario_responsable || 'Sin Asignar').toUpperCase()}"`,
+      `"${h.usuario.toUpperCase()}"`,
+      `"${(h.editado_por || 'Sin Cambios').toUpperCase()}"`,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -314,12 +313,18 @@ export const SlackValidationView: React.FC = () => {
   const totalAnomalias = historialFiltrado.filter((h) => h.estado === 'INCONGRUENTE').length;
 
   const porArea = historialFiltrado.reduce((acc, h) => {
-    if (h.estado === 'INCONGRUENTE') acc[h.area] = (acc[h.area] || 0) + 1;
+    if (h.estado === 'INCONGRUENTE') {
+      const a = h.area.toUpperCase();
+      acc[a] = (acc[a] || 0) + 1;
+    }
     return acc;
   }, {} as Record<string, number>);
 
   const porModulo = historialFiltrado.reduce((acc, h) => {
-    if (h.estado === 'INCONGRUENTE') acc[h.modulo] = (acc[h.modulo] || 0) + 1;
+    if (h.estado === 'INCONGRUENTE') {
+      const m = h.modulo.toUpperCase();
+      acc[m] = (acc[m] || 0) + 1;
+    }
     return acc;
   }, {} as Record<string, number>);
 
@@ -332,7 +337,7 @@ export const SlackValidationView: React.FC = () => {
 
   const porResponsable = historialFiltrado.reduce((acc, h) => {
     if (h.estado === 'INCONGRUENTE') {
-      const resp = h.usuario_responsable || 'Sin Asignar';
+      const resp = (h.usuario_responsable || 'SIN ASIGNAR').toUpperCase();
       acc[resp] = (acc[resp] || 0) + 1;
     }
     return acc;
@@ -425,7 +430,7 @@ export const SlackValidationView: React.FC = () => {
                 value={usuarioResponsable}
                 onChange={(e) => setUsuarioResponsable(e.target.value)}
                 placeholder="Ej: Emely Jimenez, Nicole M."
-                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+                className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2 text-xs text-white focus:border-[#00f2fe] focus:outline-none uppercase"
               />
             </div>
           </div>
@@ -452,7 +457,7 @@ export const SlackValidationView: React.FC = () => {
               value={subprocesosManuales}
               onChange={(e) => setSubprocesosManuales(e.target.value)}
               placeholder="ENTRADA ALMACEN, SORTEO, SALIDA ALMACEN"
-              className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none"
+              className="w-full bg-[#0d1017] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:border-[#00f2fe] focus:outline-none uppercase"
             />
           </div>
 
@@ -509,15 +514,15 @@ export const SlackValidationView: React.FC = () => {
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
                     <span className="text-[9px] uppercase text-gray-500 block">Contrato</span>
-                    <span className="text-xs font-black text-white">{resultado.contrato}</span>
+                    <span className="text-xs font-black text-white">{resultado.contrato.toUpperCase()}</span>
                   </div>
                   <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
                     <span className="text-[9px] uppercase text-gray-500 block">Área</span>
-                    <span className="text-xs font-black text-[#00f2fe]">{resultado.area}</span>
+                    <span className="text-xs font-black text-[#00f2fe]">{resultado.area.toUpperCase()}</span>
                   </div>
                   <div className="bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
                     <span className="text-[9px] uppercase text-gray-500 block">Módulo</span>
-                    <span className="text-xs font-black text-[#ff007f]">{resultado.modulo}</span>
+                    <span className="text-xs font-black text-[#ff007f]">{resultado.modulo.toUpperCase()}</span>
                   </div>
                 </div>
 
@@ -786,21 +791,21 @@ export const SlackValidationView: React.FC = () => {
                     </td>
 
                     {/* CONTRATO EDITABLE */}
-                    <td className="p-2.5 font-bold text-white">
+                    <td className="p-2.5 font-bold text-white uppercase">
                       {editingId === row.id ? (
                         <input
                           type="text"
                           value={editContrato}
                           onChange={(e) => setEditContrato(e.target.value)}
-                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded w-24 font-bold"
+                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded w-24 font-bold uppercase"
                         />
                       ) : (
-                        row.contrato
+                        row.contrato.toUpperCase()
                       )}
                     </td>
 
                     {/* ÁREA EDITABLE */}
-                    <td className="p-2.5 text-[#00f2fe] font-semibold">
+                    <td className="p-2.5 text-[#00f2fe] font-semibold uppercase">
                       {editingId === row.id ? (
                         <select
                           value={editArea}
@@ -814,21 +819,21 @@ export const SlackValidationView: React.FC = () => {
                           <option value="SIZING PACK">SIZING PACK</option>
                         </select>
                       ) : (
-                        row.area
+                        row.area.toUpperCase()
                       )}
                     </td>
 
                     {/* MÓDULO EDITABLE */}
-                    <td className="p-2.5">
+                    <td className="p-2.5 uppercase">
                       {editingId === row.id ? (
                         <input
                           type="text"
                           value={editModulo}
                           onChange={(e) => setEditModulo(e.target.value)}
-                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded w-28"
+                          className="bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded w-28 uppercase"
                         />
                       ) : (
-                        row.modulo
+                        row.modulo.toUpperCase()
                       )}
                     </td>
 
@@ -874,30 +879,30 @@ export const SlackValidationView: React.FC = () => {
                     </td>
 
                     {/* RESPONSABLE EDITABLE */}
-                    <td className="p-2.5 text-white font-semibold">
+                    <td className="p-2.5 text-white font-semibold uppercase">
                       {editingId === row.id ? (
                         <input
                           type="text"
                           list="lista-responsables"
                           value={editResponsable}
                           onChange={(e) => setEditResponsable(e.target.value)}
-                          className="w-full bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded"
+                          className="w-full bg-[#0d1017] border border-[#00f2fe] text-xs text-white p-1 rounded uppercase"
                         />
                       ) : (
-                        row.usuario_responsable || 'Sin Especificar'
+                        (row.usuario_responsable || 'Sin Especificar').toUpperCase()
                       )}
                     </td>
 
-                    {/* TRAZABILIDAD DIGITADOR Y EDITOR */}
+                    {/* TRAZABILIDAD DIGITADOR Y EDITOR EN MAYÚSCULAS */}
                     <td className="p-2.5 text-[10px]">
                       <div>
                         <span className="text-gray-400">Creado:</span>{' '}
-                        <span className="text-white font-semibold">{row.usuario}</span>
+                        <span className="text-white font-bold uppercase">{row.usuario ? row.usuario.toUpperCase() : 'N/A'}</span>
                       </div>
                       {row.editado_por && (
                         <div className="text-[#00f2fe]">
-                          <span>Editado por:</span>{' '}
-                          <span className="font-bold">{row.editado_por}</span>
+                          <span>Editado:</span>{' '}
+                          <span className="font-bold uppercase">{row.editado_por.toUpperCase()}</span>
                         </div>
                       )}
                     </td>
