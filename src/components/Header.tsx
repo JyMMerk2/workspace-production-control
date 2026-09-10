@@ -52,14 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   authenticatedUser,
   darkMode = true,
   onToggleTheme,
-  metrics = {
-    totalOrdenesDia: 172,
-    capturadoOrdenesDia: 140,
-    restaOrdenesDia: 32,
-    pctContenedor: 64.29,
-    ordenesMochilas: 16,
-    ordenesApparel: 8,
-  }
+  metrics = {}
 }) => {
   if (!headerVisible) {
     return (
@@ -73,12 +66,13 @@ export const Header: React.FC<HeaderProps> = ({
     );
   }
 
-  const total = metrics.totalOrdenesDia ?? 172;
-  const capturado = metrics.capturadoOrdenesDia ?? 140;
+  // EXTRACCIÓN DINÁMICA SIN HARDCODING
+  const total = metrics.totalOrdenesDia ?? 0;
+  const capturado = metrics.capturadoOrdenesDia ?? 0;
   const resta = metrics.restaOrdenesDia ?? (total - capturado);
-  const pct = metrics.pctContenedor ?? 64.29;
-  const mochilas = metrics.ordenesMochilas ?? 16;
-  const apparel = metrics.ordenesApparel ?? 8;
+  const pct = metrics.pctContenedor ?? 0;
+  const mochilas = metrics.ordenesMochilas ?? 0;
+  const apparel = metrics.ordenesApparel ?? 0;
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-[#12161f] border-b border-[#00f2fe]/20 shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center justify-between px-3 lg:px-5 z-50 transition-transform duration-300 no-print">
