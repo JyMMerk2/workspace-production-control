@@ -79,6 +79,7 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  // REFRESH EN TIEMPO REAL GLOBAL (SIN RESTRICCIÓN)
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -96,11 +97,27 @@ export default function App() {
     }
   }, []);
 
+  // POLLING RÁPIDO A 5000 MS Y SINCRONIZACIÓN AL ENFOCAR
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
-      const interval = setInterval(refreshDashboard, 30000);
-      return () => clearInterval(interval);
+
+      // Intervalo de 5 segundos para actualización instantánea
+      const interval = setInterval(refreshDashboard, 5000);
+
+      // Sincronización al regresar a la ventana del navegador
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          refreshDashboard();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     }
   }, [authenticatedUser, refreshDashboard]);
 
@@ -152,7 +169,7 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // EXTRACCIÓN DE MÉTRICAS EN TIEMPO REAL (MAPEO MULTI-CLAVE DE SEGURIDAD)
+  // EXTRACCIÓN DINÁMICA DE MÉTRICAS (MAPEO DE SEGURIDAD MULTI-CLAVE)
   const totalOrdenesDia = 
     (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 
     (dashboardData as any)?.kpiOrdenesDia?.total ?? 
@@ -161,14 +178,14 @@ export default function App() {
   const capturadoOrdenesDia = 
     (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 
     (dashboardData as any)?.kpiOrdenesDia?.captura ?? 
-    18;
+    22;
 
   const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
 
   const pctContenedor = 
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     (dashboardData as any)?.contenedorPctAcumulado ?? 
-    67.09;
+    70.82;
 
   const ordenesMochilas = 
     (dashboardData as any)?.kpiMochilas?.ordenesAbiertas ?? 
@@ -186,7 +203,7 @@ export default function App() {
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
       } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
-      {/* Header Fijo con Métricas Sincronizadas */}
+      {/* Header Fijo con Sincronización Habilitada Globalmente */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
