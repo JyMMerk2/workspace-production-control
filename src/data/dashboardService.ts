@@ -30,12 +30,19 @@ const WEB_APP_DASHBOARD_URL =
 
 export async function fetchLiveDashboardData(): Promise<{ data: DashboardData; isLive: boolean }> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // Elevado a 8s para dar tiempo en redes lentas
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
+    // Cache-buster con marca de tiempo + headers para desactivar caché
     const response = await fetch(`${WEB_APP_DASHBOARD_URL}?action=getDashboard&_t=${Date.now()}`, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+      },
     });
 
     clearTimeout(timeoutId);
@@ -46,12 +53,14 @@ export async function fetchLiveDashboardData(): Promise<{ data: DashboardData; i
 
     const json = await response.json();
 
-    if (!json || json.status !== 'SUCCESS' || !json.kpiApparel) {
-      throw new Error('Respuesta inválida o incompleta enviada por Google Apps Script');
+    if (!json) {
+      throw new Error('Respuesta vacía enviada por Google Apps Script');
     }
 
+    // Mapeo flexible: Acepta cualquier objeto válido recibido de la API
     const parsedData: DashboardData = {
-      status: 'SUCCESS',
+      ...json,
+      status: json.status || 'SUCCESS',
       kpiMochilas: json.kpiMochilas || INITIAL_FALLBACK_DASHBOARD.kpiMochilas,
       mochilas: json.mochilas || [],
       kpiApparel: json.kpiApparel || INITIAL_FALLBACK_DASHBOARD.kpiApparel,
@@ -70,7 +79,7 @@ export async function fetchLiveDashboardData(): Promise<{ data: DashboardData; i
     return { data: parsedData, isLive: true };
   } catch (err) {
     clearTimeout(timeoutId);
-    // Lanzar el error para que App.tsx capture la excepción y Mantenga los datos vivos actuales (6,499) en pantalla
+    console.warn('Error fetching live dashboard data:', err);
     throw err;
   }
 }
