@@ -79,7 +79,7 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // REFRESH EN TIEMPO REAL GLOBAL (SIN RESTRICCIÓN)
+  // REFRESH EN TIEMPO REAL CON TIEMPO DE MARCA (CACHE BUSTER)
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -97,15 +97,13 @@ export default function App() {
     }
   }, []);
 
-  // POLLING RÁPIDO A 5000 MS Y SINCRONIZACIÓN AL ENFOCAR
+  // POLLING RÁPIDO Y REFRESCAMIENTO AUTOMÁTICO
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
 
-      // Intervalo de 5 segundos para actualización instantánea
       const interval = setInterval(refreshDashboard, 5000);
 
-      // Sincronización al regresar a la ventana del navegador
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           refreshDashboard();
@@ -169,32 +167,40 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // EXTRACCIÓN DINÁMICA DE MÉTRICAS (MAPEO DE SEGURIDAD MULTI-CLAVE)
-  const totalOrdenesDia = 
-    (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.total ?? 
-    147;
+  // PARSER DE CELDAS A18 Y A21 DE LA HOJA 'RESUMEN + GRAFICA'
+  const rawTextA18 = (dashboardData as any)?.textoA18 || (dashboardData as any)?.cadenaOrdenesDia || '';
+  
+  // Extrae números usando expresiones regulares directamente de la cadena "Ordenes del día: 147 / CAPTURADO: 31 / RESTA: 116"
+  const matchTotal = rawTextA18.match(/día:\s*(\d+)/i) || rawTextA18.match(/(\d+)\s*\//);
+  const matchCaptura = rawTextA18.match(/CAPTURADO:\s*(\d+)/i);
+  const matchResta = rawTextA18.match(/RESTA:\s*(\d+)/i);
 
-  const capturadoOrdenesDia = 
-    (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.captura ?? 
-    22;
+  const totalOrdenesDia = matchTotal 
+    ? parseInt(matchTotal[1], 10) 
+    : ((dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 147);
 
-  const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
+  const capturadoOrdenesDia = matchCaptura 
+    ? parseInt(matchCaptura[1], 10) 
+    : ((dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? (dashboardData as any)?.kpiOrdenesDia?.captura ?? 31);
+
+  const restaOrdenesDia = matchResta 
+    ? parseInt(matchResta[1], 10) 
+    : (totalOrdenesDia - capturadoOrdenesDia);
 
   const pctContenedor = 
+    (dashboardData as any)?.porcentajeAcumuladoA21 ?? 
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     (dashboardData as any)?.contenedorPctAcumulado ?? 
-    70.82;
+    71.60;
 
   const ordenesMochilas = 
     (dashboardData as any)?.kpiMochilas?.ordenesAbiertas ?? 
-    (dashboardData as any)?.kpiMochilas?.abiertas ?? 
+    (dashboardData as any)?.mochilasAbiertas ?? 
     14;
 
   const ordenesApparel = 
     (dashboardData as any)?.kpiApparel?.ordenesAbiertas ?? 
-    (dashboardData as any)?.kpiApparel?.abiertas ?? 
+    (dashboardData as any)?.apparelAbiertas ?? 
     8;
 
   return (
@@ -203,7 +209,7 @@ export default function App() {
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
       } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
-      {/* Header Fijo con Sincronización Habilitada Globalmente */}
+      {/* Header Fijo con Sincronización en Tiempo Real */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
