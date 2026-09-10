@@ -84,12 +84,7 @@ export default function App() {
     try {
       const { data, isLive } = await fetchLiveDashboardData();
 
-      if (
-        data &&
-        data.kpiApparel &&
-        data.kpiApparel.captura !== undefined &&
-        data.kpiApparel.captura > 0
-      ) {
+      if (data) {
         setDashboardData(data);
         setIsLiveConnection(isLive);
         localStorage.setItem('boombah_dashboard_cached_data', JSON.stringify(data));
@@ -157,13 +152,33 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // Cálculo de Métricas Dinámicas para el Header
-  const totalOrdenesDia = dashboardData?.kpiOrdenesDia?.total || 172;
-  const capturadoOrdenesDia = dashboardData?.kpiOrdenesDia?.captura || 140;
+  // EXTRACCIÓN DE MÉTRICAS EN TIEMPO REAL (MAPEO MULTI-CLAVE DE SEGURIDAD)
+  const totalOrdenesDia = 
+    (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 
+    (dashboardData as any)?.kpiOrdenesDia?.total ?? 
+    147;
+
+  const capturadoOrdenesDia = 
+    (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 
+    (dashboardData as any)?.kpiOrdenesDia?.captura ?? 
+    18;
+
   const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
-  const pctContenedor = dashboardData?.contenedorPctAcumulado || 64.29;
-  const ordenesMochilas = dashboardData?.kpiMochilas?.ordenesAbiertas || 16;
-  const ordenesApparel = dashboardData?.kpiApparel?.ordenesAbiertas || 8;
+
+  const pctContenedor = 
+    (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
+    (dashboardData as any)?.contenedorPctAcumulado ?? 
+    67.09;
+
+  const ordenesMochilas = 
+    (dashboardData as any)?.kpiMochilas?.ordenesAbiertas ?? 
+    (dashboardData as any)?.kpiMochilas?.abiertas ?? 
+    14;
+
+  const ordenesApparel = 
+    (dashboardData as any)?.kpiApparel?.ordenesAbiertas ?? 
+    (dashboardData as any)?.kpiApparel?.abiertas ?? 
+    8;
 
   return (
     <div
@@ -171,14 +186,14 @@ export default function App() {
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
       } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
-      {/* Encabezado Superior con Métricas Dinámicas */}
+      {/* Header Fijo con Métricas Sincronizadas */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
         headerVisible={headerVisible}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         onToggleHeader={() => setHeaderVisible(!headerVisible)}
-        onRefreshDashboard={activeTab === 'dashboard-live' ? refreshDashboard : undefined}
+        onRefreshDashboard={refreshDashboard}
         isRefreshing={isRefreshing}
         lastSyncTime={dashboardData.lastUpdated}
         isLiveConnection={isLiveConnection}
