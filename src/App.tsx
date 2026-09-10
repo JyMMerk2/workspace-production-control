@@ -169,21 +169,24 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // EXTRAER MÉTRICAS DESDE EL OBJETO EXACTO DEL DASHBOARD Y CONTENEDOR (MULTI-ESTRUCTURA)
-  const totalOrdenesDia = 
-    dashboardData?.kpiOrdenesDia?.total ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 
-    (dashboardData as any)?.ordenesDiaTotal ?? 
-    147;
+  // EXTRAER LAS MÉTRICAS DESDE EL TEXTO EXACTO DEL CONTENEDOR (MISMA FUENTE QUE LA TARJETA VERDE)
+  const textoContenedor = dashboardData?.contenedor?.textoOrdenes || '';
 
-  const capturadoOrdenesDia = 
-    dashboardData?.kpiOrdenesDia?.captura ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.capturado ?? 
-    (dashboardData as any)?.capturado ?? 
-    32;
+  const matchTotal = textoContenedor.match(/día:\s*(\d+)/i);
+  const matchCaptura = textoContenedor.match(/CAPTURADO:\s*(\d+)/i);
+  const matchResta = textoContenedor.match(/RESTA:\s*(\d+)/i);
 
-  const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
+  const totalOrdenesDia = matchTotal 
+    ? parseInt(matchTotal[1], 10) 
+    : (dashboardData?.kpiOrdenesDia?.total ?? (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 147);
+
+  const capturadoOrdenesDia = matchCaptura 
+    ? parseInt(matchCaptura[1], 10) 
+    : (dashboardData?.kpiOrdenesDia?.captura ?? (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 33);
+
+  const restaOrdenesDia = matchResta 
+    ? parseInt(matchResta[1], 10) 
+    : (totalOrdenesDia - capturadoOrdenesDia);
 
   // Porcentaje del contenedor (71.60%)
   const pctContenedor = 
@@ -192,7 +195,7 @@ export default function App() {
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     71.60;
 
-  // Mochilas (46) y Apparel (30)
+  // Mochilas (46) y Apparel (27)
   const ordenesMochilas = 
     dashboardData?.kpiMochilas?.ordenes ?? 
     dashboardData?.kpiMochilas?.ordenesAbiertas ?? 
@@ -203,7 +206,7 @@ export default function App() {
     dashboardData?.kpiApparel?.ordenes ?? 
     dashboardData?.kpiApparel?.ordenesAbiertas ?? 
     (dashboardData as any)?.apparelAbiertas ?? 
-    30;
+    27;
 
   return (
     <div
