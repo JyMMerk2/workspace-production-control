@@ -79,7 +79,7 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // REFRESH GLOBAL
+  // REFRESH GLOBAL EN TIEMPO REAL (SIN FILTRO DE PESTAÑA)
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -97,24 +97,26 @@ export default function App() {
     }
   }, []);
 
-  // POLLING AUTOMÁTICO CADA 4 SEGUNDOS
+  // POLLING AUTOMÁTICO CADA 5 SEGUNDOS + REFRESCAMIENTO POR FOCO Y VISIBILIDAD
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
 
-      const interval = setInterval(refreshDashboard, 4000);
+      // Polling continuo cada 5000 ms
+      const interval = setInterval(refreshDashboard, 5000);
 
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          refreshDashboard();
-        }
+      // Disparador de refresco instantáneo para pantallas divididas / cambio de pestaña
+      const handleTriggerRefresh = () => {
+        refreshDashboard();
       };
 
-      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('focus', handleTriggerRefresh);
+      document.addEventListener('visibilitychange', handleTriggerRefresh);
 
       return () => {
         clearInterval(interval);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('focus', handleTriggerRefresh);
+        document.removeEventListener('visibilitychange', handleTriggerRefresh);
       };
     }
   }, [authenticatedUser, refreshDashboard]);
@@ -167,35 +169,37 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // EXTRAER MÉTRICAS EN TIEMPO REAL
-  const capturadoOrdenesDia = 
-    (dashboardData as any)?.kpiOrdenesDia?.captura ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.capturado ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 
-    (dashboardData as any)?.capturado ?? 
-    32;
-
+  // ESPEJO DE MÉTRICAS EXACTO DESDE EL OBJETO DASHBOARD (SIN HARDCODING)
   const totalOrdenesDia = 
-    (dashboardData as any)?.kpiOrdenesDia?.total ?? 
-    (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 
-    147;
+    dashboardData?.kpiOrdenesDia?.total ?? 
+    (dashboardData as any)?.ordenesDiaTotal ?? 
+    0;
 
-  const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
+  const capturadoOrdenesDia = 
+    dashboardData?.kpiOrdenesDia?.captura ?? 
+    (dashboardData as any)?.capturado ?? 
+    0;
 
+  const restaOrdenesDia = 
+    dashboardData?.kpiOrdenesDia?.resta ?? 
+    (totalOrdenesDia - capturadoOrdenesDia);
+
+  // Mapeo exacto del % Contenedor
   const pctContenedor = 
-    (dashboardData as any)?.contenedorPctAcumulado ?? 
+    dashboardData?.contenedorPctAcumulado ?? 
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
-    71.60;
+    0;
 
+  // Mapeo exacto de Órdenes Abiertas (Mochilas y Apparel)
   const ordenesMochilas = 
-    (dashboardData as any)?.kpiMochilas?.ordenesAbiertas ?? 
-    (dashboardData as any)?.kpiMochilas?.abiertas ?? 
-    14;
+    dashboardData?.kpiMochilas?.ordenesAbiertas ?? 
+    (dashboardData as any)?.mochilasAbiertas ?? 
+    0;
 
   const ordenesApparel = 
-    (dashboardData as any)?.kpiApparel?.ordenesAbiertas ?? 
-    (dashboardData as any)?.kpiApparel?.abiertas ?? 
-    8;
+    dashboardData?.kpiApparel?.ordenesAbiertas ?? 
+    (dashboardData as any)?.apparelAbiertas ?? 
+    0;
 
   return (
     <div
@@ -203,7 +207,7 @@ export default function App() {
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
       } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
-      {/* Header Fijo */}
+      {/* Header Fijo Global con Sincronización en Tiempo Real */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
@@ -230,7 +234,7 @@ export default function App() {
 
       {/* Contenedor de Layout */}
       <div className="flex flex-1 w-full overflow-hidden">
-        {/* Sidebar */}
+        {/* Menú Lateral */}
         <Sidebar
           activeTab={activeTab}
           activeSubTabGid={activeSubTabGid}
