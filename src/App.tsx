@@ -79,7 +79,7 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // REFRESH GLOBAL EN TIEMPO REAL (SIN FILTRO DE PESTAÑA)
+  // REFRESH GLOBAL EN TIEMPO REAL (RESILIENTE)
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -89,8 +89,11 @@ export default function App() {
         setDashboardData(data);
         setIsLiveConnection(isLive);
         localStorage.setItem('boombah_dashboard_cached_data', JSON.stringify(data));
+      } else {
+        setIsLiveConnection(false);
       }
     } catch (err) {
+      setIsLiveConnection(false);
       console.warn('Falla temporal de red. Se conservan datos previos:', err);
     } finally {
       setIsRefreshing(false);
@@ -102,10 +105,8 @@ export default function App() {
     if (authenticatedUser) {
       refreshDashboard();
 
-      // Polling continuo cada 5000 ms
       const interval = setInterval(refreshDashboard, 5000);
 
-      // Disparador de refresco instantáneo para pantallas divididas / cambio de pestaña
       const handleTriggerRefresh = () => {
         refreshDashboard();
       };
@@ -172,7 +173,7 @@ export default function App() {
   // EXTRAER LAS MÉTRICAS DESDE EL TEXTO EXACTO DEL CONTENEDOR (MISMA FUENTE QUE LA TARJETA VERDE)
   const textoContenedor = dashboardData?.contenedor?.textoOrdenes || '';
 
-  const matchTotal = textoContenedor.match(/día:\s*(\d+)/i);
+  const matchTotal = textoContenedor.match(/(?:d[íi]a|total):\s*(\d+)/i);
   const matchCaptura = textoContenedor.match(/CAPTURADO:\s*(\d+)/i);
   const matchResta = textoContenedor.match(/RESTA:\s*(\d+)/i);
 
@@ -182,7 +183,7 @@ export default function App() {
 
   const capturadoOrdenesDia = matchCaptura 
     ? parseInt(matchCaptura[1], 10) 
-    : (dashboardData?.kpiOrdenesDia?.captura ?? (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 33);
+    : (dashboardData?.kpiOrdenesDia?.captura ?? (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 35);
 
   const restaOrdenesDia = matchResta 
     ? parseInt(matchResta[1], 10) 
@@ -195,12 +196,12 @@ export default function App() {
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     71.60;
 
-  // Mochilas (46) y Apparel (27)
+  // Mochilas (44) y Apparel (27)
   const ordenesMochilas = 
     dashboardData?.kpiMochilas?.ordenes ?? 
     dashboardData?.kpiMochilas?.ordenesAbiertas ?? 
     (dashboardData as any)?.mochilasAbiertas ?? 
-    46;
+    44;
 
   const ordenesApparel = 
     dashboardData?.kpiApparel?.ordenes ?? 
