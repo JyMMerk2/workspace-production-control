@@ -79,7 +79,7 @@ export default function App() {
   const [isLiveConnection, setIsLiveConnection] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // REFRESH EN TIEMPO REAL CON TIEMPO DE MARCA (CACHE BUSTER)
+  // REFRESH GLOBAL
   const refreshDashboard = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -97,12 +97,12 @@ export default function App() {
     }
   }, []);
 
-  // POLLING RÁPIDO Y REFRESCAMIENTO AUTOMÁTICO
+  // POLLING AUTOMÁTICO CADA 4 SEGUNDOS
   useEffect(() => {
     if (authenticatedUser) {
       refreshDashboard();
 
-      const interval = setInterval(refreshDashboard, 5000);
+      const interval = setInterval(refreshDashboard, 4000);
 
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
@@ -167,40 +167,34 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // PARSER DE CELDAS A18 Y A21 DE LA HOJA 'RESUMEN + GRAFICA'
-  const rawTextA18 = (dashboardData as any)?.textoA18 || (dashboardData as any)?.cadenaOrdenesDia || '';
-  
-  // Extrae números usando expresiones regulares directamente de la cadena "Ordenes del día: 147 / CAPTURADO: 31 / RESTA: 116"
-  const matchTotal = rawTextA18.match(/día:\s*(\d+)/i) || rawTextA18.match(/(\d+)\s*\//);
-  const matchCaptura = rawTextA18.match(/CAPTURADO:\s*(\d+)/i);
-  const matchResta = rawTextA18.match(/RESTA:\s*(\d+)/i);
+  // EXTRAER MÉTRICAS EN TIEMPO REAL
+  const capturadoOrdenesDia = 
+    (dashboardData as any)?.kpiOrdenesDia?.captura ?? 
+    (dashboardData as any)?.kpiOrdenesDia?.capturado ?? 
+    (dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? 
+    (dashboardData as any)?.capturado ?? 
+    32;
 
-  const totalOrdenesDia = matchTotal 
-    ? parseInt(matchTotal[1], 10) 
-    : ((dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 147);
+  const totalOrdenesDia = 
+    (dashboardData as any)?.kpiOrdenesDia?.total ?? 
+    (dashboardData as any)?.kpiOrdenesDia?.ordenesTotal ?? 
+    147;
 
-  const capturadoOrdenesDia = matchCaptura 
-    ? parseInt(matchCaptura[1], 10) 
-    : ((dashboardData as any)?.kpiOrdenesDia?.ordenesCapturado ?? (dashboardData as any)?.kpiOrdenesDia?.captura ?? 31);
-
-  const restaOrdenesDia = matchResta 
-    ? parseInt(matchResta[1], 10) 
-    : (totalOrdenesDia - capturadoOrdenesDia);
+  const restaOrdenesDia = totalOrdenesDia - capturadoOrdenesDia;
 
   const pctContenedor = 
-    (dashboardData as any)?.porcentajeAcumuladoA21 ?? 
-    (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     (dashboardData as any)?.contenedorPctAcumulado ?? 
+    (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     71.60;
 
   const ordenesMochilas = 
     (dashboardData as any)?.kpiMochilas?.ordenesAbiertas ?? 
-    (dashboardData as any)?.mochilasAbiertas ?? 
+    (dashboardData as any)?.kpiMochilas?.abiertas ?? 
     14;
 
   const ordenesApparel = 
     (dashboardData as any)?.kpiApparel?.ordenesAbiertas ?? 
-    (dashboardData as any)?.apparelAbiertas ?? 
+    (dashboardData as any)?.kpiApparel?.abiertas ?? 
     8;
 
   return (
@@ -209,7 +203,7 @@ export default function App() {
         darkMode ? 'dark bg-[#0b0e14] text-[#e1e6ed]' : 'light bg-slate-100 text-slate-900'
       } flex flex-col font-sans antialiased overflow-x-hidden transition-colors duration-200`}
     >
-      {/* Header Fijo con Sincronización en Tiempo Real */}
+      {/* Header Fijo */}
       <Header
         currentTitle={currentTabTitle}
         sidebarOpen={sidebarOpen}
@@ -234,9 +228,9 @@ export default function App() {
         }}
       />
 
-      {/* Contenedor de Layout Ajustable */}
+      {/* Contenedor de Layout */}
       <div className="flex flex-1 w-full overflow-hidden">
-        {/* Menú Navegador Lateral */}
+        {/* Sidebar */}
         <Sidebar
           activeTab={activeTab}
           activeSubTabGid={activeSubTabGid}
@@ -246,9 +240,8 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Área Principal de Trabajo */}
+        {/* Área Principal */}
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto custom-scrollbar pt-16">
-          {/* Barra Flotante Global de Control de Producción */}
           <ProductionControlToolbar />
 
           <div className="p-3 md:p-5 w-full max-w-[1920px] mx-auto">
@@ -262,22 +255,22 @@ export default function App() {
               />
             )}
 
-            {/* 2. Módulo Completo Nativo: WIP Stocks & Vendidas */}
+            {/* 2. WIP Stocks & Vendidas */}
             {(activeTab as string) === 'wip-stocks-vendidas' && <WipStocksVendidasView />}
 
-            {/* 3. Módulo DEMO Existente */}
+            {/* 3. Módulo DEMO */}
             {(activeTab as string) === 'wip-demo' && <TestWipNativoView />}
 
-            {/* 4. Buscador de Planos */}
+            {/* 4. Planos */}
             {activeTab === 'planos' && <PlanosView />}
 
-            {/* 5. Calculadora de Sizing Packs */}
+            {/* 5. Calculadora Sizing Packs */}
             {activeTab === 'sizing-calculator' && <SizingCalculatorView />}
 
-            {/* 6. Módulo de Validación de Rutas y Flujos (Slack / OCR) */}
+            {/* 6. Módulo Slack / OCR */}
             {activeTab === 'slack-validation' && <SlackValidationView />}
 
-            {/* 7. Hojas Google Sheets Embebidas */}
+            {/* 7. Sheets Embebidos */}
             {isSheetTab && currentSheetConfig && (
               <SheetsView
                 config={currentSheetConfig}
@@ -289,10 +282,10 @@ export default function App() {
               />
             )}
 
-            {/* 8. Manual de Operaciones */}
+            {/* 8. Manual */}
             {activeTab === 'manual' && <ManualView />}
 
-            {/* 9. Configuración del Sistema */}
+            {/* 9. Configuración */}
             {activeTab === 'configuracion' && (
               <ConfigView authenticatedUser={authenticatedUser} />
             )}
