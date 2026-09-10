@@ -28,36 +28,31 @@ export const INITIAL_FALLBACK_DASHBOARD: DashboardData = {
 const WEB_APP_DASHBOARD_URL =
   'https://script.google.com/macros/s/AKfycbxMN9J7ZwYqRehAU5H5ugbTtAtbySfC8dNb05PhhUWlmJBtRJILVV0EMylxjdjkpT862w/exec';
 
-export async function fetchLiveDashboardData(): Promise<{ data: DashboardData; isLive: boolean }> {
+export async function fetchLiveDashboardData(): Promise<{ data: DashboardData | null; isLive: boolean }> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s de margen para Google Apps Script
 
   try {
-    // Cache-buster con marca de tiempo + headers para desactivar caché
     const response = await fetch(`${WEB_APP_DASHBOARD_URL}?action=getDashboard&_t=${Date.now()}`, {
       signal: controller.signal,
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-        Expires: '0',
       },
     });
 
     clearTimeout(timeoutId);
 
     if (!response || !response.ok) {
-      throw new Error(`Respuesta no válida del servidor HTTP: ${response?.status}`);
+      return { data: null, isLive: false };
     }
 
     const json = await response.json();
 
     if (!json) {
-      throw new Error('Respuesta vacía enviada por Google Apps Script');
+      return { data: null, isLive: false };
     }
 
-    // Mapeo flexible: Acepta cualquier objeto válido recibido de la API
     const parsedData: DashboardData = {
       ...json,
       status: json.status || 'SUCCESS',
@@ -79,7 +74,7 @@ export async function fetchLiveDashboardData(): Promise<{ data: DashboardData; i
     return { data: parsedData, isLive: true };
   } catch (err) {
     clearTimeout(timeoutId);
-    console.warn('Error fetching live dashboard data:', err);
-    throw err;
+    console.warn('Reintentando sincronización con Google Apps Script...', err);
+    return { data: null, isLive: false };
   }
 }
