@@ -1,18 +1,19 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { DashboardData } from '../types';
 import {
-  Activity,
   RefreshCw,
   CheckCircle2,
-  TrendingUp,
   Package,
-  AlertCircle,
   Layers,
   Target,
-  Sparkles,
-  Flame,
+  Tv,
+  Play,
+  Pause,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
   LucideIcon,
 } from 'lucide-react';
 
@@ -37,83 +38,50 @@ const MetricCard: React.FC<MetricCardProps> = ({
 }) => {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      initial={{ opacity: 0, y: 15, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
-        duration: 0.45,
-        delay: delayIndex * 0.08,
-        ease: [0.21, 1.02, 0.49, 1],
+        duration: 0.35,
+        delay: delayIndex * 0.05,
+        ease: 'easeOut',
       }}
-      whileHover={{
-        y: -5,
-        scale: 1.02,
-        transition: { duration: 0.2, ease: 'easeOut' },
-      }}
-      whileTap={{ scale: 0.98 }}
-      className="group relative bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.35)] overflow-hidden cursor-default transition-all duration-300"
-      style={{
-        borderColor: 'rgba(255, 255, 255, 0.08)',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = `${colorHex}70`;
-        e.currentTarget.style.boxShadow = `0 14px 35px ${colorHex}25`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-        e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.35)';
-      }}
+      className="group relative bg-[#12161f] border border-white/10 rounded-xl p-4 shadow-[0_8px_25px_rgba(0,0,0,0.35)] overflow-hidden cursor-default transition-all duration-300"
     >
-      {/* Top Neon Accent Strip */}
       <div
-        className="absolute top-0 left-0 w-full h-[3px] transition-all duration-300 group-hover:h-[4px]"
+        className="absolute top-0 left-0 w-full h-[3px]"
         style={{
           backgroundColor: colorHex,
-          boxShadow: `0 0 14px ${colorHex}`,
+          boxShadow: `0 0 12px ${colorHex}`,
         }}
       />
-
-      {/* Radial Neon Backlight */}
-      <div
-        className="absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-15 group-hover:opacity-35 transition-opacity duration-300 pointer-events-none"
-        style={{ backgroundColor: colorHex }}
-      />
-
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#8f9ba8] group-hover:text-gray-200 transition-colors">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#8f9ba8]">
           {title}
         </span>
-        <motion.div
-          whileHover={{ rotate: 12, scale: 1.15 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 10 }}
-          className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all duration-300 shadow-sm"
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center border shadow-sm"
           style={{
             backgroundColor: `${colorHex}15`,
             borderColor: `${colorHex}40`,
             color: colorHex,
-            boxShadow: `0 0 10px ${colorHex}20`,
           }}
         >
           <Icon className="w-3.5 h-3.5" />
-        </motion.div>
+        </div>
       </div>
-
-      {/* Value */}
       <div
-        className="text-3xl lg:text-4xl font-black my-1.5 tracking-tight transition-transform duration-300 group-hover:scale-[1.02] origin-left"
+        className="text-3xl lg:text-4xl font-black my-1 tracking-tight"
         style={{
           color: colorHex,
-          textShadow: `0 0 18px ${colorHex}55`,
+          textShadow: `0 0 16px ${colorHex}55`,
         }}
       >
         {value}
       </div>
-
-      {/* Subtitle */}
-      <div className="flex items-center justify-between text-xs text-[#5f6e7d] group-hover:text-gray-300 transition-colors mt-2">
+      <div className="flex items-center justify-between text-xs text-[#5f6e7d] mt-1.5">
         <span>{subtitle}</span>
         <span
-          className="w-1.5 h-1.5 rounded-full transition-all duration-300 group-hover:scale-150"
+          className="w-1.5 h-1.5 rounded-full"
           style={{
             backgroundColor: colorHex,
             boxShadow: `0 0 8px ${colorHex}`,
@@ -137,6 +105,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   isRefreshing,
   onRefresh,
 }) => {
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [rotationInterval, setRotationInterval] = useState(10);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const chartDoughnutRef = useRef<HTMLCanvasElement | null>(null);
   const chartBarsRef = useRef<HTMLCanvasElement | null>(null);
   const chartApparelBarsRef = useRef<HTMLCanvasElement | null>(null);
@@ -145,27 +120,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const barsInstance = useRef<Chart | null>(null);
   const apparelBarsInstance = useRef<Chart | null>(null);
 
-  useEffect(() => {
-    // 1. Doughnut Chart: Mochilas
-    if (chartDoughnutRef.current && data.mochilas.length > 0) {
-      if (doughnutInstance.current) {
-        doughnutInstance.current.destroy();
-      }
+  const totalSlides = 4;
 
-      const labels = data.mochilas.map((m) => m.nombre);
-      const orders = data.mochilas.map((m) => m.ordenes);
+  useEffect(() => {
+    if (isPresentationMode && !isPaused) {
+      slideTimerRef.current = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % totalSlides);
+      }, rotationInterval * 1000);
+    }
+    return () => {
+      if (slideTimerRef.current) clearInterval(slideTimerRef.current);
+    };
+  }, [isPresentationMode, isPaused, rotationInterval, totalSlides]);
+
+  const togglePresentation = () => {
+    if (!isPresentationMode) {
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+      setIsPresentationMode(true);
+      setCurrentSlide(0);
+      setIsPaused(false);
+    } else {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsPresentationMode(false);
+    }
+  };
+
+  useEffect(() => {
+    if (chartDoughnutRef.current && data.mochilas.length > 0) {
+      if (doughnutInstance.current) doughnutInstance.current.destroy();
 
       doughnutInstance.current = new Chart(chartDoughnutRef.current, {
         type: 'doughnut',
         data: {
-          labels,
+          labels: data.mochilas.map((m) => m.nombre),
           datasets: [
             {
-              data: orders,
+              data: data.mochilas.map((m) => m.ordenes),
               backgroundColor: ['#00f2fe', '#ff007f', '#39ff14', '#ffe600', '#9d4edd', '#ff9e00'],
               borderColor: '#12161f',
               borderWidth: 3,
-              hoverOffset: 8,
             },
           ],
         },
@@ -175,153 +172,67 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           plugins: {
             legend: {
               position: 'bottom',
-              labels: {
-                color: '#8f9ba8',
-                font: { size: 10, family: 'Plus Jakarta Sans' },
-                boxWidth: 12,
-                padding: 12,
-              },
-            },
-            tooltip: {
-              backgroundColor: '#12161f',
-              titleColor: '#00f2fe',
-              bodyColor: '#e1e6ed',
-              borderColor: 'rgba(0,242,254,0.3)',
-              borderWidth: 1,
+              labels: { color: '#8f9ba8', font: { size: 10 }, boxWidth: 10 },
             },
           },
         },
       });
     }
 
-    // 2. Bar Chart: Mochilas (Captura vs Meta)
     if (chartBarsRef.current && data.mochilas.length > 0) {
-      if (barsInstance.current) {
-        barsInstance.current.destroy();
-      }
-
-      const labels = data.mochilas.map((m) => m.nombre.split(' ')[0] + ' ' + (m.nombre.split(' ')[1] || ''));
-      const capturas = data.mochilas.map((m) => m.captura);
-      const metas = data.mochilas.map((m) => m.meta);
+      if (barsInstance.current) barsInstance.current.destroy();
 
       barsInstance.current = new Chart(chartBarsRef.current, {
         type: 'bar',
         data: {
-          labels,
+          labels: data.mochilas.map((m) => m.nombre.split(' ')[0]),
           datasets: [
-            {
-              label: 'Captura Pcs',
-              data: capturas,
-              backgroundColor: '#39ff14',
-              borderRadius: 4,
-            },
-            {
-              label: 'Meta Pcs',
-              data: metas,
-              backgroundColor: 'rgba(255, 255, 255, 0.1)',
-              borderColor: 'rgba(255, 255, 255, 0.3)',
-              borderWidth: 1,
-              borderRadius: 4,
-            },
+            { label: 'Captura Pcs', data: data.mochilas.map((m) => m.captura), backgroundColor: '#39ff14', borderRadius: 4 },
+            { label: 'Meta Pcs', data: data.mochilas.map((m) => m.meta), backgroundColor: 'rgba(255, 255, 255, 0.1)', borderColor: 'rgba(255, 255, 255, 0.3)', borderWidth: 1, borderRadius: 4 },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: {
-              ticks: { color: '#8f9ba8', font: { size: 9 } },
-              grid: { display: false },
-            },
-            y: {
-              ticks: { color: '#8f9ba8' },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            },
+            x: { ticks: { color: '#8f9ba8', font: { size: 9 } }, grid: { display: false } },
+            y: { ticks: { color: '#8f9ba8' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
           },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                color: '#8f9ba8',
-                font: { size: 10, family: 'Plus Jakarta Sans' },
-                boxWidth: 12,
-              },
-            },
-          },
+          plugins: { legend: { position: 'bottom', labels: { color: '#8f9ba8', boxWidth: 10 } } },
         },
       });
     }
 
-    // 3. Bar Chart: Apparel (Captura vs Meta)
     if (chartApparelBarsRef.current && data.apparel.length > 0) {
-      if (apparelBarsInstance.current) {
-        apparelBarsInstance.current.destroy();
-      }
-
-      const labels = data.apparel.map((m) => m.nombre.split(' (')[0]);
-      const capturas = data.apparel.map((m) => m.captura);
-      const metas = data.apparel.map((m) => m.meta);
+      if (apparelBarsInstance.current) apparelBarsInstance.current.destroy();
 
       apparelBarsInstance.current = new Chart(chartApparelBarsRef.current, {
         type: 'bar',
         data: {
-          labels,
+          labels: data.apparel.map((m) => m.nombre.split(' (')[0]),
           datasets: [
-            {
-              label: 'Captura Pcs',
-              data: capturas,
-              backgroundColor: '#ff007f',
-              borderRadius: 4,
-            },
-            {
-              label: 'Meta Pcs',
-              data: metas,
-              backgroundColor: 'rgba(0, 242, 254, 0.15)',
-              borderColor: '#00f2fe',
-              borderWidth: 1,
-              borderRadius: 4,
-            },
+            { label: 'Captura Pcs', data: data.apparel.map((m) => m.captura), backgroundColor: '#ff007f', borderRadius: 4 },
+            { label: 'Meta Pcs', data: data.apparel.map((m) => m.meta), backgroundColor: 'rgba(0, 242, 254, 0.15)', borderColor: '#00f2fe', borderWidth: 1, borderRadius: 4 },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: {
-              ticks: { color: '#8f9ba8', font: { size: 9 } },
-              grid: { display: false },
-            },
-            y: {
-              ticks: { color: '#8f9ba8' },
-              grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            },
+            x: { ticks: { color: '#8f9ba8', font: { size: 9 } }, grid: { display: false } },
+            y: { ticks: { color: '#8f9ba8' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
           },
-          plugins: {
-            legend: {
-              position: 'bottom',
-              labels: {
-                color: '#8f9ba8',
-                font: { size: 10, family: 'Plus Jakarta Sans' },
-                boxWidth: 12,
-              },
-            },
-          },
+          plugins: { legend: { position: 'bottom', labels: { color: '#8f9ba8', boxWidth: 10 } } },
         },
       });
     }
-
-    return () => {
-      if (doughnutInstance.current) doughnutInstance.current.destroy();
-      if (barsInstance.current) barsInstance.current.destroy();
-      if (apparelBarsInstance.current) apparelBarsInstance.current.destroy();
-    };
-  }, [data]);
+  }, [data, currentSlide, isPresentationMode]);
 
   const { kpiMochilas, mochilas, kpiApparel, apparel, contenedor, lastUpdated } = data;
 
   return (
     <div className="space-y-6">
-      {/* Live Status Bar */}
+      {/* Control Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#12161f] border-l-4 border-[#00f2fe] rounded-xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-3">
           <span className="relative flex h-3 w-3">
@@ -329,20 +240,81 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="relative inline-flex rounded-full h-3 w-3 bg-[#39ff14] shadow-[0_0_10px_#39ff14]"></span>
           </span>
           <div className="flex flex-col">
-            <span className="text-sm font-extrabold uppercase tracking-wider text-white">
+            <span className="text-sm font-extrabold uppercase tracking-wider text-white flex items-center gap-2">
               Panel de Control de Producción en Vivo
+              {isPresentationMode && (
+                <span className="text-[10px] bg-[#ff007f] text-white px-2 py-0.5 rounded-md font-bold tracking-widest animate-pulse">
+                  MODO TV ({currentSlide + 1}/{totalSlides})
+                </span>
+              )}
             </span>
             <span className="text-[11px] text-[#8f9ba8]">
-              {isLive ? 'Conectado a Google Sheets Apps Script API' : 'Modo Operativo Local Activo'} • {lastUpdated || 'Actualizado'}
+              {isLive ? 'Conectado a Google Sheets API' : 'Modo Operativo Local'} • {lastUpdated || 'Actualizado'}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {!isPresentationMode && (
+            <div className="flex items-center gap-1.5 bg-[#0d1017] border border-white/10 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-300">
+              <Clock className="w-3.5 h-3.5 text-[#00f2fe]" />
+              <span className="hidden md:inline">Rotación:</span>
+              <select
+                value={rotationInterval}
+                onChange={(e) => setRotationInterval(Number(e.target.value))}
+                className="bg-transparent text-[#00f2fe] font-bold focus:outline-none cursor-pointer"
+              >
+                <option value={5} className="bg-[#12161f]">5 Segundos</option>
+                <option value={10} className="bg-[#12161f]">10 Segundos</option>
+                <option value={15} className="bg-[#12161f]">15 Segundos</option>
+                <option value={20} className="bg-[#12161f]">20 Segundos</option>
+                <option value={30} className="bg-[#12161f]">30 Segundos</option>
+              </select>
+            </div>
+          )}
+
+          {isPresentationMode && (
+            <div className="flex items-center gap-1 bg-black/50 p-1 rounded-lg border border-white/10">
+              <button
+                onClick={() => setCurrentSlide((prev) => (prev === 0 ? totalSlides - 1 : prev - 1))}
+                className="p-1 hover:text-[#00f2fe] text-gray-300 cursor-pointer"
+                title="Diapositiva Anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setIsPaused(!isPaused)}
+                className="p-1 hover:text-[#39ff14] text-gray-200 cursor-pointer"
+                title={isPaused ? 'Reanudar' : 'Pausar'}
+              >
+                {isPaused ? <Play className="w-4 h-4 text-amber-400" /> : <Pause className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => setCurrentSlide((prev) => (prev + 1) % totalSlides)}
+                className="p-1 hover:text-[#00f2fe] text-gray-300 cursor-pointer"
+                title="Diapositiva Siguiente"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={togglePresentation}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+              isPresentationMode
+                ? 'bg-[#ff007f] text-white border-[#ff007f] shadow-[0_0_15px_#ff007f]'
+                : 'bg-[#00f2fe]/10 text-[#00f2fe] border-[#00f2fe] hover:bg-[#00f2fe] hover:text-[#0b0e14]'
+            }`}
+          >
+            <Tv className="w-4 h-4" />
+            <span>{isPresentationMode ? 'Salir Modo TV' : 'Modo Presentación'}</span>
+          </button>
+
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe] text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_12px_rgba(0,242,254,0.3)] disabled:opacity-50"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe] text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Sincronizar</span>
@@ -350,310 +322,207 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* 1. PROGRAMA MOCHILAS */}
-      <div>
-        <div className="flex items-center gap-2 text-sm md:text-base font-extrabold uppercase tracking-wider text-[#00f2fe] pb-2 border-b-2 border-[#00f2fe]/30 mb-4">
-          <span>🎒 PROGRAMA MOCHILAS (BACKPACKS)</span>
-        </div>
-
-        {/* Mochilas KPI Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <MetricCard
-            title="Órdenes Abiertas"
-            value={kpiMochilas.ordenes}
-            subtitle="Total en Módulos Mochilas"
-            colorHex="#00f2fe"
-            icon={Package}
-            delayIndex={0}
-          />
-          <MetricCard
-            title="Balance Piezas (Pcs)"
-            value={kpiMochilas.balance.toLocaleString()}
-            subtitle="Piezas Pendientes en Flujo"
-            colorHex="#ff007f"
-            icon={Layers}
-            delayIndex={1}
-          />
-          <MetricCard
-            title="Piezas Capturadas"
-            value={kpiMochilas.captura.toLocaleString()}
-            subtitle="Registradas en Turno Actual"
-            colorHex="#39ff14"
-            icon={CheckCircle2}
-            delayIndex={2}
-          />
-          <MetricCard
-            title="Meta Global"
-            value={kpiMochilas.meta.toLocaleString()}
-            subtitle="Objetivo Mochilas Diario"
-            colorHex="#ffe600"
-            icon={Target}
-            delayIndex={3}
-          />
-        </div>
-
-        {/* Charts Mochilas */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-          <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] h-[380px] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-200">
-                Distribución de Órdenes Abiertas
-              </span>
-              <span className="text-[11px] font-bold text-[#00f2fe]">Por Módulo</span>
-            </div>
-            <div className="relative flex-1 w-full min-h-0">
-              <canvas ref={chartDoughnutRef}></canvas>
-            </div>
-          </div>
-
-          <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] h-[380px] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-200">
-                Desempeño Módulos vs Meta
-              </span>
-              <span className="text-[11px] font-bold text-[#39ff14]">Captura vs Objetivo</span>
-            </div>
-            <div className="relative flex-1 w-full min-h-0">
-              <canvas ref={chartBarsRef}></canvas>
-            </div>
-          </div>
-        </div>
-
-        {/* Container Status & Progress Bars */}
-        <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl p-5 mb-6 shadow-[0_8px_25px_rgba(0,0,0,0.3)]">
-          <div className="flex items-center justify-between mb-5">
-            <span className="text-xs md:text-sm font-extrabold uppercase tracking-wider text-[#00f2fe] flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              <span>ESTATUS DE CONTENEDOR Y ÓRDENES DEL DÍA</span>
-            </span>
-            <span className="text-xs font-bold text-[#39ff14] bg-[#39ff14]/10 px-2.5 py-1 rounded border border-[#39ff14]/30">
-              {contenedor.textoOrdenes}
-            </span>
-          </div>
-
-          <div className="space-y-4">
-            {/* Porcentaje Contenedor (Shipping Etiquetado) */}
+      {/* RENDERIZADO MODO PRESENTACIÓN O NORMAL */}
+      <AnimatePresence mode="wait">
+        {/* SLIDE 1: MOCHILAS KPIs, CHARTS & CONTENEDOR */}
+        {(!isPresentationMode || currentSlide === 0) && (
+          <motion.div
+            key="slide-0"
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -15 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
             <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5 text-[#00f2fe]">
-                <span>Porcentaje Contenedor (Shipping Etiquetado)</span>
-                <span>
-                  {(() => {
-                    const pct = contenedor.pctShipping ?? 0;
-                    const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                    return `${finalPct.toFixed(2)}%`;
-                  })()}
-                </span>
+              <div className="flex items-center justify-between text-sm font-extrabold uppercase tracking-wider text-[#00f2fe] pb-2 border-b-2 border-[#00f2fe]/30 mb-4">
+                <span>🎒 PROGRAMA MOCHILAS (KPIs & GRÁFICAS)</span>
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#00f2fe] rounded-full shadow-[0_0_10px_#00f2fe] transition-all duration-700"
-                  style={{
-                    width: `${Math.min(
-                      (() => {
-                        const pct = contenedor.pctShipping ?? 0;
-                        return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                      })(),
-                      100
-                    )}%`,
-                  }}
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <MetricCard title="Órdenes Abiertas" value={kpiMochilas.ordenes} subtitle="Módulos Mochilas" colorHex="#00f2fe" icon={Package} delayIndex={0} />
+                <MetricCard title="Balance Piezas (Pcs)" value={kpiMochilas.balance.toLocaleString()} subtitle="Piezas Pendientes" colorHex="#ff007f" icon={Layers} delayIndex={1} />
+                <MetricCard title="Piezas Capturadas" value={kpiMochilas.captura.toLocaleString()} subtitle="Turno Actual" colorHex="#39ff14" icon={CheckCircle2} delayIndex={2} />
+                <MetricCard title="Meta Global" value={kpiMochilas.meta.toLocaleString()} subtitle="Objetivo Diario" colorHex="#ffe600" icon={Target} delayIndex={3} />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+                <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 h-[320px] flex flex-col">
+                  <span className="text-xs font-bold uppercase text-gray-200 mb-2">Distribución de Órdenes Abiertas</span>
+                  <div className="relative flex-1 w-full min-h-0"><canvas ref={chartDoughnutRef}></canvas></div>
+                </div>
+                <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 h-[320px] flex flex-col">
+                  <span className="text-xs font-bold uppercase text-gray-200 mb-2">Desempeño Módulos vs Meta</span>
+                  <div className="relative flex-1 w-full min-h-0"><canvas ref={chartBarsRef}></canvas></div>
+                </div>
+              </div>
+
+              <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl p-4 shadow-[0_8px_25px_rgba(0,0,0,0.3)]">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-extrabold uppercase text-[#00f2fe] flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    <span>ESTATUS DE CONTENEDOR Y ÓRDENES DEL DÍA</span>
+                  </span>
+                  <span className="text-xs font-bold text-[#39ff14] bg-[#39ff14]/10 px-2.5 py-1 rounded border border-[#39ff14]/30">
+                    {contenedor.textoOrdenes}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between text-xs font-bold mb-1 text-[#00f2fe]">
+                      <span>Porcentaje Contenedor (Shipping Etiquetado)</span>
+                      <span>{((contenedor.pctShipping <= 5 ? contenedor.pctShipping * 100 : contenedor.pctShipping) || 0).toFixed(2)}%</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#00f2fe]" style={{ width: `${Math.min(contenedor.pctShipping <= 5 ? contenedor.pctShipping * 100 : contenedor.pctShipping, 100)}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs font-bold mb-1 text-[#ff9e00]">
+                      <span>Porcentaje Acumulado Total</span>
+                      <span>{((contenedor.pctAcumulado <= 5 ? contenedor.pctAcumulado * 100 : contenedor.pctAcumulado) || 0).toFixed(2)}%</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#ff9e00]" style={{ width: `${Math.min(contenedor.pctAcumulado <= 5 ? contenedor.pctAcumulado * 100 : contenedor.pctAcumulado, 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+          </motion.div>
+        )}
 
-            {/* Porcentaje en curso */}
-            <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5 text-[#00f2fe]">
-                <span>Porcentaje en curso: Contenedor JBHU</span>
-                <span>
-                  {(() => {
-                    const pct = contenedor.pctEnCurso ?? 0;
-                    const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                    return `${finalPct.toFixed(2)}%`;
-                  })()}
+        {/* SLIDE 2: DESGLOSE OPERATIVO MOCHILAS */}
+        {(!isPresentationMode || currentSlide === 1) && (
+          <motion.div
+            key="slide-1"
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -15 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 overflow-x-auto shadow-lg">
+              <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-3">
+                <span className="text-sm font-extrabold uppercase text-[#00f2fe] tracking-wider">
+                  📋 DESGLOSE OPERATIVO COMPLETO POR MÓDULO (PROGRAMA MOCHILAS)
                 </span>
+                {isPresentationMode && <span className="text-xs font-bold text-gray-400">PANTALLA 2 DE {totalSlides}</span>}
               </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#00f2fe] rounded-full shadow-[0_0_10px_#00f2fe] transition-all duration-700"
-                  style={{
-                    width: `${Math.min(
-                      (() => {
-                        const pct = contenedor.pctEnCurso ?? 0;
-                        return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                      })(),
-                      100
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Porcentaje Acumulado Total */}
-            <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5 text-[#ff9e00]">
-                <span>Porcentaje Acumulado Total</span>
-                <span>
-                  {(() => {
-                    const pct = contenedor.pctAcumulado ?? 0;
-                    const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                    return `${finalPct.toFixed(2)}%`;
-                  })()}
-                </span>
-              </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#ff9e00] rounded-full shadow-[0_0_10px_#ff9e00] transition-all duration-700"
-                  style={{
-                    width: `${Math.min(
-                      (() => {
-                        const pct = contenedor.pctAcumulado ?? 0;
-                        return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                      })(),
-                      100
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Operational Table Mochilas */}
-        <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] overflow-x-auto mb-8">
-          <div className="text-xs font-bold uppercase tracking-wider text-gray-200 mb-4">
-            Desglose Operativo por Módulo (Mochilas)
-          </div>
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-[#00f2fe]/10 text-[#00f2fe] border-b border-[#00f2fe]/20">
-                <th className="p-3 font-bold uppercase">Módulo</th>
-                <th className="p-3 font-bold uppercase text-center">Órdenes WIP</th>
-                <th className="p-3 font-bold uppercase text-center">Balance Pcs</th>
-                <th className="p-3 font-bold uppercase text-center">Captura</th>
-                <th className="p-3 font-bold uppercase text-center">Meta</th>
-                <th className="p-3 font-bold uppercase text-right">% Cumplimiento</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {mochilas.map((m, idx) => {
-                const pct = m.meta > 0 ? (m.captura / m.meta) * 100 : 0;
-                const colorClass =
-                  pct >= 100 ? 'text-[#39ff14]' : pct >= 50 ? 'text-[#ffe600]' : 'text-[#ff007f]';
-
-                return (
-                  <tr key={idx} className="hover:bg-white/5 transition-colors">
-                    <td className="p-3 font-bold text-white">{m.nombre}</td>
-                    <td className="p-3 text-center font-bold text-[#00f2fe]">{m.ordenes}</td>
-                    <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
-                    <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
-                    <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
-                    <td className={`p-3 text-right font-black ${colorClass}`}>
-                      {pct.toFixed(1)}%
-                    </td>
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-[#00f2fe]/10 text-[#00f2fe] border-b border-[#00f2fe]/20">
+                    <th className="p-3 font-bold uppercase">Módulo</th>
+                    <th className="p-3 font-bold uppercase text-center">Órdenes WIP</th>
+                    <th className="p-3 font-bold uppercase text-center">Balance Pcs</th>
+                    <th className="p-3 font-bold uppercase text-center">Captura</th>
+                    <th className="p-3 font-bold uppercase text-center">Meta</th>
+                    <th className="p-3 font-bold uppercase text-right">% Cumplimiento</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {mochilas.map((m, idx) => {
+                    const pct = m.meta > 0 ? (m.captura / m.meta) * 100 : 0;
+                    return (
+                      <tr key={idx} className="hover:bg-white/5 transition-colors">
+                        <td className="p-3 font-bold text-white">{m.nombre}</td>
+                        <td className="p-3 text-center font-bold text-[#00f2fe]">{m.ordenes}</td>
+                        <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
+                        <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
+                        <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
+                        <td className={`p-3 text-right font-black ${pct >= 100 ? 'text-[#39ff14]' : pct >= 50 ? 'text-[#ffe600]' : 'text-[#ff007f]'}`}>
+                          {pct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
 
-      {/* 2. PROGRAMA APPAREL */}
-      <div>
-        <div className="flex items-center gap-2 text-sm md:text-base font-extrabold uppercase tracking-wider text-[#ff007f] pb-2 border-b-2 border-[#ff007f]/30 mb-4">
-          <span>👕 PROGRAMA APPAREL (FULL DYE & UNIFORMS)</span>
-        </div>
+        {/* SLIDE 3: APPAREL KPIs & CHART */}
+        {(!isPresentationMode || currentSlide === 2) && (
+          <motion.div
+            key="slide-2"
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -15 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <div>
+              <div className="flex items-center justify-between text-sm font-extrabold uppercase text-[#ff007f] pb-2 border-b-2 border-[#ff007f]/30 mb-4">
+                <span>👕 PROGRAMA APPAREL (KPIs & REGISTRO DE PRODUCCIÓN)</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <MetricCard title="Órdenes Abiertas" value={kpiApparel.ordenes} subtitle="Módulos Apparel" colorHex="#00f2fe" icon={Package} delayIndex={0} />
+                <MetricCard title="Balance Piezas (Pcs)" value={kpiApparel.balance.toLocaleString()} subtitle="Piezas Pendientes" colorHex="#ff007f" icon={Layers} delayIndex={1} />
+                <MetricCard title="Piezas Capturadas" value={kpiApparel.captura.toLocaleString()} subtitle="Turno Actual" colorHex="#39ff14" icon={CheckCircle2} delayIndex={2} />
+                <MetricCard title="Meta Global" value={kpiApparel.meta.toLocaleString()} subtitle="Objetivo Diario" colorHex="#ffe600" icon={Target} delayIndex={3} />
+              </div>
 
-        {/* Apparel KPI Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <MetricCard
-            title="Órdenes Abiertas"
-            value={kpiApparel.ordenes}
-            subtitle="Total Módulos Apparel"
-            colorHex="#00f2fe"
-            icon={Package}
-            delayIndex={0}
-          />
-          <MetricCard
-            title="Balance Piezas (Pcs)"
-            value={kpiApparel.balance.toLocaleString()}
-            subtitle="Piezas Pendientes en Flujo"
-            colorHex="#ff007f"
-            icon={Layers}
-            delayIndex={1}
-          />
-          <MetricCard
-            title="Piezas Capturadas"
-            value={kpiApparel.captura.toLocaleString()}
-            subtitle="Registradas en Turno Actual"
-            colorHex="#39ff14"
-            icon={CheckCircle2}
-            delayIndex={2}
-          />
-          <MetricCard
-            title="Meta Global"
-            value={kpiApparel.meta.toLocaleString()}
-            subtitle="Objetivo Apparel Diario"
-            colorHex="#ffe600"
-            icon={Target}
-            delayIndex={3}
-          />
-        </div>
+              <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 h-[380px] flex flex-col shadow-lg">
+                <span className="text-xs font-bold uppercase text-gray-200 mb-3">Registro de Producción vs Meta (Apparel)</span>
+                <div className="relative flex-1 w-full min-h-0"><canvas ref={chartApparelBarsRef}></canvas></div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
-        {/* Apparel Bar Chart */}
-        <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] h-[380px] flex flex-col mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-200">
-              Registro de Producción vs Meta (Apparel)
-            </span>
-            <span className="text-[11px] font-bold text-[#ff007f]">Captura vs Objetivo</span>
-          </div>
-          <div className="relative flex-1 w-full min-h-0">
-            <canvas ref={chartApparelBarsRef}></canvas>
-          </div>
-        </div>
-
-        {/* Operational Table Apparel */}
-        <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] overflow-x-auto">
-          <div className="text-xs font-bold uppercase tracking-wider text-gray-200 mb-4">
-            Desglose Operativo por Módulo (Apparel)
-          </div>
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-[#ff007f]/10 text-[#ff007f] border-b border-[#ff007f]/20">
-                <th className="p-3 font-bold uppercase">Módulo</th>
-                <th className="p-3 font-bold uppercase text-center">Órdenes WIP</th>
-                <th className="p-3 font-bold uppercase text-center">Balance Pcs</th>
-                <th className="p-3 font-bold uppercase text-center">Captura</th>
-                <th className="p-3 font-bold uppercase text-center">Meta</th>
-                <th className="p-3 font-bold uppercase text-center">Reportado</th>
-                <th className="p-3 font-bold uppercase text-right">% Cumplimiento</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {apparel.map((m, idx) => {
-                const pct = m.meta > 0 ? (m.captura / m.meta) * 100 : 0;
-                const colorClass =
-                  pct >= 100 ? 'text-[#39ff14]' : pct >= 50 ? 'text-[#ffe600]' : 'text-[#ff007f]';
-
-                return (
-                  <tr key={idx} className="hover:bg-white/5 transition-colors">
-                    <td className="p-3 font-bold text-white">{m.nombre}</td>
-                    <td className="p-3 text-center font-bold text-[#00f2fe]">{m.ordenes}</td>
-                    <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
-                    <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
-                    <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
-                    <td className="p-3 text-center text-gray-300">{(m.reportado || 0).toLocaleString()}</td>
-                    <td className={`p-3 text-right font-black ${colorClass}`}>
-                      {pct.toFixed(1)}%
-                    </td>
+        {/* SLIDE 4: DESGLOSE OPERATIVO APPAREL */}
+        {(!isPresentationMode || currentSlide === 3) && (
+          <motion.div
+            key="slide-3"
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -15 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 overflow-x-auto shadow-lg">
+              <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-3">
+                <span className="text-sm font-extrabold uppercase text-[#ff007f] tracking-wider">
+                  📋 DESGLOSE OPERATIVO COMPLETO POR MÓDULO (PROGRAMA APPAREL)
+                </span>
+                {isPresentationMode && <span className="text-xs font-bold text-gray-400">PANTALLA 4 DE {totalSlides}</span>}
+              </div>
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-[#ff007f]/10 text-[#ff007f] border-b border-[#ff007f]/20">
+                    <th className="p-3 font-bold uppercase">Módulo</th>
+                    <th className="p-3 font-bold uppercase text-center">Órdenes WIP</th>
+                    <th className="p-3 font-bold uppercase text-center">Balance Pcs</th>
+                    <th className="p-3 font-bold uppercase text-center">Captura</th>
+                    <th className="p-3 font-bold uppercase text-center">Meta</th>
+                    <th className="p-3 font-bold uppercase text-center">Reportado</th>
+                    <th className="p-3 font-bold uppercase text-right">% Cumplimiento</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {apparel.map((m, idx) => {
+                    const pct = m.meta > 0 ? (m.captura / m.meta) * 100 : 0;
+                    return (
+                      <tr key={idx} className="hover:bg-white/5 transition-colors">
+                        <td className="p-3 font-bold text-white">{m.nombre}</td>
+                        <td className="p-3 text-center font-bold text-[#00f2fe]">{m.ordenes}</td>
+                        <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
+                        <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
+                        <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
+                        <td className="p-3 text-center text-gray-300">{(m.reportado || 0).toLocaleString()}</td>
+                        <td className={`p-3 text-right font-black ${pct >= 100 ? 'text-[#39ff14]' : pct >= 50 ? 'text-[#ffe600]' : 'text-[#ff007f]'}`}>
+                          {pct.toFixed(1)}%
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
