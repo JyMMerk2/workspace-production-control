@@ -458,21 +458,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            <div>
-              <div className="flex justify-between text-xs font-bold mb-1.5 text-[#ff9e00]">
-                <span>Porcentaje Acumulado Total</span>
-                <span>{contenedor.pctAcumulado.toFixed(2)}%</span>
-              </div>
-              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#ff9e00] rounded-full shadow-[0_0_10px_#ff9e00] transition-all duration-700"
-                  style={{ width: `${Math.min(contenedor.pctAcumulado, 100)}%` }}
-                ></div>
-              </div>
+<div>
+            <div className="flex justify-between text-xs font-bold mb-1.5 text-[#ff9e00]">
+              <span>Porcentaje Acumulado Total</span>
+              <span>
+                {(() => {
+                  const pct = contenedor.pctAcumulado ?? 0;
+                  const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                  return `${finalPct.toFixed(2)}%`;
+                })()}
+              </span>
+            </div>
+            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#ff9e00] rounded-full shadow-[0_0_10px_#ff9e00] transition-all duration-700"
+                style={{
+                  width: `${Math.min(
+                    (() => {
+                      const pct = contenedor.pctAcumulado ?? 0;
+                      return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                    })(),
+                    100
+                  )}%`,
+                }}
+              />
             </div>
           </div>
-        </div>
-
         {/* Operational Table Mochilas */}
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] overflow-x-auto mb-8">
           <div className="text-xs font-bold uppercase tracking-wider text-gray-200 mb-4">
