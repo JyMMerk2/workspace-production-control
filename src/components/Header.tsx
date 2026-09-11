@@ -128,17 +128,20 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* 2. Porcentaje Acumulado Total del Contenedor */}
+{/* 2. Porcentaje Acumulado Total del Contenedor */}
         <div className="hidden md:flex items-center gap-2 border-r border-white/10 pr-3">
           <div className="space-y-0.5">
             <div className="flex justify-between items-center text-[9px] font-bold gap-2">
               <span className="text-amber-400 uppercase tracking-wide">Acumulado Contenedor</span>
-              <span className="text-amber-400 font-black">{pct}%</span>
+              {/* Muestra la cifra real completa (ej. 107.46%) */}
+              <span className="text-amber-400 font-black">
+                {typeof pct === 'number' ? (pct > 1 ? pct.toFixed(2) : (pct * 100).toFixed(2)) : pct}%
+              </span>
             </div>
             <div className="w-20 bg-[#12161f] h-1.5 rounded-full overflow-hidden border border-amber-500/30">
               <div 
                 className="bg-amber-500 h-full rounded-full transition-all duration-500" 
-                style={{ width: `${Math.min(pct, 100)}%` }} 
+                style={{ width: `${Math.min(typeof pct === 'number' ? (pct <= 1 ? pct * 100 : pct) : 0, 100)}%` }} 
               />
             </div>
           </div>
