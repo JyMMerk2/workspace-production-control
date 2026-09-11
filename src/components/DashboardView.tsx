@@ -152,6 +152,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   useEffect(() => {
+    // 1. Doughnut Chart: Mochilas
     if (chartDoughnutRef.current && data.mochilas.length > 0) {
       if (doughnutInstance.current) {
         doughnutInstance.current.destroy();
@@ -187,25 +188,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
+    // 2. Bar Chart: Mochilas (Ordenado de mayor a menor % cumplimiento)
     if (chartBarsRef.current && data.mochilas.length > 0) {
       if (barsInstance.current) {
         barsInstance.current.destroy();
       }
 
+      // ORDENAMIENTO AUTOMÁTICO DINÁMICO POR % CUMPLIMIENTO (CAPTURA / META)
+      const sortedMochilas = [...data.mochilas].sort((a, b) => {
+        const pctA = a.meta > 0 ? a.captura / a.meta : 0;
+        const pctB = b.meta > 0 ? b.captura / b.meta : 0;
+        return pctB - pctA;
+      });
+
       barsInstance.current = new Chart(chartBarsRef.current, {
         type: 'bar',
         data: {
-          labels: data.mochilas.map((m) => m.nombre.split(' ')[0]),
+          labels: sortedMochilas.map((m) => m.nombre.split(' ')[0]),
           datasets: [
             {
               label: 'Captura Pcs',
-              data: data.mochilas.map((m) => m.captura),
+              data: sortedMochilas.map((m) => m.captura),
               backgroundColor: '#39ff14',
               borderRadius: 4,
             },
             {
               label: 'Meta Pcs',
-              data: data.mochilas.map((m) => m.meta),
+              data: sortedMochilas.map((m) => m.meta),
               backgroundColor: 'rgba(255, 255, 255, 0.1)',
               borderColor: 'rgba(255, 255, 255, 0.3)',
               borderWidth: 1,
@@ -236,25 +245,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
+    // 3. Bar Chart: Apparel (Ordenado de mayor a menor % cumplimiento)
     if (chartApparelBarsRef.current && data.apparel.length > 0) {
       if (apparelBarsInstance.current) {
         apparelBarsInstance.current.destroy();
       }
 
+      // ORDENAMIENTO AUTOMÁTICO DINÁMICO POR % CUMPLIMIENTO (CAPTURA / META)
+      const sortedApparel = [...data.apparel].sort((a, b) => {
+        const pctA = a.meta > 0 ? a.captura / a.meta : 0;
+        const pctB = b.meta > 0 ? b.captura / b.meta : 0;
+        return pctB - pctA;
+      });
+
       apparelBarsInstance.current = new Chart(chartApparelBarsRef.current, {
         type: 'bar',
         data: {
-          labels: data.apparel.map((m) => m.nombre.split(' (')[0]),
+          labels: sortedApparel.map((m) => m.nombre.split(' (')[0]),
           datasets: [
             {
               label: 'Captura Pcs',
-              data: data.apparel.map((m) => m.captura),
+              data: sortedApparel.map((m) => m.captura),
               backgroundColor: '#ff007f',
               borderRadius: 4,
             },
             {
               label: 'Meta Pcs',
-              data: data.apparel.map((m) => m.meta),
+              data: sortedApparel.map((m) => m.meta),
               backgroundColor: 'rgba(0, 242, 254, 0.15)',
               borderColor: '#00f2fe',
               borderWidth: 1,
