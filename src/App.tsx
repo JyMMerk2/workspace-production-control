@@ -189,12 +189,17 @@ export default function App() {
     ? parseInt(matchResta[1], 10) 
     : (totalOrdenesDia - capturadoOrdenesDia);
 
-  // Porcentaje del contenedor (71.60%)
-  const pctContenedor = 
+// Porcentaje del contenedor (Garantizar lectura completa incluso si supera 100%)
+  const rawPct = 
     dashboardData?.contenedor?.pctAcumulado ?? 
     dashboardData?.contenedorPctAcumulado ?? 
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
-    71.60;
+    0;
+
+  // Si Google Sheets devuelve 1.0746 (porcentaje en decimales <= 2.0 pero con decimales ricos), convertimos a escala 100
+  const pctContenedor = (typeof rawPct === 'number' && rawPct > 0 && rawPct <= 2.5) 
+    ? Number((rawPct * 100).toFixed(2)) 
+    : Number(rawPct);
 
   // Mochilas (44) y Apparel (27)
   const ordenesMochilas = 
