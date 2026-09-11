@@ -63,7 +63,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
         e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.35)';
       }}
     >
-      {/* Top Neon Accent Strip with dynamic hover intensity */}
+      {/* Top Neon Accent Strip */}
       <div
         className="absolute top-0 left-0 w-full h-[3px] transition-all duration-300 group-hover:h-[4px]"
         style={{
@@ -72,13 +72,13 @@ const MetricCard: React.FC<MetricCardProps> = ({
         }}
       />
 
-      {/* Radial Neon Backlight on top-right */}
+      {/* Radial Neon Backlight */}
       <div
         className="absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-15 group-hover:opacity-35 transition-opacity duration-300 pointer-events-none"
         style={{ backgroundColor: colorHex }}
       />
 
-      {/* Header with Title and Neon Icon Badge */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#8f9ba8] group-hover:text-gray-200 transition-colors">
           {title}
@@ -98,7 +98,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
         </motion.div>
       </div>
 
-      {/* Big Value Number */}
+      {/* Value */}
       <div
         className="text-3xl lg:text-4xl font-black my-1.5 tracking-tight transition-transform duration-300 group-hover:scale-[1.02] origin-left"
         style={{
@@ -109,7 +109,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
         {value}
       </div>
 
-      {/* Footer Subtitle */}
+      {/* Subtitle */}
       <div className="flex items-center justify-between text-xs text-[#5f6e7d] group-hover:text-gray-300 transition-colors mt-2">
         <span>{subtitle}</span>
         <span
@@ -146,7 +146,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const apparelBarsInstance = useRef<Chart | null>(null);
 
   useEffect(() => {
-    // 1. Doughnut Chart: Mochilas module distribution
+    // 1. Doughnut Chart: Mochilas
     if (chartDoughnutRef.current && data.mochilas.length > 0) {
       if (doughnutInstance.current) {
         doughnutInstance.current.destroy();
@@ -432,58 +432,92 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="space-y-4">
+            {/* Porcentaje Contenedor (Shipping Etiquetado) */}
             <div>
               <div className="flex justify-between text-xs font-bold mb-1.5 text-[#00f2fe]">
                 <span>Porcentaje Contenedor (Shipping Etiquetado)</span>
-                <span>{contenedor.pctShipping.toFixed(2)}%</span>
+                <span>
+                  {(() => {
+                    const pct = contenedor.pctShipping ?? 0;
+                    const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                    return `${finalPct.toFixed(2)}%`;
+                  })()}
+                </span>
               </div>
               <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[#00f2fe] rounded-full shadow-[0_0_10px_#00f2fe] transition-all duration-700"
-                  style={{ width: `${Math.min(contenedor.pctShipping, 100)}%` }}
-                ></div>
+                  style={{
+                    width: `${Math.min(
+                      (() => {
+                        const pct = contenedor.pctShipping ?? 0;
+                        return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                      })(),
+                      100
+                    )}%`,
+                  }}
+                />
               </div>
             </div>
 
+            {/* Porcentaje en curso */}
             <div>
               <div className="flex justify-between text-xs font-bold mb-1.5 text-[#00f2fe]">
                 <span>Porcentaje en curso: Contenedor JBHU</span>
-                <span>{contenedor.pctEnCurso.toFixed(2)}%</span>
+                <span>
+                  {(() => {
+                    const pct = contenedor.pctEnCurso ?? 0;
+                    const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                    return `${finalPct.toFixed(2)}%`;
+                  })()}
+                </span>
               </div>
               <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[#00f2fe] rounded-full shadow-[0_0_10px_#00f2fe] transition-all duration-700"
-                  style={{ width: `${Math.min(contenedor.pctEnCurso, 100)}%` }}
-                ></div>
+                  style={{
+                    width: `${Math.min(
+                      (() => {
+                        const pct = contenedor.pctEnCurso ?? 0;
+                        return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                      })(),
+                      100
+                    )}%`,
+                  }}
+                />
               </div>
             </div>
 
-<div>
-            <div className="flex justify-between text-xs font-bold mb-1.5 text-[#ff9e00]">
-              <span>Porcentaje Acumulado Total</span>
-              <span>
-                {(() => {
-                  const pct = contenedor.pctAcumulado ?? 0;
-                  const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                  return `${finalPct.toFixed(2)}%`;
-                })()}
-              </span>
-            </div>
-            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#ff9e00] rounded-full shadow-[0_0_10px_#ff9e00] transition-all duration-700"
-                style={{
-                  width: `${Math.min(
-                    (() => {
-                      const pct = contenedor.pctAcumulado ?? 0;
-                      return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
-                    })(),
-                    100
-                  )}%`,
-                }}
-              />
+            {/* Porcentaje Acumulado Total */}
+            <div>
+              <div className="flex justify-between text-xs font-bold mb-1.5 text-[#ff9e00]">
+                <span>Porcentaje Acumulado Total</span>
+                <span>
+                  {(() => {
+                    const pct = contenedor.pctAcumulado ?? 0;
+                    const finalPct = typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                    return `${finalPct.toFixed(2)}%`;
+                  })()}
+                </span>
+              </div>
+              <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#ff9e00] rounded-full shadow-[0_0_10px_#ff9e00] transition-all duration-700"
+                  style={{
+                    width: `${Math.min(
+                      (() => {
+                        const pct = contenedor.pctAcumulado ?? 0;
+                        return typeof pct === 'number' ? (pct <= 5 ? pct * 100 : pct) : 0;
+                      })(),
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
           </div>
+        </div>
+
         {/* Operational Table Mochilas */}
         <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 shadow-[0_8px_25px_rgba(0,0,0,0.3)] overflow-x-auto mb-8">
           <div className="text-xs font-bold uppercase tracking-wider text-gray-200 mb-4">
