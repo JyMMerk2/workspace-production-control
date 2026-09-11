@@ -188,13 +188,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
-    // 2. Bar Chart: Mochilas (Ordenado de mayor a menor % cumplimiento)
+    // 2. Bar Chart: Mochilas (Ordenado de mayor a menor % cumplimiento con nombres completos)
     if (chartBarsRef.current && data.mochilas.length > 0) {
       if (barsInstance.current) {
         barsInstance.current.destroy();
       }
 
-      // ORDENAMIENTO AUTOMÁTICO DINÁMICO POR % CUMPLIMIENTO (CAPTURA / META)
+      // Ordenamiento dinámico por % cumplimiento
       const sortedMochilas = [...data.mochilas].sort((a, b) => {
         const pctA = a.meta > 0 ? a.captura / a.meta : 0;
         const pctB = b.meta > 0 ? b.captura / b.meta : 0;
@@ -204,7 +204,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       barsInstance.current = new Chart(chartBarsRef.current, {
         type: 'bar',
         data: {
-          labels: sortedMochilas.map((m) => m.nombre.split(' ')[0]),
+          // Conserva los nombres completos reales ("SPUT 1", "SPUT 2", "BIG BAG UTILITY 1", etc.)
+          labels: sortedMochilas.map((m) => m.nombre),
           datasets: [
             {
               label: 'Captura Pcs',
@@ -227,7 +228,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           maintainAspectRatio: false,
           scales: {
             x: {
-              ticks: { color: '#8f9ba8', font: { size: 9 } },
+              ticks: { 
+                color: '#8f9ba8', 
+                font: { size: 8, weight: 'bold' },
+                maxRotation: 0,
+                minRotation: 0,
+                autoSkip: false
+              },
               grid: { display: false },
             },
             y: {
@@ -245,13 +252,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
-    // 3. Bar Chart: Apparel (Ordenado de mayor a menor % cumplimiento)
+    // 3. Bar Chart: Apparel (Ordenado de mayor a menor % cumplimiento con nombres completos)
     if (chartApparelBarsRef.current && data.apparel.length > 0) {
       if (apparelBarsInstance.current) {
         apparelBarsInstance.current.destroy();
       }
 
-      // ORDENAMIENTO AUTOMÁTICO DINÁMICO POR % CUMPLIMIENTO (CAPTURA / META)
       const sortedApparel = [...data.apparel].sort((a, b) => {
         const pctA = a.meta > 0 ? a.captura / a.meta : 0;
         const pctB = b.meta > 0 ? b.captura / b.meta : 0;
@@ -284,7 +290,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           maintainAspectRatio: false,
           scales: {
             x: {
-              ticks: { color: '#8f9ba8', font: { size: 9 } },
+              ticks: { 
+                color: '#8f9ba8', 
+                font: { size: 8, weight: 'bold' },
+                maxRotation: 0,
+                minRotation: 0,
+                autoSkip: false
+              },
               grid: { display: false },
             },
             y: {
