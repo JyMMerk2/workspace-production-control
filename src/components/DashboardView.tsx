@@ -105,10 +105,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   isRefreshing,
   onRefresh,
 }) => {
-  const [isPresentationMode, setIsPresentationMode] = useState(false);
-  const [rotationInterval, setRotationInterval] = useState(10);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPresentationMode, setIsPresentationMode] = useState<boolean>(false);
+  const [rotationInterval, setRotationInterval] = useState<number>(10);
+  const [currentSlide, setCurrentSlide] = useState<number>(0);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
 
   const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -129,7 +129,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }, rotationInterval * 1000);
     }
     return () => {
-      if (slideTimerRef.current) clearInterval(slideTimerRef.current);
+      if (slideTimerRef.current) {
+        clearInterval(slideTimerRef.current);
+      }
     };
   }, [isPresentationMode, isPaused, rotationInterval, totalSlides]);
 
@@ -151,7 +153,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   useEffect(() => {
     if (chartDoughnutRef.current && data.mochilas.length > 0) {
-      if (doughnutInstance.current) doughnutInstance.current.destroy();
+      if (doughnutInstance.current) {
+        doughnutInstance.current.destroy();
+      }
 
       doughnutInstance.current = new Chart(chartDoughnutRef.current, {
         type: 'doughnut',
@@ -172,7 +176,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           plugins: {
             legend: {
               position: 'bottom',
-              labels: { color: '#8f9ba8', font: { size: 10 }, boxWidth: 10 },
+              labels: {
+                color: '#8f9ba8',
+                font: { size: 10 },
+                boxWidth: 10,
+              },
             },
           },
         },
@@ -180,49 +188,99 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     if (chartBarsRef.current && data.mochilas.length > 0) {
-      if (barsInstance.current) barsInstance.current.destroy();
+      if (barsInstance.current) {
+        barsInstance.current.destroy();
+      }
 
       barsInstance.current = new Chart(chartBarsRef.current, {
         type: 'bar',
         data: {
           labels: data.mochilas.map((m) => m.nombre.split(' ')[0]),
           datasets: [
-            { label: 'Captura Pcs', data: data.mochilas.map((m) => m.captura), backgroundColor: '#39ff14', borderRadius: 4 },
-            { label: 'Meta Pcs', data: data.mochilas.map((m) => m.meta), backgroundColor: 'rgba(255, 255, 255, 0.1)', borderColor: 'rgba(255, 255, 255, 0.3)', borderWidth: 1, borderRadius: 4 },
+            {
+              label: 'Captura Pcs',
+              data: data.mochilas.map((m) => m.captura),
+              backgroundColor: '#39ff14',
+              borderRadius: 4,
+            },
+            {
+              label: 'Meta Pcs',
+              data: data.mochilas.map((m) => m.meta),
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderColor: 'rgba(255, 255, 255, 0.3)',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { ticks: { color: '#8f9ba8', font: { size: 9 } }, grid: { display: false } },
-            y: { ticks: { color: '#8f9ba8' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+            x: {
+              ticks: { color: '#8f9ba8', font: { size: 9 } },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: '#8f9ba8' },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            },
           },
-          plugins: { legend: { position: 'bottom', labels: { color: '#8f9ba8', boxWidth: 10 } } },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#8f9ba8', boxWidth: 10 },
+            },
+          },
         },
       });
     }
 
     if (chartApparelBarsRef.current && data.apparel.length > 0) {
-      if (apparelBarsInstance.current) apparelBarsInstance.current.destroy();
+      if (apparelBarsInstance.current) {
+        apparelBarsInstance.current.destroy();
+      }
 
       apparelBarsInstance.current = new Chart(chartApparelBarsRef.current, {
         type: 'bar',
         data: {
           labels: data.apparel.map((m) => m.nombre.split(' (')[0]),
           datasets: [
-            { label: 'Captura Pcs', data: data.apparel.map((m) => m.captura), backgroundColor: '#ff007f', borderRadius: 4 },
-            { label: 'Meta Pcs', data: data.apparel.map((m) => m.meta), backgroundColor: 'rgba(0, 242, 254, 0.15)', borderColor: '#00f2fe', borderWidth: 1, borderRadius: 4 },
+            {
+              label: 'Captura Pcs',
+              data: data.apparel.map((m) => m.captura),
+              backgroundColor: '#ff007f',
+              borderRadius: 4,
+            },
+            {
+              label: 'Meta Pcs',
+              data: data.apparel.map((m) => m.meta),
+              backgroundColor: 'rgba(0, 242, 254, 0.15)',
+              borderColor: '#00f2fe',
+              borderWidth: 1,
+              borderRadius: 4,
+            },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { ticks: { color: '#8f9ba8', font: { size: 9 } }, grid: { display: false } },
-            y: { ticks: { color: '#8f9ba8' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+            x: {
+              ticks: { color: '#8f9ba8', font: { size: 9 } },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: '#8f9ba8' },
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            },
           },
-          plugins: { legend: { position: 'bottom', labels: { color: '#8f9ba8', boxWidth: 10 } } },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#8f9ba8', boxWidth: 10 },
+            },
+          },
         },
       });
     }
@@ -340,23 +398,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <MetricCard title="Órdenes Abiertas" value={kpiMochilas.ordenes} subtitle="Módulos Mochilas" colorHex="#00f2fe" icon={Package} delayIndex={0} />
-                <MetricCard title="Balance Piezas (Pcs)" value={kpiMochilas.balance.toLocaleString()} subtitle="Piezas Pendientes" colorHex="#ff007f" icon={Layers} delayIndex={1} />
-                <MetricCard title="Piezas Capturadas" value={kpiMochilas.captura.toLocaleString()} subtitle="Turno Actual" colorHex="#39ff14" icon={CheckCircle2} delayIndex={2} />
-                <MetricCard title="Meta Global" value={kpiMochilas.meta.toLocaleString()} subtitle="Objetivo Diario" colorHex="#ffe600" icon={Target} delayIndex={3} />
+                <MetricCard
+                  title="Órdenes Abiertas"
+                  value={kpiMochilas.ordenes}
+                  subtitle="Módulos Mochilas"
+                  colorHex="#00f2fe"
+                  icon={Package}
+                  delayIndex={0}
+                />
+                <MetricCard
+                  title="Balance Piezas (Pcs)"
+                  value={kpiMochilas.balance.toLocaleString()}
+                  subtitle="Piezas Pendientes"
+                  colorHex="#ff007f"
+                  icon={Layers}
+                  delayIndex={1}
+                />
+                <MetricCard
+                  title="Piezas Capturadas"
+                  value={kpiMochilas.captura.toLocaleString()}
+                  subtitle="Turno Actual"
+                  colorHex="#39ff14"
+                  icon={CheckCircle2}
+                  delayIndex={2}
+                />
+                <MetricCard
+                  title="Meta Global"
+                  value={kpiMochilas.meta.toLocaleString()}
+                  subtitle="Objetivo Diario"
+                  colorHex="#ffe600"
+                  icon={Target}
+                  delayIndex={3}
+                />
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
                 <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 h-[320px] flex flex-col">
-                  <span className="text-xs font-bold uppercase text-gray-200 mb-2">Distribución de Órdenes Abiertas</span>
-                  <div className="relative flex-1 w-full min-h-0"><canvas ref={chartDoughnutRef}></canvas></div>
+                  <span className="text-xs font-bold uppercase text-gray-200 mb-2">
+                    Distribución de Órdenes Abiertas
+                  </span>
+                  <div className="relative flex-1 w-full min-h-0">
+                    <canvas ref={chartDoughnutRef}></canvas>
+                  </div>
                 </div>
+
                 <div className="bg-[#12161f] border border-white/10 rounded-xl p-4 h-[320px] flex flex-col">
-                  <span className="text-xs font-bold uppercase text-gray-200 mb-2">Desempeño Módulos vs Meta</span>
-                  <div className="relative flex-1 w-full min-h-0"><canvas ref={chartBarsRef}></canvas></div>
+                  <span className="text-xs font-bold uppercase text-gray-200 mb-2">
+                    Desempeño Módulos vs Meta
+                  </span>
+                  <div className="relative flex-1 w-full min-h-0">
+                    <canvas ref={chartBarsRef}></canvas>
+                  </div>
                 </div>
               </div>
 
+              {/* CONTENEDOR STATUS CON LAS 3 BARRAS COMPLETAS */}
               <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl p-4 shadow-[0_8px_25px_rgba(0,0,0,0.3)]">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-extrabold uppercase text-[#00f2fe] flex items-center gap-2">
@@ -367,23 +463,89 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {contenedor.textoOrdenes}
                   </span>
                 </div>
+
                 <div className="space-y-3">
+                  {/* 1. Porcentaje Contenedor (Shipping Etiquetado) */}
                   <div>
                     <div className="flex justify-between text-xs font-bold mb-1 text-[#00f2fe]">
                       <span>Porcentaje Contenedor (Shipping Etiquetado)</span>
-                      <span>{((contenedor.pctShipping <= 5 ? contenedor.pctShipping * 100 : contenedor.pctShipping) || 0).toFixed(2)}%</span>
+                      <span>
+                        {(
+                          (contenedor.pctShipping <= 5
+                            ? contenedor.pctShipping * 100
+                            : contenedor.pctShipping) || 0
+                        ).toFixed(2)}
+                        %
+                      </span>
                     </div>
                     <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#00f2fe]" style={{ width: `${Math.min(contenedor.pctShipping <= 5 ? contenedor.pctShipping * 100 : contenedor.pctShipping, 100)}%` }} />
+                      <div
+                        className="h-full bg-[#00f2fe]"
+                        style={{
+                          width: `${Math.min(
+                            contenedor.pctShipping <= 5
+                              ? contenedor.pctShipping * 100
+                              : contenedor.pctShipping,
+                            100
+                          )}%`,
+                        }}
+                      />
                     </div>
                   </div>
+
+                  {/* 2. Porcentaje en curso: Contenedor JBHU */}
+                  <div>
+                    <div className="flex justify-between text-xs font-bold mb-1 text-[#00f2fe]">
+                      <span>Porcentaje en curso: Contenedor JBHU</span>
+                      <span>
+                        {(
+                          (contenedor.pctEnCurso <= 5
+                            ? contenedor.pctEnCurso * 100
+                            : contenedor.pctEnCurso) || 0
+                        ).toFixed(2)}
+                        %
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#00f2fe]"
+                        style={{
+                          width: `${Math.min(
+                            contenedor.pctEnCurso <= 5
+                              ? contenedor.pctEnCurso * 100
+                              : contenedor.pctEnCurso,
+                            100
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3. Porcentaje Acumulado Total */}
                   <div>
                     <div className="flex justify-between text-xs font-bold mb-1 text-[#ff9e00]">
                       <span>Porcentaje Acumulado Total</span>
-                      <span>{((contenedor.pctAcumulado <= 5 ? contenedor.pctAcumulado * 100 : contenedor.pctAcumulado) || 0).toFixed(2)}%</span>
+                      <span>
+                        {(
+                          (contenedor.pctAcumulado <= 5
+                            ? contenedor.pctAcumulado * 100
+                            : contenedor.pctAcumulado) || 0
+                        ).toFixed(2)}
+                        %
+                      </span>
                     </div>
                     <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#ff9e00]" style={{ width: `${Math.min(contenedor.pctAcumulado <= 5 ? contenedor.pctAcumulado * 100 : contenedor.pctAcumulado, 100)}%` }} />
+                      <div
+                        className="h-full bg-[#ff9e00]"
+                        style={{
+                          width: `${Math.min(
+                            contenedor.pctAcumulado <= 5
+                              ? contenedor.pctAcumulado * 100
+                              : contenedor.pctAcumulado,
+                            100
+                          )}%`,
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -407,7 +569,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span className="text-sm font-extrabold uppercase text-[#00f2fe] tracking-wider">
                   📋 DESGLOSE OPERATIVO COMPLETO POR MÓDULO (PROGRAMA MOCHILAS)
                 </span>
-                {isPresentationMode && <span className="text-xs font-bold text-gray-400">PANTALLA 2 DE {totalSlides}</span>}
+                {isPresentationMode && (
+                  <span className="text-xs font-bold text-gray-400">
+                    PANTALLA 2 DE {totalSlides}
+                  </span>
+                )}
               </div>
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -430,7 +596,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
                         <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
                         <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
-                        <td className={`p-3 text-right font-black ${pct >= 100 ? 'text-[#39ff14]' : pct >= 50 ? 'text-[#ffe600]' : 'text-[#ff007f]'}`}>
+                        <td
+                          className={`p-3 text-right font-black ${
+                            pct >= 100
+                              ? 'text-[#39ff14]'
+                              : pct >= 50
+                              ? 'text-[#ffe600]'
+                              : 'text-[#ff007f]'
+                          }`}
+                        >
                           {pct.toFixed(1)}%
                         </td>
                       </tr>
@@ -457,15 +631,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span>👕 PROGRAMA APPAREL (KPIs & REGISTRO DE PRODUCCIÓN)</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <MetricCard title="Órdenes Abiertas" value={kpiApparel.ordenes} subtitle="Módulos Apparel" colorHex="#00f2fe" icon={Package} delayIndex={0} />
-                <MetricCard title="Balance Piezas (Pcs)" value={kpiApparel.balance.toLocaleString()} subtitle="Piezas Pendientes" colorHex="#ff007f" icon={Layers} delayIndex={1} />
-                <MetricCard title="Piezas Capturadas" value={kpiApparel.captura.toLocaleString()} subtitle="Turno Actual" colorHex="#39ff14" icon={CheckCircle2} delayIndex={2} />
-                <MetricCard title="Meta Global" value={kpiApparel.meta.toLocaleString()} subtitle="Objetivo Diario" colorHex="#ffe600" icon={Target} delayIndex={3} />
+                <MetricCard
+                  title="Órdenes Abiertas"
+                  value={kpiApparel.ordenes}
+                  subtitle="Módulos Apparel"
+                  colorHex="#00f2fe"
+                  icon={Package}
+                  delayIndex={0}
+                />
+                <MetricCard
+                  title="Balance Piezas (Pcs)"
+                  value={kpiApparel.balance.toLocaleString()}
+                  subtitle="Piezas Pendientes"
+                  colorHex="#ff007f"
+                  icon={Layers}
+                  delayIndex={1}
+                />
+                <MetricCard
+                  title="Piezas Capturadas"
+                  value={kpiApparel.captura.toLocaleString()}
+                  subtitle="Turno Actual"
+                  colorHex="#39ff14"
+                  icon={CheckCircle2}
+                  delayIndex={2}
+                />
+                <MetricCard
+                  title="Meta Global"
+                  value={kpiApparel.meta.toLocaleString()}
+                  subtitle="Objetivo Diario"
+                  colorHex="#ffe600"
+                  icon={Target}
+                  delayIndex={3}
+                />
               </div>
 
               <div className="bg-[#12161f] border border-white/10 rounded-xl p-5 h-[380px] flex flex-col shadow-lg">
-                <span className="text-xs font-bold uppercase text-gray-200 mb-3">Registro de Producción vs Meta (Apparel)</span>
-                <div className="relative flex-1 w-full min-h-0"><canvas ref={chartApparelBarsRef}></canvas></div>
+                <span className="text-xs font-bold uppercase text-gray-200 mb-3">
+                  Registro de Producción vs Meta (Apparel)
+                </span>
+                <div className="relative flex-1 w-full min-h-0">
+                  <canvas ref={chartApparelBarsRef}></canvas>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -486,7 +692,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span className="text-sm font-extrabold uppercase text-[#ff007f] tracking-wider">
                   📋 DESGLOSE OPERATIVO COMPLETO POR MÓDULO (PROGRAMA APPAREL)
                 </span>
-                {isPresentationMode && <span className="text-xs font-bold text-gray-400">PANTALLA 4 DE {totalSlides}</span>}
+                {isPresentationMode && (
+                  <span className="text-xs font-bold text-gray-400">
+                    PANTALLA 4 DE {totalSlides}
+                  </span>
+                )}
               </div>
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -511,7 +721,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
                         <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
                         <td className="p-3 text-center text-gray-300">{(m.reportado || 0).toLocaleString()}</td>
-                        <td className={`p-3 text-right font-black ${pct >= 100 ? 'text-[#39ff14]' : pct >= 50 ? 'text-[#ffe600]' : 'text-[#ff007f]'}`}>
+                        <td
+                          className={`p-3 text-right font-black ${
+                            pct >= 100
+                              ? 'text-[#39ff14]'
+                              : pct >= 50
+                              ? 'text-[#ffe600]'
+                              : 'text-[#ff007f]'
+                          }`}
+                        >
                           {pct.toFixed(1)}%
                         </td>
                       </tr>
