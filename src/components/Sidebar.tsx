@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
+import { supabase } from '../data/supabaseClient';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -82,6 +83,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       const config = SHEETS_CONFIG[groupId];
       const defaultGid = config ? config.defaultGid : undefined;
       onSelectTab(defaultTab, defaultGid, defaultTitle);
+    }
+  };
+
+  // Manejador seguro para cerrar sesión en Supabase y limpiar datos de almacenamiento
+  const handleLogoutAsync = async () => {
+    try {
+      if (supabase && supabase.auth) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.warn("Error al cerrar sesión en Supabase:", err);
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+      onLogout();
+      window.location.reload();
     }
   };
 
@@ -427,9 +444,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span>⚙️ CONFIGURACIÓN</span>
         </button>
 
-        {/* Cerrar Sesión */}
+        {/* Cerrar Sesión con borrado completo */}
         <button
-          onClick={onLogout}
+          onClick={handleLogoutAsync}
           className="flex items-center gap-3 px-4 py-3 text-xs font-bold uppercase tracking-wider text-left text-[#ff007f] hover:bg-[#ff007f]/10 transition-all border-l-4 border-transparent hover:border-[#ff007f] cursor-pointer"
         >
           <LogOut className="w-3.5 h-3.5" />
