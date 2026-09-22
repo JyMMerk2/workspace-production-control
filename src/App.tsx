@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { TabType, DashboardData } from './types';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -16,18 +17,24 @@ import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
 import { INITIAL_FALLBACK_DASHBOARD, fetchLiveDashboardData } from './data/dashboardService';
 
+const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 export default function App() {
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(() => {
-    return sessionStorage.getItem('authenticated_user') || null;
+    return sessionStorage.getItem('authenticated_user') || localStorage.getItem('authenticated_user') || null;
   });
 
   const [userEmail, setUserEmail] = useState<string | null>(() => {
-    return sessionStorage.getItem('authenticated_email') || null;
+    return sessionStorage.getItem('authenticated_email') || localStorage.getItem('authenticated_email') || null;
   });
 
   const [userPicture, setUserPicture] = useState<string | null>(() => {
-    return sessionStorage.getItem('authenticated_picture') || null;
+    return sessionStorage.getItem('authenticated_picture') || localStorage.getItem('authenticated_picture') || null;
   });
+
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard-live');
   const [activeSubTabGid, setActiveSubTabGid] = useState<string | undefined>(undefined);
@@ -63,6 +70,80 @@ export default function App() {
   const toggleTheme = () => {
     setDarkMode(prevMode => !prevMode);
   };
+
+  // VERIFICACIÓN INICIAL Y TIEMPO REAL DE SUPABASE AUTH (GOOGLE OAUTH)
+  useEffect(() => {
+    let isMounted = true;
+
+    const initializeAuth = async () => {
+      try {
+        // 1. Revisar si hay una sesión activa de Supabase (ej. regreso de Google OAuth)
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user && isMounted) {
+          const email = session.user.email || '';
+          const rawName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0];
+          const name = rawName.toUpperCase();
+          const picture = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '';
+
+          sessionStorage.setItem('authenticated_user', name);
+          sessionStorage.setItem('authenticated_email', email);
+          sessionStorage.setItem('authenticated_picture', picture);
+          localStorage.setItem('authenticated_user', name);
+
+          setAuthenticatedUser(name);
+          setUserEmail(email);
+          setUserPicture(picture);
+          setIsAuthChecking(false);
+          return;
+        }
+
+        // 2. Si ya existía un usuario autenticado en storage local
+        const localUser = sessionStorage.getItem('authenticated_user') || localStorage.getItem('authenticated_user');
+        if (localUser && isMounted) {
+          setAuthenticatedUser(localUser);
+        }
+      } catch (err) {
+        console.error('Error al verificar sesión de autenticación:', err);
+      } finally {
+        if (isMounted) setIsAuthChecking(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Escuchar cambios de autenticación (Login / Logout en tiempo real)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+        const email = session.user.email || '';
+        const rawName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0];
+        const name = rawName.toUpperCase();
+        const picture = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '';
+
+        sessionStorage.setItem('authenticated_user', name);
+        sessionStorage.setItem('authenticated_email', email);
+        sessionStorage.setItem('authenticated_picture', picture);
+        localStorage.setItem('authenticated_user', name);
+
+        setAuthenticatedUser(name);
+        setUserEmail(email);
+        setUserPicture(picture);
+        setIsAuthChecking(false);
+      } else if (event === 'SIGNED_OUT') {
+        setAuthenticatedUser(null);
+        setUserEmail(null);
+        setUserPicture(null);
+        setIsAuthChecking(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const [dashboardData, setDashboardData] = useState<DashboardData>(() => {
     const cached = localStorage.getItem('boombah_dashboard_cached_data');
@@ -143,8 +224,15 @@ export default function App() {
 
   const handleLoginSuccess = (username: string, email?: string, picture?: string) => {
     sessionStorage.setItem('authenticated_user', username);
-    if (email) sessionStorage.setItem('authenticated_email', email);
-    if (picture) sessionStorage.setItem('authenticated_picture', picture);
+    localStorage.setItem('authenticated_user', username);
+    if (email) {
+      sessionStorage.setItem('authenticated_email', email);
+      localStorage.setItem('authenticated_email', email);
+    }
+    if (picture) {
+      sessionStorage.setItem('authenticated_picture', picture);
+      localStorage.setItem('authenticated_picture', picture);
+    }
 
     setAuthenticatedUser(username);
     if (email) setUserEmail(email);
@@ -153,15 +241,43 @@ export default function App() {
     refreshDashboard();
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    setIsAuthChecking(true);
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Cierre de sesión de Supabase completado o no requerido:', e);
+    }
+
     sessionStorage.removeItem('authenticated_user');
     sessionStorage.removeItem('authenticated_email');
     sessionStorage.removeItem('authenticated_picture');
+    localStorage.removeItem('authenticated_user');
+    localStorage.removeItem('authenticated_email');
+    localStorage.removeItem('authenticated_picture');
 
-    setAuthenticatedUser(null);
-    setUserEmail(null);
-    setUserPicture(null);
+    setTimeout(() => {
+      setAuthenticatedUser(null);
+      setUserEmail(null);
+      setUserPicture(null);
+      setIsAuthChecking(false);
+    }, 350);
   };
+
+  // PANTALLA DE CARGA SUTIL (EVITA PARPADEO VISUAL)
+  if (isAuthChecking) {
+    return (
+      <div className="fixed inset-0 bg-[#0b0e14] flex flex-col items-center justify-center z-50">
+        <div className="relative flex items-center justify-center w-16 h-16 mb-4">
+          <div className="absolute inset-0 rounded-full border-4 border-[#00f2fe]/20 animate-ping" />
+          <div className="w-12 h-12 border-4 border-transparent border-t-[#00f2fe] border-r-[#ff007f] rounded-full animate-spin" />
+        </div>
+        <span className="text-[#00f2fe] font-black text-xs uppercase tracking-widest animate-pulse">
+          Validando Sesión Boombah...
+        </span>
+      </div>
+    );
+  }
 
   if (!authenticatedUser) {
     return <AuthModal onLoginSuccess={handleLoginSuccess} />;
@@ -170,7 +286,7 @@ export default function App() {
   const isSheetTab = activeTab in SHEETS_CONFIG;
   const currentSheetConfig = isSheetTab ? SHEETS_CONFIG[activeTab] : null;
 
-  // EXTRAER LAS MÉTRICAS DESDE EL TEXTO EXACTO DEL CONTENEDOR (MISMA FUENTE QUE LA TARJETA VERDE)
+  // EXTRAER LAS MÉTRICAS DESDE EL TEXTO EXACTO DEL CONTENEDOR
   const textoContenedor = dashboardData?.contenedor?.textoOrdenes || '';
 
   const matchTotal = textoContenedor.match(/(?:d[íi]a|total):\s*(\d+)/i);
@@ -189,14 +305,13 @@ export default function App() {
     ? parseInt(matchResta[1], 10) 
     : (totalOrdenesDia - capturadoOrdenesDia);
 
-// Porcentaje del contenedor (Garantizar lectura completa incluso si supera 100%)
+  // Porcentaje del contenedor
   const rawPct = 
     dashboardData?.contenedor?.pctAcumulado ?? 
     dashboardData?.contenedorPctAcumulado ?? 
     (dashboardData as any)?.porcentajeAcumuladoTotal ?? 
     0;
 
-  // Si Google Sheets devuelve 1.0746 (porcentaje en decimales <= 2.0 pero con decimales ricos), convertimos a escala 100
   const pctContenedor = (typeof rawPct === 'number' && rawPct > 0 && rawPct <= 2.5) 
     ? Number((rawPct * 100).toFixed(2)) 
     : Number(rawPct);
