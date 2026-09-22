@@ -74,6 +74,14 @@ export const Header: React.FC<HeaderProps> = ({
   const mochilas = metrics.ordenesMochilas ?? 0;
   const apparel = metrics.ordenesApparel ?? 0;
 
+  const handleLogoutClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onLogout) {
+      onLogout();
+    }
+  };
+
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-[#12161f] border-b border-[#00f2fe]/20 shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center justify-between px-3 lg:px-5 z-50 transition-transform duration-300 no-print">
       {/* Controles esquinales y Marca */}
@@ -128,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-{/* 2. Porcentaje Acumulado Total del Contenedor */}
+        {/* 2. Porcentaje Acumulado Total del Contenedor */}
         <div className="hidden md:flex items-center gap-2 border-r border-white/10 pr-3">
           <div className="space-y-0.5">
             <div className="flex justify-between items-center text-[9px] font-bold gap-2">
@@ -211,7 +219,8 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-semibold uppercase">{authenticatedUser}</span>
           </div>
           <button
-            onClick={onLogout}
+            type="button"
+            onClick={handleLogoutClick}
             className="p-1.5 rounded text-[#ff007f] hover:bg-[#ff007f]/10 border border-[#ff007f]/30 hover:border-[#ff007f] transition-all cursor-pointer"
             title="Cerrar sesión"
           >
