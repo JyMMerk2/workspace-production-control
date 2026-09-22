@@ -80,6 +80,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
     });
   }, [onLoginSuccess]);
 
+  // Detector de retorno a la ventana en caso de que se cancele o cierre la pestaña de Google
+  useEffect(() => {
+    const handleFocusReturn = () => {
+      if (isLoading && mode === 'LOGIN') {
+        const timer = setTimeout(() => {
+          setIsLoading(false);
+          setStatusMsg((prev) => 
+            prev.text === 'Redirigiendo a Google...' ? { type: '', text: '' } : prev
+          );
+        }, 500);
+        return () => clearTimeout(timer);
+      }
+    };
+
+    window.addEventListener('focus', handleFocusReturn);
+    return () => window.removeEventListener('focus', handleFocusReturn);
+  }, [isLoading, mode]);
+
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).google && mode === 'LOGIN' && !showAdminPinPrompt && !isAdminView) {
       try {
@@ -131,16 +149,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const handleGoogleOAuthLogin = async () => {
     setIsLoading(true);
     setStatusMsg({ type: 'info', text: 'Redirigiendo a Google...' });
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
 
-    if (error) {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) {
+        setIsLoading(false);
+        setStatusMsg({ type: 'error', text: error.message || 'Error al conectar con Google OAuth.' });
+      }
+    } catch (err: any) {
       setIsLoading(false);
-      setStatusMsg({ type: 'error', text: error.message || 'Error al conectar con Google OAuth.' });
+      setStatusMsg({ type: 'error', text: 'No se pudo abrir la ventana de Google.' });
     }
   };
 
@@ -303,7 +330,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0b0e14] flex items-center justify-between p-6 lg:p-12 overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#0b0e14] flex items-center justify-between p-6 lg:p-12 overflow-hidden transition-opacity duration-300">
       
       {/* SECCIÓN IZQUIERDA: LOGO GIGANTE */}
       <div className="hidden lg:flex flex-col items-center justify-center flex-1 z-10 pointer-events-none select-none px-4">
@@ -321,7 +348,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       </div>
 
       {/* SECCIÓN DERECHA: TARJETA DE LOGIN MÁS GRANDE */}
-      <div className="relative z-20 w-full lg:w-[58%] max-w-4xl bg-[#12161f] border border-[#00f2fe]/50 rounded-3xl overflow-hidden shadow-[0_0_60px_rgba(0,242,254,0.25)] grid grid-cols-1 md:grid-cols-2 min-h-[620px] my-auto">
+      <div className="relative z-20 w-full lg:w-[58%] max-w-4xl bg-[#12161f] border border-[#00f2fe]/50 rounded-3xl overflow-hidden shadow-[0_0_60px_rgba(0,242,254,0.25)] grid grid-cols-1 md:grid-cols-2 min-h-[620px] my-auto transition-all duration-300">
         
         {/* LADO IZQUIERDO DE LA TARJETA: CARRUSEL */}
         <div className="relative overflow-hidden bg-slate-950 hidden md:flex flex-col justify-end p-8 border-r border-white/5">
@@ -361,7 +388,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         </div>
 
         {/* LADO DERECHO DE LA TARJETA: FORMULARIO AMPLIO */}
-        <div className="p-8 flex flex-col justify-between text-center bg-[#12161f]">
+        <div className="p-8 flex flex-col justify-between text-center bg-[#12161f] relative">
+          
+          {/* Overlay suave de carga al procesar o redirigir */}
+          {isLoading && (
+            <div className="absolute inset-0 bg-[#12161f]/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-6 rounded-r-3xl transition-all duration-300">
+              <div className="w-12 h-12 border-4 border-[#00f2fe]/20 border-t-[#00f2fe] rounded-full animate-spin mb-3" />
+              <span className="text-xs font-bold text-[#00f2fe] uppercase tracking-wider animate-pulse">
+                {statusMsg.text || 'Procesando solicitud...'}
+              </span>
+            </div>
+          )}
+
           <div>
             <div className="mx-auto w-14 h-14 rounded-2xl bg-gradient-to-br from-[#00f2fe]/20 to-[#ff007f]/20 border border-[#00f2fe] flex items-center justify-center shadow-[0_0_20px_rgba(0,242,254,0.4)] mb-3">
               <span className="text-3xl font-black italic tracking-tighter text-[#00f2fe]">B</span>
@@ -475,7 +513,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                         <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                         <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                       </svg>
-                      <span>Iniciar sesión con Google </span>
+                      <span>Iniciar sesión con Google</span>
                     </button>
 
                     <div className="relative flex py-1 items-center">
@@ -588,7 +626,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
             )}
           </div>
 
-          {statusMsg.text && (
+          {statusMsg.text && !isLoading && (
             <div
               className={`mt-3 p-2.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 ${
                 statusMsg.type === 'error'
