@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, ZoomIn, X, Upload, Filter, Image as ImageIcon } from 'lucide-react';
+import { Search, ZoomIn, X, Upload, Filter, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import { BlueprintItem } from '../types';
 import { INITIAL_BLUEPRINTS } from '../data/blueprintsData';
 
-// Catálogo mapeado desde las rutas de red locales de la plantilla HTML
 const LOCAL_HTML_BLUEPRINTS: BlueprintItem[] = [
   { id: 'BM-9021-LOC', code: '9021', title: '9021 Superpack (BM)', category: 'Mochilas BM', modelFamily: 'Superpack', description: 'Plano local de la red Boombah para mochila 9021 Superpack (BM).', specs: ['Origen: Red Local', 'Ruta: 9021_Superpack/BM'], colorways: ['Original'], imageUrl: 'file://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9021_Superpack/BM/BPSP-B_B.jpg' },
   { id: 'PS-9021-LOC', code: '9021', title: '9021 Superpack (PS)', category: 'Mochilas PS', modelFamily: 'Superpack', description: 'Plano local para mochila 9021 Superpack (PS).', specs: ['Origen: Red Local', 'Ruta: 9021_Superpack/PS'], colorways: ['Original'], imageUrl: 'file://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9021_Superpack/PS/BPSPCM-B-C_B.jpg' },
@@ -32,8 +31,6 @@ const LOCAL_HTML_BLUEPRINTS: BlueprintItem[] = [
   { id: 'BM-9060-LOC', code: '9060', title: '9060 Hybrid Catchers (BM)', category: 'Mochilas BM', modelFamily: 'Hybrid Catchers', description: 'Plano local para mochila 9060 Hybrid Catchers (BM).', specs: ['Origen: Disco P:'], colorways: ['Original'], imageUrl: 'file:///P:/Product%20Development/user/Juan%20Mercado/BD%20icm/9060_Hybrid%20Catchers/BM/BM-9060-B_B.jpg' },
   { id: 'PS-9060-LOC', code: '9060', title: '9060 Hybrid Catchers (PS)', category: 'Mochilas PS', modelFamily: 'Hybrid Catchers', description: 'Plano local para mochila 9060 Hybrid Catchers (PS).', specs: ['Origen: Disco P:'], colorways: ['Original'], imageUrl: 'file:///P:/Product%20Development/user/Juan%20Mercado/BD%20icm/9060_Hybrid%20Catchers/PS/PS-9060-3000-B-C_B.jpg' },
   { id: 'BM-9066-LOC', code: '9066', title: '9066 DEFCON Rolling Superpack', category: 'Mochilas BM', modelFamily: 'DEFCON', description: 'Plano local para mochila 9066 DEFCON Rolling Superpack.', specs: ['Origen: Disco P:'], colorways: ['Original'], imageUrl: 'file:///P:/Product%20Development/user/Juan%20Mercado/BD%20icm/9066_DEFCON%20Rolling%20Superpack/BM/BM-9066-B_B.jpg' },
-  
-  // FULL DYE & PRENDAS (FD / PS)
   { id: 'FD-9000-LOC', code: 'FD-9000', title: 'Plano Técnico FD-9000', category: 'Full Dye FD', modelFamily: 'Full Dye', description: 'Plano técnico local Full Dye FD-9000.', specs: ['Origen: Red Local'], colorways: ['Full Dye'], imageUrl: 'file://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-9000.jpg' },
   { id: 'FD-9003-LOC', code: 'FD-9003', title: 'Plano Técnico FD-9003', category: 'Full Dye FD', modelFamily: 'Full Dye', description: 'Plano técnico local Full Dye FD-9003.', specs: ['Origen: Red Local'], colorways: ['Full Dye'], imageUrl: 'file://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-9003.jpg' },
   { id: 'FD-9006-LOC', code: 'FD-9006', title: 'Plano Técnico FD-9006', category: 'Full Dye FD', modelFamily: 'Full Dye', description: 'Plano técnico local Full Dye FD-9006.', specs: ['Origen: Red Local'], colorways: ['Full Dye'], imageUrl: 'file://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-9006.jpg' },
@@ -49,7 +46,6 @@ export const PlanosView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   
-  // Unifica los planos base del proyecto con el catálogo de rutas locales de la plantilla
   const [blueprints, setBlueprints] = useState<BlueprintItem[]>(() => {
     const combined = [...INITIAL_BLUEPRINTS];
     LOCAL_HTML_BLUEPRINTS.forEach((localBp) => {
@@ -60,7 +56,6 @@ export const PlanosView: React.FC = () => {
     return combined;
   });
 
-  // Inspector State
   const [zoomItem, setZoomItem] = useState<BlueprintItem | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(2.5);
   const [lupaActive, setLupaActive] = useState<boolean>(true);
@@ -145,6 +140,12 @@ export const PlanosView: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const abrirEnlaceLocal = (url: string) => {
+    if (url.startsWith('file://')) {
+      window.open(url, '_blank');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -233,7 +234,7 @@ export const PlanosView: React.FC = () => {
               </span>
             </div>
 
-            {/* Blueprint Schematic Preview Box */}
+            {/* Blueprint Preview Box */}
             <div
               onClick={() => setZoomItem(item)}
               className="relative h-48 bg-[#0a0d13] flex items-center justify-center p-4 cursor-pointer overflow-hidden group-hover:bg-[#07090e] transition-colors border-b border-white/5"
@@ -244,13 +245,11 @@ export const PlanosView: React.FC = () => {
                   alt={item.title}
                   className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
                   onError={(e) => {
-                    // Oculta la etiqueta de imagen si la ruta local bloquea la carga
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
               ) : null}
 
-              {/* Muestra un CAD Esquema si no hay imagen o si falla la ruta de red local */}
               <div className="w-full h-full relative flex items-center justify-center bg-[#07090e] rounded-lg border border-[#00f2fe]/20 p-2 select-none group-hover:border-[#00f2fe]/50 transition-colors">
                 <div
                   className="absolute inset-0 opacity-15"
@@ -349,6 +348,16 @@ export const PlanosView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4">
+              {zoomItem.imageUrl?.startsWith('file://') && (
+                <button
+                  onClick={() => abrirEnlaceLocal(zoomItem.imageUrl!)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Abrir Archivo de Red</span>
+                </button>
+              )}
+
               <div className="hidden sm:flex items-center gap-2 bg-[#0d1017] px-3 py-1.5 rounded-lg border border-white/10">
                 <span className="text-xs text-gray-400 font-bold">Zoom: {zoomLevel.toFixed(1)}x</span>
                 <input
@@ -391,7 +400,6 @@ export const PlanosView: React.FC = () => {
             onWheel={handleWheel}
             className="flex-1 relative overflow-hidden flex items-center justify-center p-2 cursor-crosshair select-none bg-[#080a0f] w-full h-full"
           >
-            {/* Background Grid */}
             <div
               className="absolute inset-0 opacity-10 pointer-events-none"
               style={{
@@ -400,7 +408,6 @@ export const PlanosView: React.FC = () => {
               }}
             ></div>
 
-            {/* Image Box Maximized to Screen Limits */}
             <div className="relative w-full h-full flex items-center justify-center p-2 bg-[#0e121a] rounded-lg border border-white/10 overflow-hidden">
               {zoomItem.imageUrl ? (
                 <img
@@ -422,16 +429,18 @@ export const PlanosView: React.FC = () => {
                   {zoomItem.title}
                 </h3>
                 <p className="text-xs text-gray-400 max-w-lg mb-4">{zoomItem.description}</p>
-                <div className="grid grid-cols-2 gap-3 max-w-md w-full text-left text-xs bg-[#12161f] p-3 rounded-lg border border-white/5">
-                  {zoomItem.specs.map((sp, i) => (
-                    <div key={i} className="text-gray-300">
-                      • {sp}
-                    </div>
-                  ))}
+                
+                <div className="flex flex-col gap-2 items-center">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#39ff14]/15 border border-[#39ff14] text-[#39ff14] text-xs font-bold hover:bg-[#39ff14] hover:text-[#0b0e14] transition-all cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Cargar Imagen Directa para este Plano</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Direct Overlay Magnifying Lens */}
               {lupaActive && zoomItem.imageUrl && (
                 <div
                   className="absolute pointer-events-none rounded-full border-3 border-white shadow-[0_0_30px_rgba(0,0,0,0.9)] overflow-hidden bg-[#07090e] z-30"
@@ -460,7 +469,6 @@ export const PlanosView: React.FC = () => {
               )}
             </div>
 
-            {/* Bottom floating guide banner */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-[#12161f]/90 border border-white/10 px-5 py-2 rounded-full text-xs text-gray-300 shadow-xl flex items-center gap-4 z-30">
               <span>💡 Haz clic en el plano para Activar/Desactivar Lupa</span>
               <span>• Rueda del mouse para Zoom ({zoomLevel.toFixed(1)}x)</span>
