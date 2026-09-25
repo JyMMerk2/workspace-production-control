@@ -29,7 +29,7 @@ import {
 Chart.register(...registerables);
 
 // ===== URL PÚBLICA DE GOOGLE APPS SCRIPT WEB APP CONFIGURADA =====
-const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxMN9J7ZwYqRehAU5H5ugbTtAtbySfC8dNb05PhhUWlmJBtRJILVV0EMylxjdjkpT862w/exec";
+const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzdCUCU6CH9am6zZJgm3-MHTSW17vwVfdrHbg1mv_5KrQonnxqDBFdNoIP4v8RbXkNPUg/exec";
 
 interface MetricCardProps {
   title: string;
