@@ -21,6 +21,9 @@ import {
   Send,
   AlertCircle,
   X,
+  Users,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 Chart.register(...registerables);
@@ -126,6 +129,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // ESTADO PARA NOTIFICACIONES ELEGANTES (TOAST)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // ESTADO Y MODAL DE DESTINATARIOS
+  const [recipientsModalOpen, setRecipientsModalOpen] = useState<boolean>(false);
+  const [newRecipient, setNewRecipient] = useState<string>('');
+  const [recipients, setRecipients] = useState<string[]>(() => {
+    const saved = localStorage.getItem('boombah_email_recipients');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [
+      "juan.mercado@dr.boombah.com",
+      "oscar.paulino@dr.boombah.com",
+      "andres.deluna@dr.boombah.com",
+      "nelson.hernandez@dr.boombah.com",
+      "joel.constanza@dr.boombah.com",
+      "rony.medrano@dr.boombah.com"
+    ];
+  });
+
   const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const chartDoughnutRef = useRef<HTMLCanvasElement | null>(null);
@@ -143,6 +164,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setTimeout(() => {
       setToast(null);
     }, 4000);
+  };
+
+  const handleAddRecipient = () => {
+    if (!newRecipient || !newRecipient.includes('@')) {
+      showToast('Ingresa un correo electrónico válido.', 'error');
+      return;
+    }
+    if (recipients.includes(newRecipient.trim())) {
+      showToast('El correo ya está en la lista.', 'error');
+      return;
+    }
+    const updated = [...recipients, newRecipient.trim()];
+    setRecipients(updated);
+    localStorage.setItem('boombah_email_recipients', JSON.stringify(updated));
+    setNewRecipient('');
+    showToast('Destinatario agregado con éxito.');
+  };
+
+  const handleRemoveRecipient = (emailToRemove: string) => {
+    const updated = recipients.filter(r => r !== emailToRemove);
+    setRecipients(updated);
+    localStorage.setItem('boombah_email_recipients', JSON.stringify(updated));
+    showToast('Destinatario eliminado.');
   };
 
   useEffect(() => {
@@ -174,10 +218,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN PARA DISPARAR LAS ACCIONES DE CORREO MEDIANTE PETICIÓN GET A GOOGLE APPS SCRIPT
+  // FUNCIÓN ENVÍA EL CORREO DEL USUARIO LOGUEADO DIRECTAMENTE
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
+
+    // Obtener el correo del usuario en sesión
+    const activeEmail = sessionStorage.getItem('authenticated_email') || localStorage.getItem('authenticated_email') || "juan.mercado@dr.boombah.com";
 
     let actionName = 'enviarCorreoDashboard';
     let esPruebaParam = false;
@@ -194,13 +241,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     try {
-      const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}`;
+      const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}`;
       
-      await fetch(targetUrl, {
-        method: 'GET',
-      });
+      await fetch(targetUrl, { method: 'GET' });
 
-      showToast('¡Petición procesada! El correo llegará a la bandeja de entrada en breve.', 'success');
+      showToast(`¡Petición enviada! El reporte llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
     } catch (error) {
       showToast('Error al conectar con la API de correo.', 'error');
       console.error(error);
@@ -246,7 +291,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
-    // 2. Bar Chart: Mochilas (Ordenado de mayor a menor % cumplimiento con nombres completos)
+    // 2. Bar Chart: Mochilas
     if (chartBarsRef.current && data.mochilas.length > 0) {
       if (barsInstance.current) {
         barsInstance.current.destroy();
@@ -308,7 +353,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
-    // 3. Bar Chart: Apparel (Ordenado de mayor a menor % cumplimiento)
+    // 3. Bar Chart: Apparel
     if (chartApparelBarsRef.current && data.apparel.length > 0) {
       if (apparelBarsInstance.current) {
         apparelBarsInstance.current.destroy();
@@ -404,6 +449,77 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         )}
       </AnimatePresence>
 
+      {/* MODAL PARA VER, AGREGAR Y ELIMINAR DESTINATARIOS */}
+      <AnimatePresence>
+        {recipientsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#12161f] border border-[#00f2fe]/30 rounded-2xl w-full max-w-md p-6 shadow-[0_0_30px_rgba(0,242,254,0.15)] space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <span className="text-sm font-black uppercase text-[#00f2fe] flex items-center gap-2 tracking-wider">
+                  <Users className="w-4 h-4" /> Gestor de Destinatarios
+                </span>
+                <button
+                  onClick={() => setRecipientsModalOpen(false)}
+                  className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Formulario Agregar */}
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  placeholder="ejemplo@dr.boombah.com"
+                  value={newRecipient}
+                  onChange={(e) => setNewRecipient(e.target.value)}
+                  className="flex-1 bg-[#0d1017] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f2fe]"
+                />
+                <button
+                  onClick={handleAddRecipient}
+                  className="flex items-center gap-1 bg-[#00f2fe]/10 border border-[#00f2fe] text-[#00f2fe] hover:bg-[#00f2fe] hover:text-black px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar
+                </button>
+              </div>
+
+              {/* Lista de Destinatarios */}
+              <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar pr-1">
+                {recipients.map((email, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between bg-[#0d1017] border border-white/5 px-3 py-2 rounded-xl text-xs text-gray-300"
+                  >
+                    <span className="truncate">{email}</span>
+                    <button
+                      onClick={() => handleRemoveRecipient(email)}
+                      className="text-gray-500 hover:text-[#ff007f] p-1 transition-colors cursor-pointer"
+                      title="Eliminar destinatario"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-2 text-right">
+                <button
+                  onClick={() => setRecipientsModalOpen(false)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Control Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#12161f] border-l-4 border-[#00f2fe] rounded-xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-3">
@@ -471,7 +587,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           )}
 
-          {/* MENÚ DESPLEGABLE CON TODOS LOS BOTONES DE CORREO */}
+          {/* MENÚ DESPLEGABLE CON TODOS LOS BOTONES DE CORREO + GESTOR DE DESTINATARIOS */}
           {!isPresentationMode && (
             <div className="relative">
               <button
@@ -491,7 +607,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 8, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 mt-2 w-56 bg-[#12161f] border border-amber-500/30 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50 overflow-hidden py-1"
+                    className="absolute right-0 mt-2 w-60 bg-[#12161f] border border-amber-500/30 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50 overflow-hidden py-1"
                   >
                     <button
                       onClick={() => handleTriggerEmail('prueba')}
@@ -517,6 +633,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     >
                       <FileText className="w-3.5 h-3.5 text-cyan-400" />
                       <span>📄 Enviar Reporte PDF (A Todos)</span>
+                    </button>
+
+                    <div className="border-t border-white/10 my-1" />
+
+                    {/* BOTÓN PARA GESTIONAR DESTINATARIOS */}
+                    <button
+                      onClick={() => {
+                        setEmailMenuOpen(false);
+                        setRecipientsModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-left text-indigo-300 hover:bg-indigo-500/20 font-semibold transition-colors cursor-pointer"
+                    >
+                      <Users className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>⚙️ Gestor de Destinatarios</span>
                     </button>
                   </motion.div>
                 )}
