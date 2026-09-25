@@ -19,6 +19,8 @@ import {
   ChevronDown,
   FileText,
   Send,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 
 Chart.register(...registerables);
@@ -121,6 +123,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [emailMenuOpen, setEmailMenuOpen] = useState<boolean>(false);
   const [isSendingMail, setIsSendingMail] = useState<boolean>(false);
 
+  // ESTADO PARA NOTIFICACIONES ELEGANTES (TOAST)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
   const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const chartDoughnutRef = useRef<HTMLCanvasElement | null>(null);
@@ -132,6 +137,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const apparelBarsInstance = useRef<Chart | null>(null);
 
   const totalSlides = 4;
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
 
   useEffect(() => {
     if (isPresentationMode && !isPaused) {
@@ -162,7 +174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN RESILIENTE A RESTRICCIONES CORS DE GOOGLE APPS SCRIPT
+  // FUNCIÓN PARA DISPARAR LAS ACCIONES DE CORREO MEDIANTE PETICIÓN GET A GOOGLE APPS SCRIPT
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -182,21 +194,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     try {
-      await fetch(GOOGLE_WEB_APP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain',
-        },
-        body: JSON.stringify({
-          action: actionName,
-          esPrueba: esPruebaParam,
-        }),
+      const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}`;
+      
+      await fetch(targetUrl, {
+        method: 'GET',
       });
 
-      alert('¡Petición enviada a Google Apps Script! El reporte llegará a la bandeja de entrada en breve.');
+      showToast('¡Petición procesada! El correo llegará a la bandeja de entrada en breve.', 'success');
     } catch (error) {
-      alert('Error al conectar con la API de correo.');
+      showToast('Error al conectar con la API de correo.', 'error');
       console.error(error);
     } finally {
       setIsSendingMail(false);
@@ -368,7 +374,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const { kpiMochilas, mochilas, kpiApparel, apparel, contenedor, lastUpdated } = data;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* NOTIFICACIÓN TOAST ELEGANTE (NEÓN) */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md ${
+              toast.type === 'success'
+                ? 'bg-[#12161f]/95 border-[#39ff14] text-[#39ff14] shadow-[0_0_15px_rgba(57,255,20,0.3)]'
+                : 'bg-[#12161f]/95 border-[#ff007f] text-[#ff007f] shadow-[0_0_15px_rgba(255,0,127,0.3)]'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span className="text-xs font-extrabold text-white tracking-wide">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Control Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#12161f] border-l-4 border-[#00f2fe] rounded-xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-3">
