@@ -16,9 +16,15 @@ import {
   Clock,
   LucideIcon,
   Mail,
+  ChevronDown,
+  FileText,
+  Send,
 } from 'lucide-react';
 
 Chart.register(...registerables);
+
+// ===== URL PÚBLICA DE GOOGLE APPS SCRIPT WEB APP CONFIGURADA =====
+const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxMN9J7ZwYqRehAU5H5ugbTtAtbySfC8dNb05PhhUWlmJBtRJILVV0EMylxjdjkpT862w/exec";
 
 interface MetricCardProps {
   title: string;
@@ -110,6 +116,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [rotationInterval, setRotationInterval] = useState<number>(10);
   const [currentSlide, setCurrentSlide] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  
+  // ESTADOS PARA EL MENÚ Y ENVÍO DE CORREO
+  const [emailMenuOpen, setEmailMenuOpen] = useState<boolean>(false);
   const [isSendingMail, setIsSendingMail] = useState<boolean>(false);
 
   const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -153,31 +162,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  const handleSendTestMail = async () => {
+  // FUNCIÓN PARA DISPARAR LAS ACCIONES DE CORREO HACIA GOOGLE APPS SCRIPT
+  const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
+    setEmailMenuOpen(false);
     setIsSendingMail(true);
-    // URL desplegada de Google Apps Script Web App
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx_REEMPLAZAR_POR_TU_WEB_APP_ID/exec";
+
+    let actionName = 'enviarCorreoDashboard';
+    let esPruebaParam = false;
+
+    if (actionType === 'prueba') {
+      actionName = 'enviarCorreoDashboard';
+      esPruebaParam = true;
+    } else if (actionType === 'html_oficial') {
+      actionName = 'enviarCorreoDashboard';
+      esPruebaParam = false;
+    } else if (actionType === 'pdf_oficial') {
+      actionName = 'enviarReportePdfOriginal';
+      esPruebaParam = false;
+    }
 
     try {
-      const response = await fetch(WEB_APP_URL, {
+      const response = await fetch(GOOGLE_WEB_APP_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
         body: JSON.stringify({
-          action: 'enviarCorreoDashboard',
-          esPrueba: true, // Envía la prueba solo al correo personal de quien ejecuta
+          action: actionName,
+          esPrueba: esPruebaParam,
         }),
       });
 
       const res = await response.json();
       if (res.status === 'SUCCESS') {
-        alert('¡Correo de prueba enviado con éxito a tu bandeja!');
+        alert('¡Acción de correo ejecutada con éxito!');
       } else {
-        alert('Respuesta del servidor: ' + (res.message || 'Procesado correctamente'));
+        alert('El servicio respondió: ' + (res.message || 'Procesado correctamente'));
       }
     } catch (error) {
-      alert('Error al conectar con el servicio de correo.');
+      alert('Error al conectar con la API de correo en Google Apps Script.');
       console.error(error);
     } finally {
       setIsSendingMail(false);
@@ -227,7 +250,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         barsInstance.current.destroy();
       }
 
-      // Ordenamiento dinámico por % cumplimiento
       const sortedMochilas = [...data.mochilas].sort((a, b) => {
         const pctA = a.meta > 0 ? a.captura / a.meta : 0;
         const pctB = b.meta > 0 ? b.captura / b.meta : 0;
@@ -418,20 +440,60 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           )}
 
-          {/* BOTÓN 1: PRUEBA DE CORREO NEÓN PRIVADO */}
+          {/* MENÚ DESPLEGABLE CON TODOS LOS BOTONES DE CORREO */}
           {!isPresentationMode && (
-            <button
-              onClick={handleSendTestMail}
-              disabled={isSendingMail}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500 text-amber-400 text-xs font-bold hover:bg-amber-500 hover:text-black transition-all cursor-pointer disabled:opacity-50"
-              title="Enviar correo neón de prueba solo a mi dirección"
-            >
-              <Mail className={`w-3.5 h-3.5 ${isSendingMail ? 'animate-bounce' : ''}`} />
-              <span className="hidden md:inline">{isSendingMail ? 'Enviando...' : 'Enviar mi Prueba'}</span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setEmailMenuOpen(!emailMenuOpen)}
+                disabled={isSendingMail}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500 text-amber-400 text-xs font-bold hover:bg-amber-500 hover:text-black transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Mail className={`w-3.5 h-3.5 ${isSendingMail ? 'animate-bounce' : ''}`} />
+                <span>{isSendingMail ? 'Enviando...' : 'Reportes por Correo'}</span>
+                <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
+              </button>
+
+              <AnimatePresence>
+                {emailMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-2 w-56 bg-[#12161f] border border-amber-500/30 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] z-50 overflow-hidden py-1"
+                  >
+                    <button
+                      onClick={() => handleTriggerEmail('prueba')}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-left text-amber-300 hover:bg-amber-500/20 font-semibold transition-colors cursor-pointer"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-amber-400" />
+                      <span>🧪 Enviar mi Prueba (Solo a mí)</span>
+                    </button>
+
+                    <div className="border-t border-white/10 my-1" />
+
+                    <button
+                      onClick={() => handleTriggerEmail('html_oficial')}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-left text-emerald-300 hover:bg-emerald-500/20 font-semibold transition-colors cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>🎨 Enviar Reporte Neón (A Todos)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleTriggerEmail('pdf_oficial')}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-left text-cyan-300 hover:bg-cyan-500/20 font-semibold transition-colors cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>📄 Enviar Reporte PDF (A Todos)</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           )}
 
-          {/* BOTÓN 2: MODO PRESENTACIÓN */}
+          {/* BOTÓN MODO PRESENTACIÓN */}
           <button
             onClick={togglePresentation}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
@@ -444,7 +506,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>{isPresentationMode ? 'Salir Modo TV' : 'Modo Presentación'}</span>
           </button>
 
-          {/* BOTÓN 3: SINCRONIZAR */}
+          {/* BOTÓN SINCRONIZAR */}
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
@@ -703,7 +765,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             className="space-y-6"
           >
             <div>
-              <div className="flex items-center justify-between text-sm font-extrabold uppercase text-[#ff007f] pb-2 border-b-2 border-[#ff007f]/30 mb-4">
+              <div className="flex items-center justify-between text-sm font-extrabold uppercase tracking-wider text-[#ff007f] pb-2 border-b-2 border-[#ff007f]/30 mb-4">
                 <span>👕 PROGRAMA APPAREL (KPIs & REGISTRO DE PRODUCCIÓN)</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
