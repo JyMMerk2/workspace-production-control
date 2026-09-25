@@ -162,7 +162,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN PARA DISPARAR LAS ACCIONES DE CORREO HACIA GOOGLE APPS SCRIPT
+  // FUNCIÓN RESILIENTE A RESTRICCIONES CORS DE GOOGLE APPS SCRIPT
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -182,10 +182,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     try {
-      const response = await fetch(GOOGLE_WEB_APP_URL, {
+      await fetch(GOOGLE_WEB_APP_URL, {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'text/plain',
         },
         body: JSON.stringify({
           action: actionName,
@@ -193,14 +194,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }),
       });
 
-      const res = await response.json();
-      if (res.status === 'SUCCESS') {
-        alert('¡Acción de correo ejecutada con éxito!');
-      } else {
-        alert('El servicio respondió: ' + (res.message || 'Procesado correctamente'));
-      }
+      alert('¡Petición enviada a Google Apps Script! El reporte llegará a la bandeja de entrada en breve.');
     } catch (error) {
-      alert('Error al conectar con la API de correo en Google Apps Script.');
+      alert('Error al conectar con la API de correo.');
       console.error(error);
     } finally {
       setIsSendingMail(false);
