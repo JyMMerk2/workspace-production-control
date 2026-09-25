@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Clock,
   LucideIcon,
+  Mail,
 } from 'lucide-react';
 
 Chart.register(...registerables);
@@ -109,6 +110,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [rotationInterval, setRotationInterval] = useState<number>(10);
   const [currentSlide, setCurrentSlide] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isSendingMail, setIsSendingMail] = useState<boolean>(false);
 
   const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -148,6 +150,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         document.exitFullscreen().catch(() => {});
       }
       setIsPresentationMode(false);
+    }
+  };
+
+  const handleSendTestMail = async () => {
+    setIsSendingMail(true);
+    // URL desplegada de Google Apps Script Web App
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx_REEMPLAZAR_POR_TU_WEB_APP_ID/exec";
+
+    try {
+      const response = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({
+          action: 'enviarCorreoDashboard',
+          esPrueba: true, // Envía la prueba solo al correo personal de quien ejecuta
+        }),
+      });
+
+      const res = await response.json();
+      if (res.status === 'SUCCESS') {
+        alert('¡Correo de prueba enviado con éxito a tu bandeja!');
+      } else {
+        alert('Respuesta del servidor: ' + (res.message || 'Procesado correctamente'));
+      }
+    } catch (error) {
+      alert('Error al conectar con el servicio de correo.');
+      console.error(error);
+    } finally {
+      setIsSendingMail(false);
     }
   };
 
@@ -204,7 +237,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       barsInstance.current = new Chart(chartBarsRef.current, {
         type: 'bar',
         data: {
-          // Conserva los nombres completos reales ("SPUT 1", "SPUT 2", "BIG BAG UTILITY 1", etc.)
           labels: sortedMochilas.map((m) => m.nombre),
           datasets: [
             {
@@ -252,7 +284,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
     }
 
-    // 3. Bar Chart: Apparel (Ordenado de mayor a menor % cumplimiento con nombres completos)
+    // 3. Bar Chart: Apparel (Ordenado de mayor a menor % cumplimiento)
     if (chartApparelBarsRef.current && data.apparel.length > 0) {
       if (apparelBarsInstance.current) {
         apparelBarsInstance.current.destroy();
@@ -341,7 +373,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {!isPresentationMode && (
             <div className="flex items-center gap-1.5 bg-[#0d1017] border border-white/10 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-300">
               <Clock className="w-3.5 h-3.5 text-[#00f2fe]" />
@@ -386,6 +418,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           )}
 
+          {/* BOTÓN 1: PRUEBA DE CORREO NEÓN PRIVADO */}
+          {!isPresentationMode && (
+            <button
+              onClick={handleSendTestMail}
+              disabled={isSendingMail}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500 text-amber-400 text-xs font-bold hover:bg-amber-500 hover:text-black transition-all cursor-pointer disabled:opacity-50"
+              title="Enviar correo neón de prueba solo a mi dirección"
+            >
+              <Mail className={`w-3.5 h-3.5 ${isSendingMail ? 'animate-bounce' : ''}`} />
+              <span className="hidden md:inline">{isSendingMail ? 'Enviando...' : 'Enviar mi Prueba'}</span>
+            </button>
+          )}
+
+          {/* BOTÓN 2: MODO PRESENTACIÓN */}
           <button
             onClick={togglePresentation}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
@@ -398,6 +444,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span>{isPresentationMode ? 'Salir Modo TV' : 'Modo Presentación'}</span>
           </button>
 
+          {/* BOTÓN 3: SINCRONIZAR */}
           <button
             onClick={onRefresh}
             disabled={isRefreshing}
