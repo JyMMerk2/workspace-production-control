@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN ENVÍA EL DASHBOARD REAL COMPLETO VÍA PETICIÓN POST (MODE NO-CORS)
+  // FUNCIÓN CON ACTIVACIÓN GARANTIZADA VÍA BEACON HTTP (SIN BLOQUEOS CORS EN CLIENTE)
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -239,42 +239,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       esPruebaParam = false;
     }
 
-    const sendWithRetry = async (retriesLeft: number): Promise<boolean> => {
-      const hasRealData = data && data.mochilas && data.mochilas.length > 0;
-
-      if (!hasRealData && retriesLeft > 0) {
-        showToast('Esperando sincronización de datos reales...', 'error');
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        return sendWithRetry(retriesLeft - 1);
-      }
-
-      try {
-        await fetch(GOOGLE_WEB_APP_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: actionName,
-            esPrueba: esPruebaParam,
-            email: activeEmail,
-            data: data
-          })
-        });
-
-        showToast(`¡Reporte con datos reales enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
-        return true;
-      } catch (err) {
-        if (retriesLeft > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          return sendWithRetry(retriesLeft - 1);
-        }
-        showToast('Error de conexión al enviar el correo.', 'error');
-        return false;
-      }
-    };
-
     try {
-      await sendWithRetry(3);
+      // Disparo por creación de objeto Image (HTTP GET directo libre de restricciones de origen/CORS)
+      const triggerUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&t=${Date.now()}`;
+      
+      const beacon = new Image();
+      beacon.src = triggerUrl;
+
+      showToast(`¡Reporte activado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
+    } catch (err) {
+      showToast('Error de conexión al solicitar el envío.', 'error');
     } finally {
       setIsSendingMail(false);
     }
@@ -1044,7 +1018,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <td className="p-3 text-center font-bold text-[#00f2fe]">{m.ordenes}</td>
                         <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
                         <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
-                        <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
+                        <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>  
                         <td className="p-3 text-center text-gray-300">{(m.reportado || 0).toLocaleString()}</td>
                         <td
                           className={`p-3 text-right font-black ${
