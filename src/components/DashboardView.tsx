@@ -218,12 +218,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN ENVÍA EL CORREO DEL USUARIO LOGUEADO DIRECTAMENTE
+  // FUNCIÓN CON REINTENTO AUTOMÁTICO HASTA TENER DATOS REALES EN VIVO
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
 
-    // Obtener el correo del usuario en sesión
     const activeEmail = sessionStorage.getItem('authenticated_email') || localStorage.getItem('authenticated_email') || "juan.mercado@dr.boombah.com";
 
     let actionName = 'enviarCorreoDashboard';
@@ -240,15 +239,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       esPruebaParam = false;
     }
 
-    try {
-      const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}`;
-      
-      await fetch(targetUrl, { method: 'GET' });
+    const sendWithRetry = async (retriesLeft: number): Promise<boolean> => {
+      const hasRealData = data && data.mochilas && data.mochilas.length > 0;
 
-      showToast(`¡Petición enviada! El reporte llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
-    } catch (error) {
-      showToast('Error al conectar con la API de correo.', 'error');
-      console.error(error);
+      if (!hasRealData && retriesLeft > 0) {
+        showToast('Esperando sincronización de datos reales...', 'error');
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        return sendWithRetry(retriesLeft - 1);
+      }
+
+      if (!hasRealData) {
+        showToast('Error: No hay datos reales cargados en el Dashboard.', 'error');
+        return false;
+      }
+
+      try {
+        const payloadJSON = encodeURIComponent(JSON.stringify(data));
+        const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&dataJSON=${payloadJSON}`;
+        
+        await fetch(targetUrl, { method: 'GET' });
+        showToast(`¡Reporte con datos reales enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
+        return true;
+      } catch (err) {
+        if (retriesLeft > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          return sendWithRetry(retriesLeft - 1);
+        }
+        showToast('Error de conexión al enviar el correo.', 'error');
+        return false;
+      }
+    };
+
+    try {
+      await sendWithRetry(3);
     } finally {
       setIsSendingMail(false);
     }
