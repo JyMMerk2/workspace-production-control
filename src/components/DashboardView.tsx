@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN CON DISPARO INFALIBLE (INMUNE A CANCELACIONES DE FETCH Y CORS)
+  // FUNCIÓN CON ENVÍO MEDIANTE FORMULARIO INVISIBLE (INMUNE A CORS Y ABORTAR)
   const handleTriggerEmail = (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -226,34 +226,67 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const activeEmail = sessionStorage.getItem('authenticated_email') || localStorage.getItem('authenticated_email') || "juan.mercado@dr.boombah.com";
 
     let actionName = 'enviarCorreoDashboard';
-    let esPruebaParam = false;
+    let esPruebaParam = 'false';
 
     if (actionType === 'prueba') {
       actionName = 'enviarCorreoDashboard';
-      esPruebaParam = true;
+      esPruebaParam = 'true';
     } else if (actionType === 'html_oficial') {
       actionName = 'enviarCorreoDashboard';
-      esPruebaParam = false;
+      esPruebaParam = 'false';
     } else if (actionType === 'pdf_oficial') {
       actionName = 'enviarReportePdfOriginal';
-      esPruebaParam = false;
+      esPruebaParam = 'false';
     }
 
-    const triggerUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&_t=${Date.now()}`;
+    try {
+      let iframe = document.getElementById('hidden_email_iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'hidden_email_iframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
 
-    const img = new Image();
-    
-    img.onload = () => {
+      const form = document.createElement('form');
+      form.method = 'GET';
+      form.action = GOOGLE_WEB_APP_URL;
+      form.target = 'hidden_email_iframe';
+
+      const inputAction = document.createElement('input');
+      inputAction.type = 'hidden';
+      inputAction.name = 'action';
+      inputAction.value = actionName;
+      form.appendChild(inputAction);
+
+      const inputPrueba = document.createElement('input');
+      inputPrueba.type = 'hidden';
+      inputPrueba.name = 'esPrueba';
+      inputPrueba.value = esPruebaParam;
+      form.appendChild(inputPrueba);
+
+      const inputEmail = document.createElement('input');
+      inputEmail.type = 'hidden';
+      inputEmail.name = 'email';
+      inputEmail.value = activeEmail;
+      form.appendChild(inputEmail);
+
+      const inputTime = document.createElement('input');
+      inputTime.type = 'hidden';
+      inputTime.name = '_t';
+      inputTime.value = Date.now().toString();
+      form.appendChild(inputTime);
+
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+
+      showToast(`¡Reporte activado! Llegará a ${esPruebaParam === 'true' ? activeEmail : 'la lista oficial'}.`, 'success');
+    } catch (err) {
+      showToast('Error de conexión al solicitar el envío.', 'error');
+    } finally {
       setIsSendingMail(false);
-      showToast(`¡Reporte enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
-    };
-
-    img.onerror = () => {
-      setIsSendingMail(false);
-      showToast(`¡Reporte enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
-    };
-
-    img.src = triggerUrl;
+    }
   };
 
   useEffect(() => {
