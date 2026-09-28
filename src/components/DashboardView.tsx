@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN CON ACTIVACIÓN GARANTIZADA VÍA BEACON HTTP (SIN BLOQUEOS CORS EN CLIENTE)
+  // FUNCIÓN DE DISPARO DIRECTO COMPATIBLE
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -240,11 +240,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     try {
-      // Disparo por creación de objeto Image (HTTP GET directo libre de restricciones de origen/CORS)
-      const triggerUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&t=${Date.now()}`;
-      
-      const beacon = new Image();
-      beacon.src = triggerUrl;
+      const url = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}`;
+      await fetch(url, { method: 'GET', mode: 'no-cors' });
 
       showToast(`¡Reporte activado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
     } catch (err) {
@@ -1018,7 +1015,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <td className="p-3 text-center font-bold text-[#00f2fe]">{m.ordenes}</td>
                         <td className="p-3 text-center font-bold text-[#ff007f]">{m.balance}</td>
                         <td className="p-3 text-center text-gray-300">{m.captura.toLocaleString()}</td>
-                        <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>  
+                        <td className="p-3 text-center text-gray-400">{m.meta.toLocaleString()}</td>
                         <td className="p-3 text-center text-gray-300">{(m.reportado || 0).toLocaleString()}</td>
                         <td
                           className={`p-3 text-right font-black ${
