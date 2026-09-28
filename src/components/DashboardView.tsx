@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN CON ENVÍO MEDIANTE FORMULARIO INVISIBLE (INMUNE A CORS Y ABORTAR)
+  // FUNCIÓN CON ENVÍO MEDIANTE IFRAME INVISIBLE (SIN ABRIR PESTAÑAS Y SIN BLOQUEOS CORS)
   const handleTriggerEmail = (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -244,6 +244,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       if (!iframe) {
         iframe = document.createElement('iframe');
         iframe.id = 'hidden_email_iframe';
+        iframe.name = 'hidden_email_iframe'; // Requerido para enlazar form.target en segundo plano
         iframe.style.display = 'none';
         document.body.appendChild(iframe);
       }
@@ -251,7 +252,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       const form = document.createElement('form');
       form.method = 'GET';
       form.action = GOOGLE_WEB_APP_URL;
-      form.target = 'hidden_email_iframe';
+      form.target = 'hidden_email_iframe'; // Dirige el resultado al iframe invisible
 
       const inputAction = document.createElement('input');
       inputAction.type = 'hidden';
