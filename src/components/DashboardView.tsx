@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN DE DISPARO DIRECTO COMPATIBLE
+  // FUNCIÓN CON DISPARO DIRECTO E INSTANTÁNEO POR URL CORTA
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -240,12 +240,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     try {
-      const url = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}`;
-      await fetch(url, { method: 'GET', mode: 'no-cors' });
+      // Disparo de URL limpia que instruye a Google Apps Script a leer las celdas vivas del Sheets
+      const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&_t=${Date.now()}`;
+      
+      const beacon = new Image();
+      beacon.src = targetUrl;
 
-      showToast(`¡Reporte activado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
+      showToast(`¡Reporte enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
     } catch (err) {
-      showToast('Error de conexión al solicitar el envío.', 'error');
+      showToast('Error al conectar con la API de correo.', 'error');
     } finally {
       setIsSendingMail(false);
     }
