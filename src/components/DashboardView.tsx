@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN ENVÍA EL DASHBOARD REAL COMPLETO VÍA PETICIÓN POST
+  // FUNCIÓN ENVÍA EL DASHBOARD REAL COMPLETO VÍA PETICIÓN POST (MODE NO-CORS)
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -248,14 +248,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         return sendWithRetry(retriesLeft - 1);
       }
 
-      if (!hasRealData) {
-        showToast('Error: No hay datos reales cargados en el Dashboard.', 'error');
-        return false;
-      }
-
       try {
         await fetch(GOOGLE_WEB_APP_URL, {
           method: 'POST',
+          mode: 'no-cors',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
             action: actionName,
