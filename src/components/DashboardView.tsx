@@ -28,8 +28,8 @@ import {
 
 Chart.register(...registerables);
 
-// ===== URL PÚBLICA DE GOOGLE APPS SCRIPT WEB APP CONFIGURADA =====
-const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzdCUCU6CH9am6zZJgm3-MHTSW17vwVfdrHbg1mv_5KrQonnxqDBFdNoIP4v8RbXkNPUg/exec";
+// ===== NUEVA URL PÚBLICA DE GOOGLE APPS SCRIPT WEB APP CONFIGURADA =====
+const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyCOFo-eXk2OoWYL9qjwqdzXmscv5pNX86mHwhX9doU8BC2wjqb309rTkgJkGSpoGO2cQ/exec";
 
 interface MetricCardProps {
   title: string;
@@ -245,7 +245,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         iframe = document.createElement('iframe');
         iframe.id = 'hidden_email_iframe';
         iframe.name = 'hidden_email_iframe';
-        iframe.style.display = 'none';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = 'none';
+        iframe.style.position = 'absolute';
+        iframe.style.top = '-9999px';
         document.body.appendChild(iframe);
       }
 
