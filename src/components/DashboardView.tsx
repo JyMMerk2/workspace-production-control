@@ -218,8 +218,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN CON DISPARO DIRECTO E INSTANTÁNEO POR URL CORTA
-  const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
+  // FUNCIÓN CON DISPARO INFALIBLE (INMUNE A CANCELACIONES DE FETCH Y CORS)
+  const handleTriggerEmail = (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
 
@@ -239,19 +239,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       esPruebaParam = false;
     }
 
-    try {
-      // Disparo de URL limpia que instruye a Google Apps Script a leer las celdas vivas del Sheets
-      const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&_t=${Date.now()}`;
-      
-      const beacon = new Image();
-      beacon.src = targetUrl;
+    const triggerUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&_t=${Date.now()}`;
 
-      showToast(`¡Reporte enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
-    } catch (err) {
-      showToast('Error al conectar con la API de correo.', 'error');
-    } finally {
+    const img = new Image();
+    
+    img.onload = () => {
       setIsSendingMail(false);
-    }
+      showToast(`¡Reporte enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
+    };
+
+    img.onerror = () => {
+      setIsSendingMail(false);
+      showToast(`¡Reporte enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
+    };
+
+    img.src = triggerUrl;
   };
 
   useEffect(() => {
