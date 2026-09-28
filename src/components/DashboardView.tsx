@@ -244,7 +244,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       if (!iframe) {
         iframe = document.createElement('iframe');
         iframe.id = 'hidden_email_iframe';
-        iframe.name = 'hidden_email_iframe'; // Requerido para enlazar form.target en segundo plano
+        iframe.name = 'hidden_email_iframe';
         iframe.style.display = 'none';
         document.body.appendChild(iframe);
       }
@@ -252,7 +252,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       const form = document.createElement('form');
       form.method = 'GET';
       form.action = GOOGLE_WEB_APP_URL;
-      form.target = 'hidden_email_iframe'; // Dirige el resultado al iframe invisible
+      form.target = 'hidden_email_iframe';
 
       const inputAction = document.createElement('input');
       inputAction.type = 'hidden';
