@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN CON REINTENTO AUTOMÁTICO HASTA TENER DATOS REALES EN VIVO
+  // FUNCIÓN ENVÍA EL DASHBOARD REAL COMPLETO VÍA PETICIÓN POST
   const handleTriggerEmail = async (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -254,10 +254,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
 
       try {
-        const payloadJSON = encodeURIComponent(JSON.stringify(data));
-        const targetUrl = `${GOOGLE_WEB_APP_URL}?action=${actionName}&esPrueba=${esPruebaParam}&email=${encodeURIComponent(activeEmail)}&dataJSON=${payloadJSON}`;
-        
-        await fetch(targetUrl, { method: 'GET' });
+        await fetch(GOOGLE_WEB_APP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: actionName,
+            esPrueba: esPruebaParam,
+            email: activeEmail,
+            data: data
+          })
+        });
+
         showToast(`¡Reporte con datos reales enviado! Llegará a ${esPruebaParam ? activeEmail : 'la lista oficial'}.`, 'success');
         return true;
       } catch (err) {
