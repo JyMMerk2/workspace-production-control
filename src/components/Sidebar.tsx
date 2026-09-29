@@ -17,6 +17,7 @@ import {
   HardHat,
   Database,
   Activity,
+  CalendarCheck,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -32,6 +33,7 @@ interface SidebarProps {
 }
 
 const APPS_SCRIPT_URLS: Record<string, string> = {
+  'seguimiento-ordenes': 'https://script.google.com/macros/s/AKfycbwXGZ0sU8J2M8L_SEGUIMIENTO_2026/exec', // URL o configuración asociada
   'cuadre-fd': 'https://script.google.com/macros/s/AKfycbwv25duzkoZzhFv1jFXm3IvWxvCCHp2Rien6ELGGh-phzWDXVOJon37SRQ2itdGPGLnew/exec',
   'cuadre-mochilas': 'https://script.google.com/macros/s/AKfycbxEat8pLxn28Jlkq9gHIbw4ilGtXk51St54JuxThXOtA7ZmQ2501rsaQ0LO3vFyWsmI/exec',
   'wip-stocks': 'https://script.google.com/macros/s/AKfycbyTvDcxeOGU4u6gcJPnlEP-sCm-cjRbIZ-FyUS7xC9oIdDtoGrEzx5F9_e_-dxQs1MGXQ/exec',
@@ -52,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'wip': activeTab === 'wip',
+    'seguimiento-ordenes': activeTab === ('seguimiento-ordenes' as TabType),
   });
 
   const [dynamicSubTabs, setDynamicSubTabs] = useState<Record<string, { nombre: string; gid: string }[]>>({});
@@ -81,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     if (!isCurrentlyOpen) {
       const config = SHEETS_CONFIG[groupId];
-      const defaultGid = config ? config.defaultGid : undefined;
+      const defaultGid = config ? config.defaultGid : '699586467';
       onSelectTab(defaultTab, defaultGid, defaultTitle);
     }
   };
@@ -105,7 +108,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const renderSubMenuButtons = (tabKey: TabType, mainTitle: string) => {
     const dynamicList = dynamicSubTabs[tabKey];
     const staticConfig = SHEETS_CONFIG[tabKey];
-    const tabsToRender = dynamicList && dynamicList.length > 0 ? dynamicList : staticConfig?.subTabs || [];
+    
+    // Lista por defecto para Seguimiento Órdenes del Día si no existe en SHEETS_CONFIG
+    const fallbackSubTabs = tabKey === ('seguimiento-ordenes' as TabType) 
+      ? [{ nombre: '7.0 SEGUIMIENTO 2026', gid: '699586467' }] 
+      : [];
+
+    const tabsToRender = (dynamicList && dynamicList.length > 0) 
+      ? dynamicList 
+      : (staticConfig?.subTabs || fallbackSubTabs);
 
     return tabsToRender.map((sub) => (
       <button
@@ -183,6 +194,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="px-4 pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-[#5f6e7d]">
           Hojas Operativas WIP & Cuadre
+        </div>
+
+        {/* NUEVA SECCIÓN: Seguimiento Órdenes del Día (Google Sheets Directo) */}
+        <div className="flex flex-col">
+          <button
+            onClick={() => toggleGroup('seguimiento-ordenes', 'seguimiento-ordenes' as TabType, 'SEGUIMIENTO ÓRDENES DEL DÍA')}
+            className={`flex items-center justify-between px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
+              activeTab === ('seguimiento-ordenes' as TabType)
+                ? 'text-[#00f2fe] bg-[#00f2fe]/10 border-[#00f2fe]'
+                : 'text-[#8f9ba8] border-transparent hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <CalendarCheck className="w-3.5 h-3.5 text-[#00f2fe]" />
+              <span>SEGUIMIENTO ÓRDENES DEL DÍA</span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${openGroups['seguimiento-ordenes'] ? 'rotate-180' : ''}`} />
+          </button>
+          {openGroups['seguimiento-ordenes'] && (
+            <div className="bg-[#0d1017] border-l-4 border-[#00f2fe] py-1 flex flex-col">
+              {renderSubMenuButtons('seguimiento-ordenes' as TabType, 'SEGUIMIENTO ÓRDENES DEL DÍA')}
+            </div>
+          )}
         </div>
 
         {/* WIP Stocks & Vendidas Nativo */}
