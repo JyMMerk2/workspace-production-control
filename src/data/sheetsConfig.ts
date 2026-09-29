@@ -1,6 +1,15 @@
 import { SheetConfig } from '../types';
 
 export const SHEETS_CONFIG: Record<string, SheetConfig> = {
+  'seguimiento-ordenes': {
+    id: 'seguimiento-ordenes',
+    title: 'SEGUIMIENTO ÓRDENES DEL DÍA',
+    sheetId: '1nCzn7lyMqmIAgSqyr-EI9rxx1WRThtufOXiYp47NqI4',
+    defaultGid: '699586467',
+    subTabs: [
+      { id: 'seg-2026', nombre: '7.0 SEGUIMIENTO 2026', gid: '699586467' },
+    ],
+  },
   'wip': {
     id: 'wip',
     title: 'Control WIP Incompletos',
