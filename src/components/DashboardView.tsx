@@ -218,7 +218,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  // FUNCIÓN CON ENVÍO MEDIANTE IFRAME INVISIBLE (SIN ABRIR PESTAÑAS Y SIN BLOQUEOS CORS)
+  // FUNCIÓN CON ENVÍO MEDIANTE IFRAME INVISIBLE
   const handleTriggerEmail = (actionType: 'prueba' | 'html_oficial' | 'pdf_oficial') => {
     setEmailMenuOpen(false);
     setIsSendingMail(true);
@@ -458,6 +458,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const { kpiMochilas, mochilas, kpiApparel, apparel, contenedor, lastUpdated } = data;
 
+  // ORDENAMIENTO DESCENDENTE DE TABLAS MÁS CERCA DE LA META PRIMERO
+  const mochilasOrdenadas = [...(mochilas || [])].sort((a, b) => {
+    const pctA = a.meta > 0 ? a.captura / a.meta : 0;
+    const pctB = b.meta > 0 ? b.captura / b.meta : 0;
+    return pctB - pctA;
+  });
+
+  const apparelOrdenado = [...(apparel || [])].sort((a, b) => {
+    const pctA = a.meta > 0 ? a.captura / a.meta : 0;
+    const pctB = b.meta > 0 ? b.captura / b.meta : 0;
+    return pctB - pctA;
+  });
+
   return (
     <div className="space-y-6 relative">
       {/* NOTIFICACIÓN TOAST ELEGANTE (NEÓN) */}
@@ -627,7 +640,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           )}
 
-          {/* MENÚ DESPLEGABLE CON TODOS LOS BOTONES DE CORREO + GESTOR DE DESTINATARIOS */}
+          {/* MENÚ DESPLEGABLE DE CORREO */}
           {!isPresentationMode && (
             <div className="relative">
               <button
@@ -677,7 +690,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                     <div className="border-t border-white/10 my-1" />
 
-                    {/* BOTÓN PARA GESTIONAR DESTINATARIOS */}
                     <button
                       onClick={() => {
                         setEmailMenuOpen(false);
@@ -893,7 +905,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </motion.div>
         )}
 
-        {/* SLIDE 2: DESGLOSE OPERATIVO MOCHILAS */}
+        {/* SLIDE 2: DESGLOSE OPERATIVO MOCHILAS (ORDENADO DE MAYOR A MENOR % CUMPLIMIENTO) */}
         {(!isPresentationMode || currentSlide === 1) && (
           <motion.div
             key="slide-1"
@@ -926,7 +938,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {mochilas.map((m, idx) => {
+                  {mochilasOrdenadas.map((m, idx) => {
                     const pct = m.meta > 0 ? (m.captura / m.meta) * 100 : 0;
                     return (
                       <tr key={idx} className="hover:bg-white/5 transition-colors">
@@ -1016,7 +1028,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </motion.div>
         )}
 
-        {/* SLIDE 4: DESGLOSE OPERATIVO APPAREL */}
+        {/* SLIDE 4: DESGLOSE OPERATIVO APPAREL (ORDENADO DE MAYOR A MENOR % CUMPLIMIENTO) */}
         {(!isPresentationMode || currentSlide === 3) && (
           <motion.div
             key="slide-3"
@@ -1050,7 +1062,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {apparel.map((m, idx) => {
+                  {apparelOrdenado.map((m, idx) => {
                     const pct = m.meta > 0 ? (m.captura / m.meta) * 100 : 0;
                     return (
                       <tr key={idx} className="hover:bg-white/5 transition-colors">
