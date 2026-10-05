@@ -11,7 +11,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila de béisbol y sóftbol insignia con compartimentos para 4 bates, bolsillo separado de calzado y arnés acolchado de hombro.',
     specs: ['Capacidad: 4 Bats', 'Tejido: 600D Ripstop Poliéster', 'Bolsillo ventilado para spikes', 'Gancho integrado para cerca J-Hook'],
     colorways: ['Black/Black', 'Navy/White', 'Royal/Grey', 'Scarlet/Black', 'Optic Yellow'],
-    imageUrl: '/blueprints/BPSP-B_B.jpg',
+    imageUrl: 'https://drive.google.com/file/d/17nnoRt8xU5Ud07y1R2feCVl_LEMiA9_B/view?usp=drive_link',
   },
   {
     id: 'PS-9021',
