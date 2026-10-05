@@ -11,6 +11,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila de béisbol y sóftbol insignia con compartimentos para 4 bates, bolsillo separado de calzado y arnés acolchado de hombro.',
     specs: ['Capacidad: 4 Bats', 'Tejido: 600D Ripstop Poliéster', 'Bolsillo ventilado para spikes', 'Gancho integrado para cerca J-Hook'],
     colorways: ['Black/Black', 'Navy/White', 'Royal/Grey', 'Scarlet/Black', 'Optic Yellow'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9021_Superpack/BM/BPSP-B_B.jpg',
   },
   {
     id: 'PS-9021',
@@ -21,6 +22,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Versión sublimada personalizada con solapa desmontable para bordado o sublimación completa.',
     specs: ['Solapa frontal removible', 'Cremalleras reforzadas YKK #10', 'Dimensiones: 23.5" H x 13.5" W x 9.5" D'],
     colorways: ['Custom Team Sublimation', 'Camo Edition', 'Stars & Stripes'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9021_Superpack/PS/BPSPCM-B-C_B.jpg',
   },
   {
     id: 'BM-9025-600D',
@@ -31,6 +33,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Maletín Duffle deportivo de alta resistencia en tela 600D con compartimento principal extra amplio.',
     specs: ['Material: 600D Heavy-Duty', 'Correa de hombro desmontable', 'Base impermeable reforzada'],
     colorways: ['Black/Charcoal', 'Royal/Black', 'Red/Black', 'Navy/Gold'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9025_Diamond-Duffle/BM/BM-9025-600D.PNG',
   },
   {
     id: 'BM-9025-420D',
@@ -41,6 +44,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Versión ligera y flexible con acabado ripstop 420D para viajes y entrenamientos diarios.',
     specs: ['Material: 420D Hex-Ripstop', 'Bolsillo lateral para accesorios', 'Cremalleras de doble apertura'],
     colorways: ['Stealth Black', 'Silver Grey', 'Electric Blue'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/BM-9025-420D.PNG',
   },
   {
     id: 'BM-9014',
@@ -51,6 +55,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Diseño ergonómico compacto optimizado para jugadores juveniles de ligas infantiles.',
     specs: ['Capacidad: 2 Bats', 'Dimensiones: 18" H x 11" W x 8" D', 'Respaldo ergonómico acolchado'],
     colorways: ['Black/Optic', 'Navy/Carolina', 'Pink/Charcoal', 'Red/White'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9014_Mini%20Superpack/BM/BM-9014-B-B_B.jpg',
   },
   {
     id: 'PS-9014',
@@ -61,6 +66,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Versión Player Series juvenil con panel frontal para impresión digital completa de equipo.',
     specs: ['Panel frontal para arte de equipo', 'Bolsillo frontal de acceso rápido'],
     colorways: ['Custom Team Deco'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9014_Mini%20Superpack/PS/PS-9014-3001-B-C_B.jpg',
   },
   {
     id: 'BM-9068',
@@ -71,6 +77,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila táctica de máximo volumen con sistema MOLLE exterior y almacenamiento de equipo de receptor.',
     specs: ['Volumen extendido XL', 'Sistema de correas MOLLE militar', 'Compartimento térmico para bebidas'],
     colorways: ['Tactical Black', 'Desert Tan', 'OD Green', 'Urban Camo'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9068_DEFCON%20Superpack%20XL/BM/BM-9068-B_B.jpg',
   },
   {
     id: 'BM-9088',
@@ -81,6 +88,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Sistema híbrido multifuncional con ruedas todoterreno resistentes y correas ocultables de mochila.',
     specs: ['Ruedas con rodamiento sellado ABEC-7', 'Mango telescópico retráctil de aluminio', 'Bolsillo para 4 bates'],
     colorways: ['Black/Red', 'Navy/Silver', 'Royal/White', 'All Black'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9088_Ultrapack_Hybrid/BM/BM-9088-B-RD_B.jpg',
   },
   {
     id: 'PS-9088',
@@ -91,6 +99,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Versión personalizada de ruedas Ultrapack para rosters y programas universitarios.',
     specs: ['Sublimación total de paneles exteriores', 'Protección inferior antidesgaste'],
     colorways: ['Custom Multi-Panel'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9088_Ultrapack_Hybrid/PS/PS-9088-3000-B-CB_B.jpg',
   },
   {
     id: 'BM-9124',
@@ -101,6 +110,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Bolsa con ruedas de máxima capacidad para equipo completo de catcher (careta, peto, rodilleras y bates).',
     specs: ['Rieles protectores inferiores en PVC', 'Capacidad para espinilleras hasta 17"', 'Estante interior acolchado desmontable'],
     colorways: ['Blackout', 'Dark Charcoal', 'Navy Blue'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9124_Catchers_Rolling/BM/BM-9124-B_B.jpg',
   },
   {
     id: 'PS-9124',
@@ -111,6 +121,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Bolsa de catcher personalizada con paneles gráficos para numeración y logotipo de equipo.',
     specs: ['Panel superior removible para bordado', 'Estructura rígida reforzada'],
     colorways: ['Custom College/High School'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9124_Catchers_Rolling/PS/PS-9124-3000-B-C_B.jpg',
   },
   {
     id: 'BM-9092',
@@ -121,6 +132,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Duffle multipropósito para atletas con compartimento zapatero lateral aislado y ventilado.',
     specs: ['Bolsillo lateral independiente', 'Base impermeable plastificada'],
     colorways: ['Charcoal/Black', 'Scarlet/White', 'Royal/Black'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9092_Sports%20Duffle/9044/BM/BM-9092-CB_B.jpg',
   },
   {
     id: 'BM-9000',
@@ -131,6 +143,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila ágil y liviana para práctica y entrenamiento con sujeción para 2 bates.',
     specs: ['Funda de bate de malla reforzada', 'Diseño ultra liviano (1.2 lbs)'],
     colorways: ['Black', 'Navy', 'Royal', 'Red', 'Purple', 'Forest Green'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9000_Tyro/BM/BPT-B_B.jpg',
   },
   {
     id: 'PS-9000',
@@ -141,6 +154,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila Tyro personalizada para torneos y academias juveniles.',
     specs: ['Sublimación total en cuerpo frontal'],
     colorways: ['Custom Academy Designs'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9000_Tyro/PS/BPTCM-B-CB_B.jpg',
   },
   {
     id: 'BM-9024',
@@ -151,6 +165,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila de hombro especialmente adaptada con ganchos exteriores para colgar rodilleras y casco.',
     specs: ['Correas externas porta-rodilleras', 'Bolsillo superior para careta'],
     colorways: ['Black/Charcoal', 'Navy/Red', 'Royal/Grey'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9024_Catchers_Superpack/BM/BM-9024-B_B.jpg',
   },
   {
     id: 'BM-9037',
@@ -159,8 +174,9 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     category: 'Mochilas BM',
     modelFamily: 'Superpack Rolling',
     description: 'La versión más vendida de mochila con ruedas para béisbol y sóftbol de fin de semana.',
-    specs: ['Ruedas de uretano reforzadas', 'Mango telescópico telescópico con bloqueo'],
+    specs: ['Ruedas de uretano reforzadas', 'Mango telescópico con bloqueo'],
     colorways: ['Black', 'Navy', 'Royal', 'Scarlet', 'Maroon', 'Optic Pink'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9037_Rolling_Superpack/BM/BRSP2-B_B.jpg',
   },
   {
     id: 'BM-9043',
@@ -169,8 +185,9 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     category: 'Mochilas BM',
     modelFamily: 'Beast Giant Series',
     description: 'Bolsa colosal para coaches o receptores con capacidad masiva para 8+ bates y sets de equipo.',
-    specs: ['Capacidad: 8+ Bats', 'Chasis de triple riel reforzado', 'Divisores modulares interiores'],
+    specs: ['Capacidad: 8+ Bats', 'Chasis de triple riel reinforced', 'Divisores modulares interiores'],
     colorways: ['Black/Teal', 'Navy/Scarlet', 'Charcoal/Lime'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9043_Beast/BM-9043%20B-TL_page-0001.jpg',
   },
   {
     id: 'BM-9045',
@@ -181,6 +198,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Duffle híbrido con estructura tubular y base rígida termoformada contra impactos.',
     specs: ['Base de polímero termoformado', 'Cierre con candado compatible TSA'],
     colorways: ['Solid Black', 'Navy/White', 'Gunmetal'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9044_Brute/BM/BBR2-B_B.jpg',
   },
   {
     id: 'BM-9049',
@@ -191,6 +209,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila aerodinámica para torneos foráneos y viajes en avión con funda para laptop.',
     specs: ['Compartimento para laptop hasta 16"', 'Correa pasa-manos para maleta de viaje'],
     colorways: ['Heather Grey', 'Obsidian Navy', 'Pitch Black'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9049_Prospect/BM/_BM-9049_Master%20Color%20Map-01.jpg',
   },
   {
     id: 'BM-9051',
@@ -201,6 +220,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Convertible instantáneo entre trolley con ruedas de 3" y mochila ergonómica con panel transpirable.',
     specs: ['Cubierta protectora para ruedas en modo mochila', 'Panel lumbar de malla transpirable'],
     colorways: ['Black/Camo', 'Navy/Gold', 'Royal/Scarlet'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9051_Hybrid_Superpack/BM/BM-9051-B_B.jpg',
   },
   {
     id: 'BM-9053',
@@ -211,6 +231,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Versión 20% más amplia que el Superpack estándar para receptores o jugadores con doble guante.',
     specs: ['20% mayor capacidad interna', 'Bolsillos laterales gemelos de neopreno'],
     colorways: ['Black/Carolina Blue', 'Charcoal/Orange', 'Navy/Scarlet'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9053_Superpack_XL/BM/BM-9053-B_B.jpg',
   },
   {
     id: 'BM-9060',
@@ -221,6 +242,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Fusión de mochila de catcher con ruedas de alta tracción y panel rígido dorsal.',
     specs: ['Panel dorsal con placa de policarbonato', 'Ruedas extra anchas tipo off-road'],
     colorways: ['Black/Grey', 'Navy/Silver', 'Royal/Orange'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9060_Hybrid%20Catchers/BM/BM-9060-B_B.jpg',
   },
   {
     id: 'BM-9066',
@@ -231,6 +253,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Mochila de ruedas táctica de alta especificación con acabados militares y tela Cordura.',
     specs: ['Cordura 1000D balística', 'Tiradores de paracord de grado militar'],
     colorways: ['MultiCam Black', 'Coyote Brown', 'Ranger Green'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9066_DEFCON%20Rolling%20Superpack/BM/BM-9066-B_B.jpg',
   },
 
   // FULL DYE APPAREL (FD SERIES)
@@ -243,6 +266,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Jersey de cuello redondo en poliéster Dri-Gear micro-mesh con absorción de humedad.',
     specs: ['Tejido: 100% Micro-Interlock Poliéster 160 GSM', 'Corte: Athletic Fit Unisex', 'Tecnología Moisture-Wicking'],
     colorways: ['Sublimación personalizada full print sin límite de colores'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-163.jpg',
   },
   {
     id: 'FD-163W',
@@ -251,8 +275,9 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     category: 'Full Dye FD',
     modelFamily: 'Sublimated Jersey 163',
     description: "Corte entallado femenino con mangas contorneadas y cuello V estilizado.",
-    specs: ['Corte: Women’s Fitted Pattern', 'Costuras reforzadas Flatlock antirozaduras'],
+    specs: ['Corte: Women’s Fitted Pattern', 'Costuras reinforced Flatlock antirozaduras'],
     colorways: ['Custom Sublimated'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-163W.jpg',
   },
   {
     id: 'FD-163Y',
@@ -263,6 +288,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Patrón proporcional para categorías infantiles y juveniles (YXXS a Y2XL).',
     specs: ['Patrón juvenil ergonómico', 'Tejido ultra elástico resistente a jaloneos'],
     colorways: ['Custom Sublimated'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-163Y.jpg',
   },
   {
     id: 'FD-161',
@@ -273,6 +299,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Jersey con cuello en V reforzado y paneles laterales micro-perforados de máxima ventilación.',
     specs: ['Paneles de ventilación en axilas y laterales', 'Protección solar UPF 30+'],
     colorways: ['Custom Colors / Gradient'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-161.jpg',
   },
   {
     id: 'FD-105',
@@ -283,6 +310,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Jersey clásico de botones completos con botonadura frontal espaciada para rotulación.',
     specs: ['Botonadura de 6 botones reforzados', 'Tejido Pro-Weight Poly-Mesh 220 GSM'],
     colorways: ['Traditional Pinstripe', 'Solid Contrast', 'Sublimated Custom'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-105.jpg',
   },
   {
     id: 'FD-115',
@@ -293,6 +321,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Jersey semi-abierto de 2 botones para torneos y ligas de sóftbol.',
     specs: ['Aletilla de 2 botones', 'Cuello tipo polo con refuerzo'],
     colorways: ['Sublimated Team Edition'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-115.jpg',
   },
   {
     id: 'FD-121',
@@ -303,6 +332,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Musculosa sin mangas sublimada para entrenamiento bajo uniforme o sóftbol de verano.',
     specs: ['4-Way Stretch Lycra Spandex blend', 'Corte amplio en sisas para bateo sin restricción'],
     colorways: ['Custom Prints'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-121.jpg',
   },
   {
     id: 'FD-137',
@@ -313,6 +343,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Jersey de béisbol con manga ranglán que maximiza la movilidad del hombro en lanzadores.',
     specs: ['Construcción de manga raglán', 'Costuras planas de 4 agujas'],
     colorways: ['Contrast Raglan Colors'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-137.jpg',
   },
   {
     id: 'FD-204',
@@ -323,6 +354,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Playera manga larga térmica ligera para calentamiento matutino o clima fresco.',
     specs: ['Interior afelpado ligero Brushed Poly', 'Orificios para pulgares en puños'],
     colorways: ['Custom Artwork'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-204.jpg',
   },
   {
     id: 'FD-205',
@@ -333,6 +365,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Sudadera con capucha y bolsillo canguro sublimada al 100% con forro interior térmico.',
     specs: ['Tech-Fleece 280 GSM', 'Capucha ergonómica con cordones ajustables'],
     colorways: ['Sublimation Team Edition'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-205.jpg',
   },
   {
     id: 'FD-2050',
@@ -340,9 +373,10 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     title: 'Heavyweight Sideline Hoodie (FD-2050)',
     category: 'Full Dye FD',
     modelFamily: 'Sideline Outerwear',
-    description: 'Sudadera de banca reforzada para bajas temperaturas con forro interior de sherpa.',
+    description: 'Sudadera de banca reinforced para bajas temperaturas con forro interior de sherpa.',
     specs: ['Aislamiento térmico de alto rendimiento', 'Bolsillo interior multimedia para celular'],
     colorways: ['Team Custom'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-2050.jpg',
   },
   {
     id: 'FD-206',
@@ -353,6 +387,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Rompevientos corto de 1/4 cierre para práctica de bateo y jaula.',
     specs: ['Tejido repelente al agua y viento DWR', 'Cintura elástica ajustable con tope'],
     colorways: ['Custom Coach Colors'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-206.jpg',
   },
   {
     id: 'FD-207',
@@ -363,6 +398,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Shorts de juego y entrenamiento con bolsillos laterales profundos y pretina reforzada.',
     specs: ['Tiro de 9" con cordón interno', 'Dos bolsillos laterales con costura reforzada'],
     colorways: ['Full Team Sublimation'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-207.jpg',
   },
   {
     id: 'FD-2076',
@@ -373,6 +409,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Jersey entallado de sóftbol rápido femenino con corte de hombro en diamante.',
     specs: ['Diseñado para movimientos de molinete en picheo', 'Tela liviana 145 GSM'],
     colorways: ['Vibrant Neon & Gradient'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-2076.jpg',
   },
   {
     id: 'FD-2076W',
@@ -383,6 +420,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Manga corta tipo casquillo con cuello V cruzado.',
     specs: ['Cap sleeve design', 'Doble costura en dobladillo'],
     colorways: ['Custom Print'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/FD-2076W.jpg',
   },
 
   // PANTS & PLAYER SERIES (PS SERIES)
@@ -395,6 +433,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Pantalón de béisbol profesional en tela elástica pesada de 14 oz con rodilla doble reforzada.',
     specs: ['Tejido: 100% Heavyweight Warp-Knit 14 oz', 'Rodillas reforzadas dobles', 'Pretina de agarre interior de silicona'],
     colorways: ['White/Navy Braid', 'Grey/Black Braid', 'Solid White', 'Solid Grey'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/PS-4070.jpg',
   },
   {
     id: 'PS-4070W',
@@ -405,6 +444,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Pantalón de sóftbol femenino con tiro medio y corte elástico en cadera y muslos.',
     specs: ['Corte específico para sóftbol femenino', 'Cremallera de latón YKK de alta resistencia'],
     colorways: ['White', 'Grey', 'Black', 'Navy'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/PS-4070W.jpg',
   },
   {
     id: 'PS-5075',
@@ -415,6 +455,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Pantalón estilo clásico por debajo de la rodilla (Knicker) con puño elástico para usar con calcetas altas.',
     specs: ['Puño elástico antideslizante bajo la rodilla', '2 bolsillos traseros ribeteados'],
     colorways: ['White/Royal', 'White/Red', 'Grey/Navy'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/PS-5075.jpg',
   },
   {
     id: 'PS-5075W',
@@ -425,6 +466,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Versión Knicker ajustada para mujeres en softbol rápido.',
     specs: ['Pretina elástica de confort con 7 trabillas para cinto', 'Refuerzo en zona de barrida'],
     colorways: ['Custom Contrast Braids'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/PS-5075W.jpg',
   },
   {
     id: 'PS-5082',
@@ -435,6 +477,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Pantalón holgado de bota abierta con dobladillo ajustable y vivos de color en costuras exteriores.',
     specs: ['Bota recta abierta (Open Hem)', 'Vivos de ribete de 1/8" o 1/4" a lo largo de pierna'],
     colorways: ['White with 15+ Braid Colors', 'Grey with Contrast Braids'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/PS-5082.jpg',
   },
   {
     id: 'PS-6036',
@@ -445,6 +488,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Pantalón con panel lateral sublimado de 3 pulgadas con diseño digital a juego con el jersey.',
     specs: ['Panel lateral de 3" personalizable', 'Tejido bielástico de alto estiramiento'],
     colorways: ['Custom Match with FD Jersey'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FD/PS-6036.jpg',
   },
 
   // FORROS & ACCESORIOS
@@ -457,6 +501,7 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Patrón de corte y confección de forro interior impermeable, compartimento de bates y bolsillos organizadores.',
     specs: ['Forro de nylon 210D ripstop', 'Bolsillo acolchado para objetos de valor con cierre termosellado'],
     colorways: ['Graphite Grey Lining'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/FORROS%209088.png',
   },
   {
     id: 'FORRO-9096',
@@ -467,5 +512,9 @@ export const INITIAL_BLUEPRINTS: BlueprintItem[] = [
     description: 'Guía de armado de almohadillas interiores de espuma EVA de doble densidad y tela antimicrobiana.',
     specs: ['Espuma EVA de 12mm termoformada', 'Tratamiento antibacteriano antiolor'],
     colorways: ['Black Foam & Mesh'],
+    imageUrl: 'http://boombah.local/Shares/Public/Product%20Development/user/Juan%20Mercado/BD%20icm/9096/forro/image.png',
   },
 ];
+
+// Alias para garantizar compatibilidad total con exportaciones previas
+export const BLUEPRINTS_DATA = INITIAL_BLUEPRINTS;
