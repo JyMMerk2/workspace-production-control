@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, ZoomIn, X, Upload, Filter, Image as ImageIcon } from 'lucide-react';
+import { Search, ZoomIn, X, Upload, Filter, Image as ImageIcon, FileText } from 'lucide-react';
 import { BlueprintItem } from '../types';
 import { INITIAL_BLUEPRINTS } from '../data/blueprintsData';
 
@@ -7,6 +7,7 @@ export const PlanosView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [blueprints, setBlueprints] = useState<BlueprintItem[]>(INITIAL_BLUEPRINTS);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   // Inspector State
   const [zoomItem, setZoomItem] = useState<BlueprintItem | null>(null);
@@ -27,6 +28,9 @@ export const PlanosView: React.FC = () => {
   // Función de formateo para convertir rutas locales a URLs web del servidor boombah.local
   const formatImageUrl = (url?: string) => {
     if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    if (url.startsWith('/blueprints/')) return url;
+
     return url
       .replace(/^file:\/\/\//i, 'http://boombah.local/')
       .replace(/^file:\/\/boombah\.local\//i, 'http://boombah.local/')
@@ -47,6 +51,10 @@ export const PlanosView: React.FC = () => {
       return matchSearch && matchCategory;
     });
   }, [blueprints, searchTerm, selectedCategory]);
+
+  const handleImageError = (id: string) => {
+    setFailedImages((prev) => ({ ...prev, [id]: true }));
+  };
 
   const handleCustomUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -173,6 +181,7 @@ export const PlanosView: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredBlueprints.map((item) => {
           const formattedUrl = formatImageUrl(item.imageUrl);
+          const isFailed = failedImages[item.id] || !formattedUrl;
 
           return (
             <div
@@ -199,14 +208,12 @@ export const PlanosView: React.FC = () => {
                 onClick={() => setZoomItem(item)}
                 className="relative h-48 bg-[#0a0d13] flex items-center justify-center p-4 cursor-pointer overflow-hidden group-hover:bg-[#07090e] transition-colors border-b border-white/5"
               >
-                {formattedUrl ? (
+                {!isFailed ? (
                   <img
                     src={formattedUrl}
                     alt={item.title}
+                    onError={() => handleImageError(item.id)}
                     className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
                   />
                 ) : (
                   <div className="w-full h-full relative flex items-center justify-center bg-[#07090e] rounded-lg border border-[#00f2fe]/20 p-2 select-none">
@@ -218,13 +225,12 @@ export const PlanosView: React.FC = () => {
                       }}
                     ></div>
                     <div className="relative z-10 flex flex-col items-center justify-center text-center">
-                      <div className="w-24 h-24 rounded-lg border-2 border-dashed border-[#00f2fe]/70 flex flex-col items-center justify-center p-2 bg-[#00f2fe]/5 mb-1 group-hover:border-[#00f2fe] group-hover:bg-[#00f2fe]/10 transition-all">
-                        <ImageIcon className="w-8 h-8 text-[#00f2fe] mb-1" />
-                        <span className="text-[10px] font-black text-white">{item.id}</span>
-                        <span className="text-[8px] font-mono text-[#00f2fe]">CAD SCHEMATIC</span>
+                      <div className="w-20 h-20 rounded-lg border-2 border-dashed border-[#00f2fe]/70 flex flex-col items-center justify-center p-2 bg-[#00f2fe]/5 mb-1 group-hover:border-[#00f2fe] group-hover:bg-[#00f2fe]/10 transition-all">
+                        <FileText className="w-8 h-8 text-[#00f2fe] mb-1" />
+                        <span className="text-[10px] font-black text-white">{item.code}</span>
                       </div>
-                      <span className="text-[10px] text-gray-400 font-mono tracking-wider">
-                        PLANO TÉCNICO OFICIAL
+                      <span className="text-[10px] text-[#00f2fe] font-mono tracking-wider font-bold uppercase">
+                        PLANO TÉCNICO CAD
                       </span>
                     </div>
                   </div>
@@ -361,18 +367,19 @@ export const PlanosView: React.FC = () => {
 
             {/* Image Box Maximized to Screen Limits */}
             <div className="relative w-full h-full flex items-center justify-center p-2 bg-[#0e121a] rounded-lg border border-white/10 overflow-hidden">
-              {zoomItem.imageUrl ? (
+              {zoomItem.imageUrl && !failedImages[zoomItem.id] ? (
                 <img
                   src={formatImageUrl(zoomItem.imageUrl)}
                   alt={zoomItem.title}
+                  onError={() => handleImageError(zoomItem.id)}
                   className="w-full h-full object-contain rounded"
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-[#00f2fe]/40 rounded-xl bg-[#090c12]">
-                  <div className="w-36 h-36 rounded-2xl border-2 border-[#00f2fe] bg-[#00f2fe]/10 flex flex-col items-center justify-center mb-4 shadow-[0_0_20px_rgba(0,242,254,0.2)]">
-                    <ImageIcon className="w-16 h-16 text-[#00f2fe] mb-2" />
-                    <span className="text-sm font-black text-white">{zoomItem.id}</span>
-                    <span className="text-[8px] font-mono text-[#00f2fe]">CAD SCHEMATIC</span>
+                  <div className="w-32 h-32 rounded-2xl border-2 border-[#00f2fe] bg-[#00f2fe]/10 flex flex-col items-center justify-center mb-4 shadow-[0_0_20px_rgba(0,242,254,0.2)]">
+                    <FileText className="w-12 h-12 text-[#00f2fe] mb-1" />
+                    <span className="text-sm font-black text-white">{zoomItem.code}</span>
+                    <span className="text-[9px] font-mono text-[#00f2fe]">PLANO TÉCNICO CAD</span>
                   </div>
                   <h3 className="text-lg font-black text-[#00f2fe] uppercase tracking-wider mb-1">
                     {zoomItem.title}
@@ -389,7 +396,7 @@ export const PlanosView: React.FC = () => {
               )}
 
               {/* Direct Overlay Magnifying Lens */}
-              {lupaActive && zoomItem.imageUrl && (
+              {lupaActive && zoomItem.imageUrl && !failedImages[zoomItem.id] && (
                 <div
                   className="absolute pointer-events-none rounded-full border-3 border-white shadow-[0_0_30px_rgba(0,0,0,0.9)] overflow-hidden bg-[#07090e] z-30"
                   style={{
