@@ -24,6 +24,16 @@ export const PlanosView: React.FC = () => {
 
   const categories = ['Todos', 'Mochilas BM', 'Mochilas PS', 'Full Dye FD', 'Pantalones PS', 'Forros y Accesorios'];
 
+  // Función de formateo para convertir rutas locales a URLs web del servidor boombah.local
+  const formatImageUrl = (url?: string) => {
+    if (!url) return '';
+    return url
+      .replace(/^file:\/\/\//i, 'http://boombah.local/')
+      .replace(/^file:\/\/boombah\.local\//i, 'http://boombah.local/')
+      .replace(/^P:\//i, 'http://boombah.local/Shares/Public/')
+      .replace(/\\/g, '/');
+  };
+
   const filteredBlueprints = useMemo(() => {
     return blueprints.filter((b) => {
       const matchSearch =
@@ -161,99 +171,106 @@ export const PlanosView: React.FC = () => {
 
       {/* Blueprints Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredBlueprints.map((item) => (
-          <div
-            key={item.id}
-            className="bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-[0_8px_25px_rgba(0,0,0,0.3)] hover:border-[#00f2fe]/50 hover:shadow-[0_10px_30px_rgba(0,242,254,0.2)] transition-all flex flex-col group"
-          >
-            {/* Card Header */}
-            <div className="p-4 border-b border-white/5 flex items-center justify-between bg-[#0d1017]">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-[#00f2fe]/15 border border-[#00f2fe]/40 text-[#00f2fe] font-black text-xs">
-                  {item.code}
-                </span>
-                <span className="text-xs font-bold text-gray-200 truncate max-w-[180px]">
-                  {item.modelFamily}
-                </span>
-              </div>
-              <span className="text-[10px] uppercase font-extrabold text-[#8f9ba8] px-2 py-0.5 rounded bg-white/5">
-                {item.category}
-              </span>
-            </div>
+        {filteredBlueprints.map((item) => {
+          const formattedUrl = formatImageUrl(item.imageUrl);
 
-            {/* Blueprint Schematic Preview Box */}
+          return (
             <div
-              onClick={() => setZoomItem(item)}
-              className="relative h-48 bg-[#0a0d13] flex items-center justify-center p-4 cursor-pointer overflow-hidden group-hover:bg-[#07090e] transition-colors border-b border-white/5"
+              key={item.id}
+              className="bg-[#12161f] border border-white/10 rounded-xl overflow-hidden shadow-[0_8px_25px_rgba(0,0,0,0.3)] hover:border-[#00f2fe]/50 hover:shadow-[0_10px_30px_rgba(0,242,254,0.2)] transition-all flex flex-col group"
             >
-              {item.imageUrl ? (
-                <img
-                  src={item.imageUrl}
-                  alt={item.title}
-                  className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
-                />
-              ) : (
-                <div className="w-full h-full relative flex items-center justify-center bg-[#07090e] rounded-lg border border-[#00f2fe]/20 p-2 select-none">
-                  <div
-                    className="absolute inset-0 opacity-15"
-                    style={{
-                      backgroundImage: `linear-gradient(to right, #00f2fe 1px, transparent 1px), linear-gradient(to bottom, #00f2fe 1px, transparent 1px)`,
-                      backgroundSize: '16px 16px',
-                    }}
-                  ></div>
-                  <div className="relative z-10 flex flex-col items-center justify-center text-center">
-                    <div className="w-24 h-24 rounded-lg border-2 border-dashed border-[#00f2fe]/70 flex flex-col items-center justify-center p-2 bg-[#00f2fe]/5 mb-1 group-hover:border-[#00f2fe] group-hover:bg-[#00f2fe]/10 transition-all">
-                      <ImageIcon className="w-8 h-8 text-[#00f2fe] mb-1" />
-                      <span className="text-[10px] font-black text-white">{item.id}</span>
-                      <span className="text-[8px] font-mono text-[#00f2fe]">CAD SCHEMATIC</span>
-                    </div>
-                    <span className="text-[10px] text-gray-400 font-mono tracking-wider">
-                      PLANO TÉCNICO OFICIAL
-                    </span>
-                  </div>
+              {/* Card Header */}
+              <div className="p-4 border-b border-white/5 flex items-center justify-between bg-[#0d1017]">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-[#00f2fe]/15 border border-[#00f2fe]/40 text-[#00f2fe] font-black text-xs">
+                    {item.code}
+                  </span>
+                  <span className="text-xs font-bold text-gray-200 truncate max-w-[180px]">
+                    {item.modelFamily}
+                  </span>
                 </div>
-              )}
-              <div className="absolute inset-0 bg-[#00f2fe]/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs">
-                <ZoomIn className="w-4 h-4 text-[#00f2fe]" />
-                <span className="bg-[#12161f]/90 px-3 py-1.5 rounded-full border border-[#00f2fe]/50 shadow-lg text-[#00f2fe]">
-                  Abrir Lupa e Inspeccionar
+                <span className="text-[10px] uppercase font-extrabold text-[#8f9ba8] px-2 py-0.5 rounded bg-white/5">
+                  {item.category}
                 </span>
               </div>
-            </div>
 
-            {/* Card Body */}
-            <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-sm font-bold text-white mb-1 group-hover:text-[#00f2fe] transition-colors">
-                  {item.title}
-                </h3>
-                <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
-                  {item.description}
-                </p>
-              </div>
-
-              <div className="space-y-1 bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
-                <span className="text-[10px] font-bold text-[#8f9ba8] uppercase block">
-                  Especificaciones Clave:
-                </span>
-                {item.specs.slice(0, 2).map((sp, sIdx) => (
-                  <div key={sIdx} className="flex items-center gap-1.5 text-[11px] text-gray-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#00f2fe]"></span>
-                    <span className="truncate">{sp}</span>
-                  </div>
-                ))}
-              </div>
-
-              <button
+              {/* Blueprint Schematic Preview Box */}
+              <div
                 onClick={() => setZoomItem(item)}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_8px_rgba(0,242,254,0.15)]"
+                className="relative h-48 bg-[#0a0d13] flex items-center justify-center p-4 cursor-pointer overflow-hidden group-hover:bg-[#07090e] transition-colors border-b border-white/5"
               >
-                <ZoomIn className="w-3.5 h-3.5" />
-                <span>Inspeccionar Plano (Pantalla Completa)</span>
-              </button>
+                {formattedUrl ? (
+                  <img
+                    src={formattedUrl}
+                    alt={item.title}
+                    className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full relative flex items-center justify-center bg-[#07090e] rounded-lg border border-[#00f2fe]/20 p-2 select-none">
+                    <div
+                      className="absolute inset-0 opacity-15"
+                      style={{
+                        backgroundImage: `linear-gradient(to right, #00f2fe 1px, transparent 1px), linear-gradient(to bottom, #00f2fe 1px, transparent 1px)`,
+                        backgroundSize: '16px 16px',
+                      }}
+                    ></div>
+                    <div className="relative z-10 flex flex-col items-center justify-center text-center">
+                      <div className="w-24 h-24 rounded-lg border-2 border-dashed border-[#00f2fe]/70 flex flex-col items-center justify-center p-2 bg-[#00f2fe]/5 mb-1 group-hover:border-[#00f2fe] group-hover:bg-[#00f2fe]/10 transition-all">
+                        <ImageIcon className="w-8 h-8 text-[#00f2fe] mb-1" />
+                        <span className="text-[10px] font-black text-white">{item.id}</span>
+                        <span className="text-[8px] font-mono text-[#00f2fe]">CAD SCHEMATIC</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-mono tracking-wider">
+                        PLANO TÉCNICO OFICIAL
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-[#00f2fe]/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-xs">
+                  <ZoomIn className="w-4 h-4 text-[#00f2fe]" />
+                  <span className="bg-[#12161f]/90 px-3 py-1.5 rounded-full border border-[#00f2fe]/50 shadow-lg text-[#00f2fe]">
+                    Abrir Lupa e Inspeccionar
+                  </span>
+                </div>
+              </div>
+
+              {/* Card Body */}
+              <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-1 group-hover:text-[#00f2fe] transition-colors">
+                    {item.title}
+                  </h3>
+                  <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
+                    {item.description}
+                  </p>
+                </div>
+
+                <div className="space-y-1 bg-[#0d1017] p-2.5 rounded-lg border border-white/5">
+                  <span className="text-[10px] font-bold text-[#8f9ba8] uppercase block">
+                    Especificaciones Clave:
+                  </span>
+                  {item.specs.slice(0, 2).map((sp, sIdx) => (
+                    <div key={sIdx} className="flex items-center gap-1.5 text-[11px] text-gray-300">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#00f2fe]"></span>
+                      <span className="truncate">{sp}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setZoomItem(item)}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_8px_rgba(0,242,254,0.15)]"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                  <span>Inspeccionar Plano (Pantalla Completa)</span>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {filteredBlueprints.length === 0 && (
@@ -346,7 +363,7 @@ export const PlanosView: React.FC = () => {
             <div className="relative w-full h-full flex items-center justify-center p-2 bg-[#0e121a] rounded-lg border border-white/10 overflow-hidden">
               {zoomItem.imageUrl ? (
                 <img
-                  src={zoomItem.imageUrl}
+                  src={formatImageUrl(zoomItem.imageUrl)}
                   alt={zoomItem.title}
                   className="w-full h-full object-contain rounded"
                 />
@@ -385,7 +402,7 @@ export const PlanosView: React.FC = () => {
                   <div
                     className="w-full h-full relative"
                     style={{
-                      backgroundImage: `url('${zoomItem.imageUrl}')`,
+                      backgroundImage: `url('${formatImageUrl(zoomItem.imageUrl)}')`,
                       backgroundRepeat: 'no-repeat',
                       backgroundSize: `${zoomLevel * 100}%`,
                       backgroundPosition: `${mousePos.relX}% ${mousePos.relY}%`,
