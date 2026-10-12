@@ -144,17 +144,17 @@ body.dark {
   border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
-/* 3. Azul Táctico / Fábrica */
+/* 3. Hobbes Natural / Táctico (Inspirado en la estética orgánica/selva) */
 [data-theme='tactical-blue'] body.dark,
 [data-theme='tactical-blue'] .min-h-screen {
-  background-color: #07111e !important;
+  background-color: #09140e !important;
 }
 [data-theme='tactical-blue'] header,
 [data-theme='tactical-blue'] aside,
 [data-theme='tactical-blue'] div[class*="bg-[#12161f]"],
 [data-theme='tactical-blue'] div[class*="bg-[#0d1017]"] {
-  background-color: #0f1d30 !important;
-  border-color: rgba(56, 189, 248, 0.25) !important;
+  background-color: #102117 !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
 }
 
 /* 4. Modo Claro Corporativo */
