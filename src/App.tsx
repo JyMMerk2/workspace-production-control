@@ -359,6 +359,8 @@ export default function App() {
         authenticatedUser={authenticatedUser}
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
+        currentTheme={currentTheme}
+        onSelectTheme={(theme) => setCurrentTheme(theme)}
         metrics={{
           totalOrdenesDia,
           capturadoOrdenesDia,
