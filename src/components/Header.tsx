@@ -275,7 +275,6 @@ export const Header: React.FC<HeaderProps> = ({
                     key={theme.id}
                     onClick={() => {
                       if (onSelectTheme) onSelectTheme(theme.id);
-                      setIsThemeModalOpen(false);
                     }}
                     className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                       isSelected
