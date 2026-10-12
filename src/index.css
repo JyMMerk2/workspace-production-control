@@ -131,7 +131,7 @@ body.dark {
   background-color: #0b0e14 !important;
 }
 
-/* 2. ORACLE NETSUITE REDWOOD (Sobrio, Elegante y Tono Profesional) */
+/* 2. ORACLE NETSUITE REDWOOD (Purificación Total de Colores Neón) */
 [data-theme='netsuite-erp'] body {
   background-color: #132832 !important;
   color: #f8fafc !important;
@@ -154,34 +154,60 @@ body.dark {
   color: #ffffff !important;
 }
 
-/* Reemplazo Universal de Colores Neón Hardcodeados en NetSuite */
+/* Neutralización Estricta de Bordes Neón en Tarjetas KPI */
+[data-theme='netsuite-erp'] main div,
+[data-theme='netsuite-erp'] main section {
+  border-color: rgba(229, 169, 60, 0.3) !important;
+}
+
+/* Sobreescritura de Textos Múltiples de Tailwind en NetSuite */
 [data-theme='netsuite-erp'] .text-\[\#00f2fe\],
+[data-theme='netsuite-erp'] .text-cyan-300,
 [data-theme='netsuite-erp'] .text-cyan-400,
 [data-theme='netsuite-erp'] .text-cyan-500 {
-  color: #e5a93c !important; /* Dorado NetSuite */
+  color: #e5a93c !important; /* Dorado Warm NetSuite Redwood */
 }
 
 [data-theme='netsuite-erp'] .text-\[\#ff007f\],
-[data-theme='netsuite-erp'] .text-rose-400 {
+[data-theme='netsuite-erp'] .text-rose-400,
+[data-theme='netsuite-erp'] .text-rose-500,
+[data-theme='netsuite-erp'] .text-pink-500 {
   color: #ff7e67 !important; /* Coral NetSuite Redwood */
 }
 
 [data-theme='netsuite-erp'] .text-\[\#39ff14\],
-[data-theme='netsuite-erp'] .text-emerald-400 {
-  color: #38bdf8 !important; /* Azul Acero Profesional */
+[data-theme='netsuite-erp'] .text-emerald-400,
+[data-theme='netsuite-erp'] .text-emerald-500,
+[data-theme='netsuite-erp'] .text-green-400 {
+  color: #38bdf8 !important; /* Azul Acero NetSuite */
 }
 
-/* Eliminación de Resplandores/Glows Neón en Botones y Badges */
-[data-theme='netsuite-erp'] [class*="shadow-[0_0_"],
-[data-theme='netsuite-erp'] [class*="shadow-[0_4px_20px"] {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+[data-theme='netsuite-erp'] .text-amber-400,
+[data-theme='netsuite-erp'] .text-yellow-400,
+[data-theme='netsuite-erp'] .text-yellow-500 {
+  color: #e5a93c !important; /* Dorado NetSuite */
 }
 
-/* Tarjetas e Interfaz */
+/* Ajuste de Barras de Gráficos y Elementos de Estado */
+[data-theme='netsuite-erp'] .bg-\[\#39ff14\],
+[data-theme='netsuite-erp'] .bg-emerald-500 {
+  background-color: #38bdf8 !important;
+}
+
+[data-theme='netsuite-erp'] .bg-\[\#00f2fe\],
+[data-theme='netsuite-erp'] .bg-cyan-500 {
+  background-color: #e5a93c !important;
+}
+
+[data-theme='netsuite-erp'] .bg-\[\#ff007f\],
+[data-theme='netsuite-erp'] .bg-rose-500 {
+  background-color: #ff7e67 !important;
+}
+
+/* Tarjetas Generales */
 [data-theme='netsuite-erp'] main div[class*="bg-[#"],
 [data-theme='netsuite-erp'] main section[class*="bg-[#"] {
   background-color: #1a3744 !important;
-  border-color: rgba(229, 169, 60, 0.3) !important;
   color: #f8fafc !important;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
 }
@@ -193,6 +219,12 @@ body.dark {
 [data-theme='netsuite-erp'] main p,
 [data-theme='netsuite-erp'] main span:not([class*="text-"]) {
   color: #f8fafc !important;
+}
+
+/* Eliminación de Resplandores/Glows Neón */
+[data-theme='netsuite-erp'] [class*="shadow-[0_0_"],
+[data-theme='netsuite-erp'] [class*="shadow-[0_4px_20px"] {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* 3. SAP FIORI (Gris Hielo / Azul Cobalto / Tarjetas Blancas) */
