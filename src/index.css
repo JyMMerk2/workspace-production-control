@@ -131,19 +131,19 @@ body.dark {
   background-color: #0b0e14 !important;
 }
 
-/* 2. NETSUITE ERP (Azul Marino Ejecutivo / Blanco Puro / Gris Acero) */
+/* 2. ORACLE NETSUITE REDWOOD (Cian Petróleo / Tarjetas Azul Oscuro / Bordes Dorados) */
 [data-theme='netsuite-erp'] body {
-  background-color: #e2e8f0 !important;
-  color: #0f172a !important;
+  background-color: #132832 !important;
+  color: #f8fafc !important;
 }
 [data-theme='netsuite-erp'] header {
-  background-color: #1e3a8a !important;
-  border-color: #3b82f6 !important;
+  background-color: #1a3744 !important;
+  border-color: #e5a93c !important;
   color: #ffffff !important;
 }
 [data-theme='netsuite-erp'] aside {
-  background-color: #0f172a !important;
-  border-color: #334155 !important;
+  background-color: #0f1e26 !important;
+  border-color: #244657 !important;
 }
 [data-theme='netsuite-erp'] aside span,
 [data-theme='netsuite-erp'] header span {
@@ -151,10 +151,10 @@ body.dark {
 }
 [data-theme='netsuite-erp'] main div[class*="bg-[#"],
 [data-theme='netsuite-erp'] main section[class*="bg-[#"] {
-  background-color: #ffffff !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06) !important;
+  background-color: #1a3744 !important;
+  border-color: rgba(229, 169, 60, 0.4) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
 }
 [data-theme='netsuite-erp'] h1,
 [data-theme='netsuite-erp'] h2,
@@ -162,10 +162,10 @@ body.dark {
 [data-theme='netsuite-erp'] h4,
 [data-theme='netsuite-erp'] main p,
 [data-theme='netsuite-erp'] main span:not([class*="text-"]) {
-  color: #0f172a !important;
+  color: #f8fafc !important;
 }
 [data-theme='netsuite-erp'] .text-\[\#00f2fe\] {
-  color: #0284c7 !important;
+  color: #e5a93c !important;
 }
 
 /* 3. SAP FIORI (Gris Hielo / Azul Cobalto / Tarjetas Blancas) */
