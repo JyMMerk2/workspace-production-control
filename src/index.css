@@ -123,7 +123,7 @@ body.dark {
 }
 
 /* =========================================================
-   ESTILOS DINÁMICOS DE TEMAS PERSONALIZADOS (8 TEMAS)
+   ESTILOS DINÁMICOS DE TEMAS PERSONALIZADOS (12 TEMAS)
    ========================================================= */
 
 /* 1. Neón Cyberpunk (Predeterminado) */
@@ -131,7 +131,110 @@ body.dark {
   background-color: #0b0e14 !important;
 }
 
-/* 2. Oscuro Clásico / Indigo */
+/* 2. NetSuite ERP / Corporativo */
+[data-theme='netsuite-erp'] body {
+  background-color: #eef2f6 !important;
+  color: #0f172a !important;
+}
+[data-theme='netsuite-erp'] header {
+  background-color: #1e3a8a !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+[data-theme='netsuite-erp'] aside {
+  background-color: #0f172a !important;
+  border-color: #334155 !important;
+}
+[data-theme='netsuite-erp'] main div[class*="bg-[#12161f]"],
+[data-theme='netsuite-erp'] main div[class*="bg-[#0d1017]"],
+[data-theme='netsuite-erp'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+[data-theme='netsuite-erp'] .text-\[\#00f2fe\] {
+  color: #0284c7 !important;
+}
+
+/* 3. SAP Fiori / Enterprise */
+[data-theme='sap-fiori'] body {
+  background-color: #f5f7fa !important;
+  color: #1c2d42 !important;
+}
+[data-theme='sap-fiori'] header {
+  background-color: #1c2d42 !important;
+  border-color: #0a6ed1 !important;
+  color: #ffffff !important;
+}
+[data-theme='sap-fiori'] aside {
+  background-color: #2c3e50 !important;
+  border-color: #34495e !important;
+}
+[data-theme='sap-fiori'] main div[class*="bg-[#12161f]"],
+[data-theme='sap-fiori'] main div[class*="bg-[#0d1017]"],
+[data-theme='sap-fiori'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #ffffff !important;
+  border-color: #d1d9e6 !important;
+  color: #1c2d42 !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) !important;
+}
+[data-theme='sap-fiori'] .text-\[\#00f2fe\] {
+  color: #0a6ed1 !important;
+}
+
+/* 4. Salesforce Lightning */
+[data-theme='salesforce-lightning'] body {
+  background-color: #f3f5f9 !important;
+  color: #080707 !important;
+}
+[data-theme='salesforce-lightning'] header {
+  background-color: #0176d3 !important;
+  border-color: #014486 !important;
+  color: #ffffff !important;
+}
+[data-theme='salesforce-lightning'] aside {
+  background-color: #180808 !important;
+  border-color: #2e2e2e !important;
+}
+[data-theme='salesforce-lightning'] main div[class*="bg-[#12161f]"],
+[data-theme='salesforce-lightning'] main div[class*="bg-[#0d1017]"],
+[data-theme='salesforce-lightning'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #ffffff !important;
+  border-color: #dddbda !important;
+  color: #080707 !important;
+  border-radius: 8px !important;
+}
+[data-theme='salesforce-lightning'] .text-\[\#00f2fe\] {
+  color: #0176d3 !important;
+}
+
+/* 5. Microsoft Dynamics 365 */
+[data-theme='ms-dynamics'] body {
+  background-color: #f3f2f1 !important;
+  color: #201f1e !important;
+}
+[data-theme='ms-dynamics'] header {
+  background-color: #002050 !important;
+  border-color: #008272 !important;
+  color: #ffffff !important;
+}
+[data-theme='ms-dynamics'] aside {
+  background-color: #11100f !important;
+  border-color: #323130 !important;
+}
+[data-theme='ms-dynamics'] main div[class*="bg-[#12161f]"],
+[data-theme='ms-dynamics'] main div[class*="bg-[#0d1017]"],
+[data-theme='ms-dynamics'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #ffffff !important;
+  border-color: #e1dfdd !important;
+  color: #201f1e !important;
+}
+[data-theme='ms-dynamics'] .text-\[\#00f2fe\] {
+  color: #008272 !important;
+}
+
+/* 6. Oscuro Clásico / Indigo */
 [data-theme='dark-classic'] body.dark,
 [data-theme='dark-classic'] .min-h-screen {
   background-color: #0f172a !important;
@@ -145,7 +248,7 @@ body.dark {
   border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
-/* 3. Hobbes Natural / Táctico (Verde Selva) */
+/* 7. Hobbes Natural / Táctico (Verde Selva) */
 [data-theme='tactical-blue'] body.dark,
 [data-theme='tactical-blue'] .min-h-screen {
   background-color: #09140e !important;
@@ -162,7 +265,7 @@ body.dark {
   color: #10b981 !important;
 }
 
-/* 4. Matrix Violeta / Dragón (Púrpura Profundo) */
+/* 8. Matrix Violeta / Dragón (Púrpura Profundo) */
 [data-theme='matrix-purple'] body.dark,
 [data-theme='matrix-purple'] .min-h-screen {
   background-color: #160826 !important;
@@ -179,7 +282,7 @@ body.dark {
   color: #c084fc !important;
 }
 
-/* 5. Fuego Industrial / Boombah Gold (Grafito y Dorado) */
+/* 9. Fuego Industrial / Boombah Gold (Grafito y Dorado) */
 [data-theme='fire-gold'] body.dark,
 [data-theme='fire-gold'] .min-h-screen {
   background-color: #121212 !important;
@@ -196,7 +299,7 @@ body.dark {
   color: #f59e0b !important;
 }
 
-/* 6. Rojo Carmesí / Valkyria (Vino y Rojo Vivo) */
+/* 10. Rojo Carmesí / Valkyria (Vino y Rojo Vivo) */
 [data-theme='crimson-red'] body.dark,
 [data-theme='crimson-red'] .min-h-screen {
   background-color: #1a0909 !important;
@@ -213,7 +316,7 @@ body.dark {
   color: #ef4444 !important;
 }
 
-/* 7. Azul Abisal / Submarino (Oceanico Profundo y Cian) */
+/* 11. Azul Abisal / Submarino (Oceanico Profundo y Cian) */
 [data-theme='deep-ocean'] body.dark,
 [data-theme='deep-ocean'] .min-h-screen {
   background-color: #031326 !important;
@@ -230,7 +333,7 @@ body.dark {
   color: #06b6d4 !important;
 }
 
-/* 8. Modo Claro Corporativo */
+/* 12. Modo Claro Corporativo */
 [data-theme='light-corporate'] body {
   background-color: #f8fafc !important;
   color: #0f172a !important;
