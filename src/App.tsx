@@ -57,27 +57,34 @@ export default function App() {
     const root = document.documentElement;
     const body = document.body;
 
-    localStorage.setItem('theme_mode', darkMode ? 'dark' : 'light');
     localStorage.setItem('boombah_app_theme', currentTheme);
-
-    // Aplicar atributo de tema
     root.setAttribute('data-theme', currentTheme);
 
-    if (darkMode) {
-      root.classList.add('dark');
-      root.classList.remove('light');
-      body.classList.add('dark');
-      body.classList.remove('light');
-    } else {
+    // Si el usuario elige "Modo Claro Corporativo", cambiar a Modo Claro universal
+    if (currentTheme === 'light-corporate') {
+      setDarkMode(false);
+      localStorage.setItem('theme_mode', 'light');
       root.classList.add('light');
       root.classList.remove('dark');
       body.classList.add('light');
       body.classList.remove('dark');
+    } else {
+      // Para Neón Cyberpunk, Oscuro Clásico y Azul Táctico, activar Modo Oscuro
+      setDarkMode(true);
+      localStorage.setItem('theme_mode', 'dark');
+      root.classList.add('dark');
+      root.classList.remove('light');
+      body.classList.add('dark');
+      body.classList.remove('light');
     }
-  }, [darkMode, currentTheme]);
+  }, [currentTheme]);
 
   const toggleTheme = () => {
-    setDarkMode(prevMode => !prevMode);
+    setDarkMode(prevMode => {
+      const nextMode = !prevMode;
+      localStorage.setItem('theme_mode', nextMode ? 'dark' : 'light');
+      return nextMode;
+    });
   };
 
   // VERIFICACIÓN INICIAL Y TIEMPO REAL DE SUPABASE AUTH (GOOGLE OAUTH)
