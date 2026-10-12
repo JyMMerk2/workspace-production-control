@@ -123,7 +123,7 @@ body.dark {
 }
 
 /* =========================================================
-   ESTILOS DINÁMICOS DE TEMAS PERSONALIZADOS
+   ESTILOS DINÁMICOS DE TEMAS PERSONALIZADOS (8 TEMAS)
    ========================================================= */
 
 /* 1. Neón Cyberpunk (Predeterminado) */
@@ -131,33 +131,106 @@ body.dark {
   background-color: #0b0e14 !important;
 }
 
-/* 2. Oscuro Clásico */
+/* 2. Oscuro Clásico / Indigo */
 [data-theme='dark-classic'] body.dark,
 [data-theme='dark-classic'] .min-h-screen {
   background-color: #0f172a !important;
 }
 [data-theme='dark-classic'] header,
 [data-theme='dark-classic'] aside,
-[data-theme='dark-classic'] div[class*="bg-[#12161f]"],
-[data-theme='dark-classic'] div[class*="bg-[#0d1017]"] {
+[data-theme='dark-classic'] main div[class*="bg-[#12161f]"],
+[data-theme='dark-classic'] main div[class*="bg-[#0d1017]"],
+[data-theme='dark-classic'] main div[class*="bg-[#0b0e14]"] {
   background-color: #1e293b !important;
   border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
-/* 3. Hobbes Natural / Táctico (Inspirado en la estética orgánica/selva) */
+/* 3. Hobbes Natural / Táctico (Verde Selva) */
 [data-theme='tactical-blue'] body.dark,
 [data-theme='tactical-blue'] .min-h-screen {
   background-color: #09140e !important;
 }
 [data-theme='tactical-blue'] header,
 [data-theme='tactical-blue'] aside,
-[data-theme='tactical-blue'] div[class*="bg-[#12161f]"],
-[data-theme='tactical-blue'] div[class*="bg-[#0d1017]"] {
+[data-theme='tactical-blue'] main div[class*="bg-[#12161f]"],
+[data-theme='tactical-blue'] main div[class*="bg-[#0d1017]"],
+[data-theme='tactical-blue'] main div[class*="bg-[#0b0e14]"] {
   background-color: #102117 !important;
   border-color: rgba(16, 185, 129, 0.35) !important;
 }
+[data-theme='tactical-blue'] .text-\[\#00f2fe\] {
+  color: #10b981 !important;
+}
 
-/* 4. Modo Claro Corporativo */
+/* 4. Matrix Violeta / Dragón (Púrpura Profundo) */
+[data-theme='matrix-purple'] body.dark,
+[data-theme='matrix-purple'] .min-h-screen {
+  background-color: #160826 !important;
+}
+[data-theme='matrix-purple'] header,
+[data-theme='matrix-purple'] aside,
+[data-theme='matrix-purple'] main div[class*="bg-[#12161f]"],
+[data-theme='matrix-purple'] main div[class*="bg-[#0d1017]"],
+[data-theme='matrix-purple'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #230f38 !important;
+  border-color: rgba(192, 132, 252, 0.35) !important;
+}
+[data-theme='matrix-purple'] .text-\[\#00f2fe\] {
+  color: #c084fc !important;
+}
+
+/* 5. Fuego Industrial / Boombah Gold (Grafito y Dorado) */
+[data-theme='fire-gold'] body.dark,
+[data-theme='fire-gold'] .min-h-screen {
+  background-color: #121212 !important;
+}
+[data-theme='fire-gold'] header,
+[data-theme='fire-gold'] aside,
+[data-theme='fire-gold'] main div[class*="bg-[#12161f]"],
+[data-theme='fire-gold'] main div[class*="bg-[#0d1017]"],
+[data-theme='fire-gold'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #1e1e1e !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+[data-theme='fire-gold'] .text-\[\#00f2fe\] {
+  color: #f59e0b !important;
+}
+
+/* 6. Rojo Carmesí / Valkyria (Vino y Rojo Vivo) */
+[data-theme='crimson-red'] body.dark,
+[data-theme='crimson-red'] .min-h-screen {
+  background-color: #1a0909 !important;
+}
+[data-theme='crimson-red'] header,
+[data-theme='crimson-red'] aside,
+[data-theme='crimson-red'] main div[class*="bg-[#12161f]"],
+[data-theme='crimson-red'] main div[class*="bg-[#0d1017]"],
+[data-theme='crimson-red'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #291010 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+[data-theme='crimson-red'] .text-\[\#00f2fe\] {
+  color: #ef4444 !important;
+}
+
+/* 7. Azul Abisal / Submarino (Oceanico Profundo y Cian) */
+[data-theme='deep-ocean'] body.dark,
+[data-theme='deep-ocean'] .min-h-screen {
+  background-color: #031326 !important;
+}
+[data-theme='deep-ocean'] header,
+[data-theme='deep-ocean'] aside,
+[data-theme='deep-ocean'] main div[class*="bg-[#12161f]"],
+[data-theme='deep-ocean'] main div[class*="bg-[#0d1017]"],
+[data-theme='deep-ocean'] main div[class*="bg-[#0b0e14]"] {
+  background-color: #071f3a !important;
+  border-color: rgba(6, 182, 212, 0.4) !important;
+}
+[data-theme='deep-ocean'] .text-\[\#00f2fe\] {
+  color: #06b6d4 !important;
+}
+
+/* 8. Modo Claro Corporativo */
 [data-theme='light-corporate'] body {
   background-color: #f8fafc !important;
   color: #0f172a !important;
