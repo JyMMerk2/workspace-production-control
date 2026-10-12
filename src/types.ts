@@ -96,8 +96,16 @@ export interface SheetConfig {
   subTabs: SubmenuItem[];
 }
 
-// --- CONFIGURACIÓN DE TEMAS / APARIENCIA ---
-export type ThemeType = 'neon-cyber' | 'dark-classic' | 'light-corporate' | 'tactical-blue';
+// --- CONFIGURACIÓN DE TEMAS / APARIENCIA (8 OPCIONES) ---
+export type ThemeType = 
+  | 'neon-cyber' 
+  | 'dark-classic' 
+  | 'tactical-blue' 
+  | 'matrix-purple'
+  | 'fire-gold'
+  | 'crimson-red'
+  | 'deep-ocean'
+  | 'light-corporate';
 
 export interface ThemeOption {
   id: ThemeType;
