@@ -12,7 +12,9 @@ import {
   Shirt,
   Palette as PaletteIcon,
   X,
-  Check
+  Check,
+  Zap,
+  Briefcase
 } from 'lucide-react';
 import { THEME_OPTIONS } from '../data/themesData';
 import { ThemeType } from '../types';
@@ -64,6 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
   metrics = {}
 }) => {
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'neon' | 'corporate'>('neon');
 
   if (!headerVisible) {
     return (
@@ -92,6 +95,16 @@ export const Header: React.FC<HeaderProps> = ({
       onLogout();
     }
   };
+
+  // Filtrado de temas por categoría
+  const corporateThemeIds = ['netsuite-erp', 'sap-fiori', 'salesforce-lightning', 'ms-dynamics', 'light-corporate'];
+  
+  const filteredThemes = THEME_OPTIONS.filter((theme) => {
+    if (activeTab === 'corporate') {
+      return corporateThemeIds.includes(theme.id);
+    }
+    return !corporateThemeIds.includes(theme.id);
+  });
 
   return (
     <>
@@ -251,11 +264,13 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
-      {/* MODAL CON ALTA LEGIBILIDAD GARANTIZADA */}
+      {/* MODAL CORREGIDO CON SCROLL PROPIO Y CATEGORÍAS */}
       {isThemeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md no-print">
-          <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl w-full max-w-md p-6 shadow-[0_0_40px_rgba(0,242,254,0.3)] space-y-5">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl w-full max-w-md p-5 shadow-[0_0_40px_rgba(0,242,254,0.3)] flex flex-col max-h-[80vh]">
+            
+            {/* Cabecera del Modal */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
               <span className="text-sm font-black uppercase text-[#00f2fe] flex items-center gap-2 tracking-wider">
                 <PaletteIcon className="w-4 h-4" /> Personalización de Tema
               </span>
@@ -267,8 +282,33 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3">
-              {THEME_OPTIONS.map((theme) => {
+            {/* Pestañas de Categoría */}
+            <div className="flex gap-2 my-3 p-1 bg-[#0d1017] rounded-xl border border-white/10 shrink-0">
+              <button
+                onClick={() => setActiveTab('neon')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  activeTab === 'neon'
+                    ? 'bg-[#00f2fe] text-[#0b0e14] shadow-[0_0_10px_rgba(0,242,254,0.4)]'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" /> Dark & Neón
+              </button>
+              <button
+                onClick={() => setActiveTab('corporate')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  activeTab === 'corporate'
+                    ? 'bg-[#00f2fe] text-[#0b0e14] shadow-[0_0_10px_rgba(0,242,254,0.4)]'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Briefcase className="w-3.5 h-3.5" /> ERP Corporativo
+              </button>
+            </div>
+
+            {/* Contenedor con Scroll Interno Propio */}
+            <div className="space-y-2.5 overflow-y-auto pr-1 my-1 flex-1 custom-scrollbar">
+              {filteredThemes.map((theme) => {
                 const isSelected = currentTheme === theme.id;
                 return (
                   <button
@@ -276,7 +316,7 @@ export const Header: React.FC<HeaderProps> = ({
                     onClick={() => {
                       if (onSelectTheme) onSelectTheme(theme.id);
                     }}
-                    className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-[#00f2fe]/20 border-[#00f2fe] shadow-[0_0_15px_rgba(0,242,254,0.3)]'
                         : 'bg-[#0d1017] border-white/10 hover:border-white/30'
@@ -319,7 +359,8 @@ export const Header: React.FC<HeaderProps> = ({
               })}
             </div>
 
-            <div className="pt-2 text-right">
+            {/* Pie del Modal */}
+            <div className="pt-3 border-t border-white/10 text-right shrink-0">
               <button
                 onClick={() => setIsThemeModalOpen(false)}
                 className="px-5 py-2 bg-[#00f2fe] text-[#0b0e14] font-black rounded-xl text-xs hover:bg-[#00f2fe]/80 transition-all cursor-pointer shadow-[0_0_10px_rgba(0,242,254,0.4)]"
