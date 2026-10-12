@@ -15,14 +15,14 @@ export const THEME_OPTIONS: ThemeOption[] = [
   },
   {
     id: 'netsuite-erp',
-    name: 'NetSuite ERP / Corporativo',
+    name: 'Oracle NetSuite Redwood',
     icon: '💼',
     colors: {
-      primary: '#005a9c',
-      secondary: '#d97706',
-      background: '#eef2f6',
-      cardBg: '#ffffff',
-      text: '#1e293b',
+      primary: '#e5a93c',
+      secondary: '#ff7e67',
+      background: '#132832',
+      cardBg: '#1a3744',
+      text: '#f8fafc',
     },
   },
   {
