@@ -15,7 +15,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
   },
   {
     id: 'dark-classic',
-    name: 'Oscuro Clásico',
+    name: 'Oscuro Clásico / Indigo',
     icon: '🌙',
     colors: {
       primary: '#3b82f6',
@@ -30,11 +30,59 @@ export const THEME_OPTIONS: ThemeOption[] = [
     name: 'Hobbes Natural / Táctico',
     icon: '🌿',
     colors: {
-      primary: '#00f2fe',
-      secondary: '#10b981',
+      primary: '#10b981',
+      secondary: '#00f2fe',
       background: '#09140e',
       cardBg: '#102117',
       text: '#e2e8f0',
+    },
+  },
+  {
+    id: 'matrix-purple',
+    name: 'Matrix Violeta / Dragón',
+    icon: '🍇',
+    colors: {
+      primary: '#c084fc',
+      secondary: '#e879f9',
+      background: '#160826',
+      cardBg: '#230f38',
+      text: '#f8fafc',
+    },
+  },
+  {
+    id: 'fire-gold',
+    name: 'Fuego Industrial / Gold',
+    icon: '🔥',
+    colors: {
+      primary: '#f59e0b',
+      secondary: '#ff007f',
+      background: '#121212',
+      cardBg: '#1e1e1e',
+      text: '#f3f4f6',
+    },
+  },
+  {
+    id: 'crimson-red',
+    name: 'Rojo Carmesí / Valkyria',
+    icon: '🥊',
+    colors: {
+      primary: '#ef4444',
+      secondary: '#f97316',
+      background: '#1a0909',
+      cardBg: '#291010',
+      text: '#fef2f2',
+    },
+  },
+  {
+    id: 'deep-ocean',
+    name: 'Azul Abisal / Submarino',
+    icon: '🌊',
+    colors: {
+      primary: '#06b6d4',
+      secondary: '#3b82f6',
+      background: '#031326',
+      cardBg: '#071f3a',
+      text: '#ecfeff',
     },
   },
   {
