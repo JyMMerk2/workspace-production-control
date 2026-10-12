@@ -95,3 +95,19 @@ export interface SheetConfig {
   defaultGid: string;
   subTabs: SubmenuItem[];
 }
+
+// --- CONFIGURACIÓN DE TEMAS / APARIENCIA ---
+export type ThemeType = 'neon-cyber' | 'dark-classic' | 'light-corporate' | 'tactical-blue';
+
+export interface ThemeOption {
+  id: ThemeType;
+  name: string;
+  icon: string;
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+    cardBg: string;
+    text: string;
+  };
+}
