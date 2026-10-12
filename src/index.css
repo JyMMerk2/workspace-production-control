@@ -131,22 +131,27 @@ body.dark {
   background-color: #0b0e14 !important;
 }
 
-/* 2. ORACLE NETSUITE REDWOOD (Purificación Total de Colores Neón) */
+/* 2. ORACLE NETSUITE REDWOOD (Efecto Glassmorphism / Cristal Traslúcido Impreso) */
 [data-theme='netsuite-erp'] body {
-  background-color: #132832 !important;
+  background: radial-gradient(circle at 80% 20%, #1a4d5c 0%, #102631 60%, #0a1820 100%) !important;
+  background-attachment: fixed !important;
   color: #f8fafc !important;
 }
 
 [data-theme='netsuite-erp'] header {
-  background-color: #1a3744 !important;
-  border-color: rgba(229, 169, 60, 0.4) !important;
+  background: rgba(19, 40, 50, 0.75) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border-bottom: 1px solid rgba(229, 169, 60, 0.35) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
 }
 
 [data-theme='netsuite-erp'] aside {
-  background-color: #0f1e26 !important;
-  border-color: #244657 !important;
+  background: rgba(12, 26, 34, 0.8) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border-right: 1px solid rgba(229, 169, 60, 0.2) !important;
 }
 
 [data-theme='netsuite-erp'] aside span,
@@ -160,12 +165,24 @@ body.dark {
   border-color: rgba(229, 169, 60, 0.3) !important;
 }
 
-/* Sobreescritura de Textos Múltiples de Tailwind en NetSuite */
+/* Tarjetas con Efecto Cristal / Glassmorphism de NetSuite Redwood */
+[data-theme='netsuite-erp'] main div[class*="bg-[#"],
+[data-theme='netsuite-erp'] main section[class*="bg-[#"] {
+  background: linear-gradient(135deg, rgba(26, 61, 75, 0.55) 0%, rgba(16, 38, 49, 0.75) 100%) !important;
+  backdrop-filter: blur(20px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 1px solid rgba(229, 169, 60, 0.45) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
+  color: #f8fafc !important;
+}
+
+/* Reemplazo Universal de Colores Neón a Paleta Redwood NetSuite */
 [data-theme='netsuite-erp'] .text-\[\#00f2fe\],
 [data-theme='netsuite-erp'] .text-cyan-300,
 [data-theme='netsuite-erp'] .text-cyan-400,
 [data-theme='netsuite-erp'] .text-cyan-500 {
-  color: #e5a93c !important; /* Dorado Warm NetSuite Redwood */
+  color: #e5a93c !important; /* Dorado NetSuite Redwood */
 }
 
 [data-theme='netsuite-erp'] .text-\[\#ff007f\],
@@ -204,14 +221,6 @@ body.dark {
   background-color: #ff7e67 !important;
 }
 
-/* Tarjetas Generales */
-[data-theme='netsuite-erp'] main div[class*="bg-[#"],
-[data-theme='netsuite-erp'] main section[class*="bg-[#"] {
-  background-color: #1a3744 !important;
-  color: #f8fafc !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
-}
-
 [data-theme='netsuite-erp'] h1,
 [data-theme='netsuite-erp'] h2,
 [data-theme='netsuite-erp'] h3,
@@ -224,7 +233,7 @@ body.dark {
 /* Eliminación de Resplandores/Glows Neón */
 [data-theme='netsuite-erp'] [class*="shadow-[0_0_"],
 [data-theme='netsuite-erp'] [class*="shadow-[0_4px_20px"] {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
 }
 
 /* 3. SAP FIORI (Gris Hielo / Azul Cobalto / Tarjetas Blancas) */
