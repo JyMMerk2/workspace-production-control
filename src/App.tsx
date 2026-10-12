@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { TabType, DashboardData } from './types';
+import { TabType, DashboardData, ThemeType } from './types';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { DashboardView } from './components/DashboardView';
@@ -43,6 +43,11 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [headerVisible, setHeaderVisible] = useState<boolean>(true);
 
+  // Selector de Temas / Apariencia
+  const [currentTheme, setCurrentTheme] = useState<ThemeType>(() => {
+    return (localStorage.getItem('boombah_app_theme') as ThemeType) || 'neon-cyber';
+  });
+
   // Selector de Modo Claro / Modo Oscuro
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_mode') !== 'light';
@@ -53,6 +58,10 @@ export default function App() {
     const body = document.body;
 
     localStorage.setItem('theme_mode', darkMode ? 'dark' : 'light');
+    localStorage.setItem('boombah_app_theme', currentTheme);
+
+    // Aplicar atributo de tema
+    root.setAttribute('data-theme', currentTheme);
 
     if (darkMode) {
       root.classList.add('dark');
@@ -65,7 +74,7 @@ export default function App() {
       body.classList.add('light');
       body.classList.remove('dark');
     }
-  }, [darkMode]);
+  }, [darkMode, currentTheme]);
 
   const toggleTheme = () => {
     setDarkMode(prevMode => !prevMode);
