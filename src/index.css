@@ -123,33 +123,42 @@ body.dark {
 }
 
 /* =========================================================
-   TEMAS DINÁMICOS DE PERSONALIZACIÓN DE APARIENCIA
+   ESTILOS DINÁMICOS DE TEMAS PERSONALIZADOS
    ========================================================= */
 
-[data-theme='neon-cyber'] {
-  --bg-primary: #0b0e14;
-  --bg-card: #12161f;
-  --color-primary: #00f2fe;
-  --color-secondary: #ff007f;
+/* 1. Neón Cyberpunk (Predeterminado) */
+[data-theme='neon-cyber'] body.dark {
+  background-color: #0b0e14 !important;
 }
 
-[data-theme='dark-classic'] {
-  --bg-primary: #0f172a;
-  --bg-card: #1e293b;
-  --color-primary: #3b82f6;
-  --color-secondary: #10b981;
+/* 2. Oscuro Clásico */
+[data-theme='dark-classic'] body.dark,
+[data-theme='dark-classic'] .min-h-screen {
+  background-color: #0f172a !important;
+}
+[data-theme='dark-classic'] header,
+[data-theme='dark-classic'] aside,
+[data-theme='dark-classic'] div[class*="bg-[#12161f]"],
+[data-theme='dark-classic'] div[class*="bg-[#0d1017]"] {
+  background-color: #1e293b !important;
+  border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
-[data-theme='tactical-blue'] {
-  --bg-primary: #07111e;
-  --bg-card: #0f1d30;
-  --color-primary: #38bdf8;
-  --color-secondary: #f59e0b;
+/* 3. Azul Táctico / Fábrica */
+[data-theme='tactical-blue'] body.dark,
+[data-theme='tactical-blue'] .min-h-screen {
+  background-color: #07111e !important;
+}
+[data-theme='tactical-blue'] header,
+[data-theme='tactical-blue'] aside,
+[data-theme='tactical-blue'] div[class*="bg-[#12161f]"],
+[data-theme='tactical-blue'] div[class*="bg-[#0d1017]"] {
+  background-color: #0f1d30 !important;
+  border-color: rgba(56, 189, 248, 0.25) !important;
 }
 
-[data-theme='light-corporate'] {
-  --bg-primary: #f8fafc;
-  --bg-card: #ffffff;
-  --color-primary: #0284c7;
-  --color-secondary: #e11d48;
+/* 4. Modo Claro Corporativo */
+[data-theme='light-corporate'] body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
 }
