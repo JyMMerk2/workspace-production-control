@@ -251,7 +251,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
-      {/* MODAL DEL SELECTOR DE TEMAS */}
+      {/* MODAL CON ALTA LEGIBILIDAD GARANTIZADA */}
       {isThemeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md no-print">
           <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl w-full max-w-md p-6 shadow-[0_0_40px_rgba(0,242,254,0.3)] space-y-5">
@@ -278,32 +278,34 @@ export const Header: React.FC<HeaderProps> = ({
                     }}
                     className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                       isSelected
-                        ? 'bg-[#00f2fe]/15 border-[#00f2fe] text-white shadow-[0_0_15px_rgba(0,242,254,0.3)]'
-                        : 'bg-[#0d1017] border-white/5 text-gray-400 hover:border-white/20 hover:text-white'
+                        ? 'bg-[#00f2fe]/20 border-[#00f2fe] shadow-[0_0_15px_rgba(0,242,254,0.3)]'
+                        : 'bg-[#0d1017] border-white/10 hover:border-white/30'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{theme.icon}</span>
                       <div>
-                        <h4 className="text-xs font-extrabold text-white">{theme.name}</h4>
+                        <h4 className="text-xs font-black text-white uppercase tracking-wide">
+                          {theme.name}
+                        </h4>
                         <div className="flex items-center gap-1.5 mt-1.5">
                           <span
-                            className="w-3.5 h-3.5 rounded-full border border-black/40"
+                            className="w-3.5 h-3.5 rounded-full border border-white/30"
                             style={{ backgroundColor: theme.colors.background }}
                             title="Fondo"
                           />
                           <span
-                            className="w-3.5 h-3.5 rounded-full border border-black/40"
+                            className="w-3.5 h-3.5 rounded-full border border-white/30"
                             style={{ backgroundColor: theme.colors.cardBg }}
                             title="Tarjetas"
                           />
                           <span
-                            className="w-3.5 h-3.5 rounded-full border border-black/40"
+                            className="w-3.5 h-3.5 rounded-full border border-white/30"
                             style={{ backgroundColor: theme.colors.primary }}
                             title="Primario"
                           />
                           <span
-                            className="w-3.5 h-3.5 rounded-full border border-black/40"
+                            className="w-3.5 h-3.5 rounded-full border border-white/30"
                             style={{ backgroundColor: theme.colors.secondary }}
                             title="Secundario"
                           />
