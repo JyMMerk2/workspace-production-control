@@ -121,3 +121,35 @@ body.dark {
   background-color: #0b0e14 !important;
   color: #f8fafc !important;
 }
+
+/* =========================================================
+   TEMAS DINÁMICOS DE PERSONALIZACIÓN DE APARIENCIA
+   ========================================================= */
+
+[data-theme='neon-cyber'] {
+  --bg-primary: #0b0e14;
+  --bg-card: #12161f;
+  --color-primary: #00f2fe;
+  --color-secondary: #ff007f;
+}
+
+[data-theme='dark-classic'] {
+  --bg-primary: #0f172a;
+  --bg-card: #1e293b;
+  --color-primary: #3b82f6;
+  --color-secondary: #10b981;
+}
+
+[data-theme='tactical-blue'] {
+  --bg-primary: #07111e;
+  --bg-card: #0f1d30;
+  --color-primary: #38bdf8;
+  --color-secondary: #f59e0b;
+}
+
+[data-theme='light-corporate'] {
+  --bg-primary: #f8fafc;
+  --bg-card: #ffffff;
+  --color-primary: #0284c7;
+  --color-secondary: #e11d48;
+}
