@@ -96,7 +96,7 @@ export interface SheetConfig {
   subTabs: SubmenuItem[];
 }
 
-// --- CONFIGURACIÓN DE TEMAS / APARIENCIA (8 OPCIONES) ---
+// --- CONFIGURACIÓN DE TEMAS / APARIENCIA ---
 export type ThemeType = 
   | 'neon-cyber' 
   | 'dark-classic' 
@@ -105,6 +105,10 @@ export type ThemeType =
   | 'fire-gold'
   | 'crimson-red'
   | 'deep-ocean'
+  | 'netsuite-erp'
+  | 'sap-fiori'
+  | 'salesforce-lightning'
+  | 'ms-dynamics'
   | 'light-corporate';
 
 export interface ThemeOption {
