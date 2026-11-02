@@ -15,6 +15,7 @@ export type TabType =
   | 'newsoft-orders'
   | 'ups-shipping'
   | 'reemplazos'
+  | 'inventario-nave-6'
   | 'manual'
   | 'configuracion';
 
@@ -122,4 +123,24 @@ export interface ThemeOption {
     cardBg: string;
     text: string;
   };
+}
+
+// --- CONFIGURACIÓN DE INVENTARIO ---
+export interface InventoryKPIs {
+  totalItems: number;
+  validados: number;
+  restantes: number;
+  totalUnidades: number;
+  pctAvance: number;
+  pctFalta: number;
+}
+
+export interface InventoryItem {
+  validado: boolean;
+  codigo: string;
+  item: string;
+  cantidadNetSuite: number;
+  balanceAlmacen: number;
+  diferencia: number | string;
+  ubicacion: string;
 }
