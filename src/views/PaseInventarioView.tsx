@@ -10,7 +10,7 @@ import {
   MapPin, 
   KeyRound, 
   Send, 
-  Calculator, 
+  Calculator as CalcIcon, 
   RefreshCw, 
   X, 
   Layers, 
@@ -36,23 +36,34 @@ interface InventoryItem {
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const MASTER_PIN = '030621';
 
-// Llamadas vía JSONP para resolver bloqueo de CORS en navegadores
-function fetchGASJsonp(params: Record<string, string>): Promise<any> {
+// Cliente de conexión híbrido y resistente (Fetch con fallback a JSONP)
+async function queryGAS(params: Record<string, string>): Promise<any> {
+  const query = new URLSearchParams(params).toString();
+  const url = `${APPS_SCRIPT_URL}?${query}`;
+
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    // Fallback a JSONP si fetch es bloqueado por política de redirección
+  }
+
   return new Promise((resolve, reject) => {
-    const callbackName = 'gas_cb_' + Math.round(100000 * Math.random());
-    (window as any)[callbackName] = (data: any) => {
-      delete (window as any)[callbackName];
+    const cb = 'gas_cb_' + Math.round(100000 * Math.random());
+    (window as any)[cb] = (data: any) => {
+      delete (window as any)[cb];
       if (document.body.contains(script)) document.body.removeChild(script);
       resolve(data);
     };
 
-    const query = new URLSearchParams({ ...params, callback: callbackName }).toString();
     const script = document.createElement('script');
-    script.src = `${APPS_SCRIPT_URL}?${query}`;
+    script.src = `${url}&callback=${cb}`;
     script.onerror = () => {
-      delete (window as any)[callbackName];
+      delete (window as any)[cb];
       if (document.body.contains(script)) document.body.removeChild(script);
-      reject(new Error('Fallo al conectar con Google Apps Script.'));
+      reject(new Error('No se pudo conectar con el servidor.'));
     };
     document.body.appendChild(script);
   });
@@ -60,9 +71,13 @@ function fetchGASJsonp(params: Record<string, string>): Promise<any> {
 
 export const PaseInventarioView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedUbicacion, setSelectedUbicacion] = useState('');
-  const [ubicacionesList, setUbicacionesList] = useState<string[]>([]);
   
+  // Ubicaciones con autocompletado y búsqueda escrita
+  const [selectedUbicacion, setSelectedUbicacion] = useState('');
+  const [ubicacionInput, setUbicacionInput] = useState('');
+  const [ubicacionesList, setUbicacionesList] = useState<string[]>([]);
+  const [showUbiDropdown, setShowUbiDropdown] = useState(false);
+
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [itemsList, setItemsList] = useState<InventoryItem[]>([]);
@@ -86,12 +101,17 @@ export const PaseInventarioView: React.FC = () => {
   const [pinInput, setPinInput] = useState('');
   const [sendingPinEmail, setSendingPinEmail] = useState(false);
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Mini Calculadora Independiente
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcDisplay, setCalcDisplay] = useState('');
 
-  // 1. Cargar lista única de ubicaciones
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const ubiContainerRef = useRef<HTMLDivElement>(null);
+
+  // 1. Cargar lista única de ubicaciones al montar el componente
   const cargarUbicaciones = async () => {
     try {
-      const data = await fetchGASJsonp({ action: 'GET_UBICACIONES' });
+      const data = await queryGAS({ action: 'GET_UBICACIONES' });
       if (data && data.success && Array.isArray(data.ubicaciones)) {
         setUbicacionesList(data.ubicaciones);
       }
@@ -104,6 +124,17 @@ export const PaseInventarioView: React.FC = () => {
     cargarUbicaciones();
   }, []);
 
+  // Cerrar dropdown de ubicaciones al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ubiContainerRef.current && !ubiContainerRef.current.contains(e.target as Node)) {
+        setShowUbiDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // 2. Consulta automática de artículos por ubicación o texto
   const ejecutarBusqueda = async (queryTerm = searchTerm, ubiTerm = selectedUbicacion) => {
     setSearching(true);
@@ -111,7 +142,7 @@ export const PaseInventarioView: React.FC = () => {
     setIsUnlockedByPin(false);
 
     try {
-      const data = await fetchGASJsonp({
+      const data = await queryGAS({
         action: 'SEARCH_ITEM',
         query: queryTerm.trim(),
         ubicacion: ubiTerm.trim()
@@ -121,7 +152,7 @@ export const PaseInventarioView: React.FC = () => {
         const items: InventoryItem[] = Array.isArray(data.items) ? data.items : (data.item ? [data.item] : []);
         setItemsList(items);
 
-        // Si se buscó un código puntual o solo existe 1 registro, seleccionarlo directo
+        // Si se buscó un código puntual o solo existe 1 registro, cargarlo de inmediato
         if (items.length === 1 && queryTerm.trim() !== '') {
           seleccionarItemParaEditar(items[0]);
         }
@@ -136,11 +167,13 @@ export const PaseInventarioView: React.FC = () => {
     }
   };
 
-  // Carga automática al elegir ubicación
-  const handleUbicacionChange = (nuevaUbi: string) => {
-    setSelectedUbicacion(nuevaUbi);
+  // Seleccionar ubicación desde el autocompletado
+  const handleSelectUbicacion = (ubi: string) => {
+    setSelectedUbicacion(ubi);
+    setUbicacionInput(ubi);
+    setShowUbiDropdown(false);
     setSelectedItem(null);
-    ejecutarBusqueda(searchTerm, nuevaUbi);
+    ejecutarBusqueda(searchTerm, ubi);
   };
 
   const seleccionarItemParaEditar = (it: InventoryItem) => {
@@ -157,28 +190,42 @@ export const PaseInventarioView: React.FC = () => {
     setIsUnlockedByPin(false);
   };
 
-  const handleCancelar = () => {
+  const handleCerrarFormulario = () => {
     setSelectedItem(null);
     setIsUnlockedByPin(false);
     setNotification(null);
+    setShowCalculator(false);
   };
 
-  // CÁLCULOS DINÁMICOS
-  // 1. Total Balance Disponible Newsoft = Almacén (E) - Salida (G)
+  // Cálculos dinámicos en tiempo real
   const numNetSuite = Number(colD) || 0;
   const numAlmacen = Number(colE) || 0;
   const numSalida = Number(colG) || 0;
   const totalBalanceNewsoft = numAlmacen - numSalida;
-
-  // 2. DIF (F) = Total Balance Disponible Newsoft - NetSuite (D)
   const diferenciaCalculada = totalBalanceNewsoft - numNetSuite;
-
-  // 3. Regla: Solo permite marcar Col I si Balance Newsoft cuadra con NetSuite
   const cuadranCantidades = totalBalanceNewsoft === numNetSuite;
 
-  // Estado del candado
-  const isLocked = (colA && colI) && !isUnlockedByPin;
+  // Estado del candado: Bloquea inputs si ya estaba cerrado en Sheets y no se ha introducido el PIN
+  const isLocked = Boolean(selectedItem?.isLocked && !isUnlockedByPin);
 
+  // Manejador de la calculadora auxiliar
+  const handleCalcBtn = (val: string) => {
+    if (val === 'C') {
+      setCalcDisplay('');
+    } else if (val === '=') {
+      try {
+        const sanitized = calcDisplay.replace(/[^0-9+\-*/.]/g, '');
+        const res = Function(`'use strict'; return (${sanitized})`)();
+        setCalcDisplay(String(res));
+      } catch {
+        setCalcDisplay('Error');
+      }
+    } else {
+      setCalcDisplay(prev => prev + val);
+    }
+  };
+
+  // Guardar en Google Sheets y sincronizar estado reactivo local (Opción A)
   const handleSave = async () => {
     if (!selectedItem) return;
 
@@ -195,6 +242,8 @@ export const PaseInventarioView: React.FC = () => {
     setSaving(true);
     setNotification(null);
 
+    const willBeLocked = Boolean(colA && colI);
+
     const payload = {
       rowNumber: selectedItem.rowNumber,
       colA,
@@ -209,30 +258,30 @@ export const PaseInventarioView: React.FC = () => {
     };
 
     try {
-      const data = await fetchGASJsonp({
+      const data = await queryGAS({
         action: 'UPDATE_ITEM',
         payload: JSON.stringify(payload)
       });
 
       if (data && data.success) {
         setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
-        
-        // Actualizar la lista en pantalla
-        setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? { 
-          ...it, 
-          ...payload, 
-          colF_Diferencia: diferenciaCalculada,
-          colA_Validado: colA,
-          colI_Candado: colI,
-          isLocked: colA && colI 
-        } : it));
 
-        setTimeout(() => {
-          setSelectedItem(null);
-          setSearchTerm('');
-          setIsUnlockedByPin(false);
-          searchInputRef.current?.focus();
-        }, 800);
+        // 1. Sincronizar el ítem seleccionado para que permanezca con sus valores actuales
+        const updatedItem: InventoryItem = {
+          ...selectedItem,
+          ...payload,
+          colA_Validado: colA,
+          colE_Newsoft: Number(colE) || 0,
+          colG_Salida: Number(colG) || 0,
+          colF_Diferencia: diferenciaCalculada,
+          colI_Candado: colI,
+          isLocked: willBeLocked
+        };
+        setSelectedItem(updatedItem);
+
+        // 2. Sincronizar de inmediato la tarjeta en la lista izquierda
+        setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? updatedItem : it));
+        setIsUnlockedByPin(false);
       } else {
         setNotification({ type: 'error', text: data?.error || 'No se pudo guardar el registro.' });
       }
@@ -258,7 +307,7 @@ export const PaseInventarioView: React.FC = () => {
   const handleRequestPinByEmail = async () => {
     setSendingPinEmail(true);
     try {
-      await fetchGASJsonp({ action: 'RECOVER_PIN' });
+      await queryGAS({ action: 'RECOVER_PIN' });
       setNotification({ type: 'success', text: 'Clave enviada a juan.mercado@dr.boombah.com' });
     } catch (e: any) {
       setNotification({ type: 'error', text: 'Error enviando correo: ' + e.message });
@@ -266,6 +315,11 @@ export const PaseInventarioView: React.FC = () => {
       setSendingPinEmail(false);
     }
   };
+
+  // Filtro reactivo para el autocompletado de ubicaciones
+  const ubicacionesFiltradas = ubicacionesList.filter(u => 
+    u.toLowerCase().includes(ubicacionInput.toLowerCase())
+  );
 
   return (
     <div className="p-3 sm:p-5 space-y-4 text-gray-200 max-w-[1700px] mx-auto">
@@ -301,24 +355,62 @@ export const PaseInventarioView: React.FC = () => {
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-4 shadow-lg space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           
-          {/* Selector de Ubicación con Carga Automática */}
-          <div>
+          {/* Ubicación Escribible con Autocompletado */}
+          <div className="relative" ref={ubiContainerRef}>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-              Filtro por Ubicación (Rack)
+              Buscar o Escribir Ubicación (Rack)
             </label>
-            <select
-              value={selectedUbicacion}
-              onChange={(e) => handleUbicacionChange(e.target.value)}
-              className="w-full bg-[#0d1017] border border-white/15 rounded-xl px-3 py-2 text-xs text-white font-bold outline-none focus:border-amber-400 cursor-pointer"
-            >
-              <option value="">Todas las Ubicaciones ({ubicacionesList.length})</option>
-              {ubicacionesList.map((ubi, i) => (
-                <option key={i} value={ubi}>{ubi}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Escribe ubicación (ej. G-14-1, A-1)..."
+                value={ubicacionInput}
+                onChange={(e) => {
+                  setUbicacionInput(e.target.value);
+                  setShowUbiDropdown(true);
+                }}
+                onFocus={() => setShowUbiDropdown(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSelectUbicacion(ubicacionInput.trim());
+                  }
+                }}
+                className="w-full bg-[#0d1017] border border-white/15 rounded-xl pl-8 pr-3 py-2 text-xs text-white font-bold outline-none focus:border-amber-400 uppercase font-mono"
+              />
+              <MapPin className="w-3.5 h-3.5 text-amber-400 absolute left-2.5 top-2.5" />
+            </div>
+
+            {/* Dropdown Predictivo */}
+            {showUbiDropdown && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-[#0d1017] border border-amber-500/30 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-40 custom-scrollbar">
+                <div 
+                  onClick={() => handleSelectUbicacion('')}
+                  className="px-3 py-2 text-xs text-gray-400 hover:bg-white/5 cursor-pointer font-bold border-b border-white/5"
+                >
+                  Todas las Ubicaciones ({ubicacionesList.length})
+                </div>
+                {ubicacionesFiltradas.length > 0 ? (
+                  ubicacionesFiltradas.slice(0, 40).map((ubi, i) => (
+                    <div
+                      key={i}
+                      onClick={() => handleSelectUbicacion(ubi)}
+                      className={`px-3 py-1.5 text-xs font-mono cursor-pointer transition-colors flex items-center justify-between ${
+                        selectedUbicacion === ubi 
+                          ? 'bg-amber-500/20 text-amber-300 font-bold' 
+                          : 'text-gray-300 hover:bg-white/5'
+                      }`}
+                    >
+                      <span>{ubi}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-500">Sin coincidencias</div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Buscador / Escáner */}
+          {/* Buscador de Código / Ítem */}
           <div className="sm:col-span-2">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
               Escanear Pistola o Escribir Código / Ítem
@@ -350,10 +442,10 @@ export const PaseInventarioView: React.FC = () => {
         </div>
       </div>
 
-      {/* Layout de dos columnas: Izquierda (Lista de Ubicación) | Derecha (Formulario) */}
+      {/* Grid: Lista Izquierda | Formulario Derecho */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* LADO IZQUIERDO: Lista de Artículos de la Ubicación con Badges de Validación & Candado */}
+        {/* LADO IZQUIERDO: Artículos de la Ubicación */}
         <div className="lg:col-span-5 bg-[#12161f] border border-white/10 rounded-2xl p-4 flex flex-col max-h-[750px]">
           <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
             <span className="text-xs font-black uppercase text-white tracking-wider">
@@ -394,7 +486,6 @@ export const PaseInventarioView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Identificadores Visuales: Validado (Col A) y/o Candado Bloqueado (Col I) */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       {it.colA_Validado && (
                         <span className="p-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400" title="Validado (Col A)">
@@ -418,34 +509,99 @@ export const PaseInventarioView: React.FC = () => {
           </div>
         </div>
 
-        {/* LADO DERECHO: Formulario de Conteo y Edición */}
-        <div className="lg:col-span-7">
+        {/* LADO DERECHO: Formulario de Conteo con Botón X de Cierre y Calculadora */}
+        <div className="lg:col-span-7 relative">
           {selectedItem ? (
             <div className="bg-[#12161f] border border-amber-500/30 rounded-2xl p-4 shadow-xl space-y-4">
               
-              {/* Estatus de Edición / Candado */}
-              {isLocked ? (
-                <div className="p-3 bg-rose-500/15 border border-rose-500/40 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-rose-300 text-xs font-bold">
-                    <Lock className="w-4 h-4 shrink-0" />
-                    <span>Registro Bloqueado (Col A & I activas). Campos protegidos.</span>
+              {/* Barra Superior del Formulario con Estatus y Botón X de Cierre */}
+              <div className="flex items-center justify-between gap-2">
+                {isLocked ? (
+                  <div className="flex-1 p-2.5 bg-rose-500/15 border border-rose-500/40 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-rose-300 text-xs font-bold">
+                      <Lock className="w-4 h-4 shrink-0" />
+                      <span>Registro Bloqueado (Col A & I activas). Campos protegidos.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPinModal(true)}
+                      className="px-3 py-1 bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-rose-600 transition-colors cursor-pointer"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Desbloquear con PIN</span>
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPinModal(true)}
-                    className="px-3 py-1 bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-rose-600 transition-colors cursor-pointer"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Desbloquear con PIN</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-emerald-400 text-xs font-bold">
-                  <div className="flex items-center gap-2">
-                    <Unlock className="w-4 h-4" />
-                    <span>{isUnlockedByPin ? 'Desbloqueado temporalmente con PIN' : 'Modo Edición Abierto'}</span>
+                ) : (
+                  <div className="flex-1 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-emerald-400 text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <Unlock className="w-4 h-4" />
+                      <span>{isUnlockedByPin ? 'Desbloqueado temporalmente con PIN' : 'Modo Edición Abierto'}</span>
+                    </div>
+                    
+                    {/* Botón para Abrir Mini Calculadora */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowCalculator(!showCalculator)}
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          showCalculator 
+                            ? 'bg-[#00f2fe] text-black border-[#00f2fe]' 
+                            : 'bg-white/5 border-white/10 text-gray-300 hover:text-white hover:border-white/20'
+                        }`}
+                      >
+                        <CalcIcon className="w-3.5 h-3.5" />
+                        <span>Calculadora</span>
+                      </button>
+                      <span className="text-[10px] text-gray-400 font-normal">Fila #{selectedItem.rowNumber}</span>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-normal">Fila en Hoja: #{selectedItem.rowNumber}</span>
+                )}
+
+                {/* BOTÓN X EN LA PARTE SUPERIOR DERECHA */}
+                <button
+                  type="button"
+                  onClick={handleCerrarFormulario}
+                  title="Cerrar Formulario"
+                  className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Popup Mini Calculadora (Completamente Independiente) */}
+              {showCalculator && (
+                <div className="bg-[#0b0e14] border border-[#00f2fe]/40 rounded-xl p-3 shadow-2xl max-w-xs ml-auto space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-gray-400 font-bold border-b border-white/10 pb-1">
+                    <span>Calculadora Auxiliar</span>
+                    <button type="button" onClick={() => setShowCalculator(false)} className="hover:text-white">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="bg-[#12161f] border border-white/10 rounded-lg p-2 text-right font-mono text-base font-bold text-[#00f2fe] overflow-x-auto min-h-[36px]">
+                    {calcDisplay || '0'}
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+                    {['7','8','9','/','4','5','6','*','1','2','3','-','C','0','=','+'].map((btn) => (
+                      <button
+                        key={btn}
+                        type="button"
+                        onClick={() => handleCalcBtn(btn)}
+                        className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                          btn === '=' 
+                            ? 'bg-emerald-500 text-black font-black col-span-1' 
+                            : btn === 'C' 
+                            ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30' 
+                            : ['+','-','*','/'].includes(btn)
+                            ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+                            : 'bg-white/5 text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {btn}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -515,7 +671,6 @@ export const PaseInventarioView: React.FC = () => {
               {/* Métricas: NetSuite (Solo Lectura), Almacén, Salida, Total Balance Newsoft y DIF */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                 
-                {/* NetSuite (D) - Bloqueado contra edición */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase">NetSuite (D)</label>
                   <div className="w-full bg-[#0b0e14] border border-white/5 rounded-xl p-2.5 text-xs text-center font-bold text-gray-400 select-none">
@@ -523,7 +678,6 @@ export const PaseInventarioView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Almacén (E) */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-amber-400 uppercase">Almacén (E)</label>
                   <input
@@ -535,7 +689,6 @@ export const PaseInventarioView: React.FC = () => {
                   />
                 </div>
 
-                {/* Salida (G) */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-rose-400 uppercase">Salida (G)</label>
                   <input
@@ -547,7 +700,6 @@ export const PaseInventarioView: React.FC = () => {
                   />
                 </div>
 
-                {/* TOTAL BALANCE DISPONIBLE NEWSOFT = E - G */}
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-cyan-400 uppercase truncate block text-center" title="Total Balance Disponible Newsoft (E - G)">
                     Tot. Bal. Newsoft
@@ -557,10 +709,9 @@ export const PaseInventarioView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* DIF (F) = Balance Newsoft - NetSuite */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-[#00f2fe] uppercase flex items-center justify-center gap-1">
-                    <Calculator className="w-3 h-3" /> DIF (F)
+                    <CalcIcon className="w-3 h-3" /> DIF (F)
                   </label>
                   <div className={`w-full rounded-xl p-2.5 text-xs text-center font-black border ${
                     cuadranCantidades 
@@ -587,7 +738,7 @@ export const PaseInventarioView: React.FC = () => {
                 />
               </div>
 
-              {/* Col L: Comentarios (Permite editarlo y conservarlo) */}
+              {/* Col L: Comentarios */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-400 uppercase">Col L: Comentarios</label>
                 <textarea
@@ -604,7 +755,7 @@ export const PaseInventarioView: React.FC = () => {
               <div className="pt-3 flex justify-between items-center border-t border-white/10">
                 <button
                   type="button"
-                  onClick={handleCancelar}
+                  onClick={handleCerrarFormulario}
                   className="px-5 py-2.5 rounded-xl border border-white/10 text-xs font-bold text-gray-300 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
                 >
                   Cancelar
