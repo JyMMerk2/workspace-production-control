@@ -29,6 +29,7 @@ export const InventoryDesgloseView: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'OK' | 'PENDIENTE'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [inputPage, setInputPage] = useState('1');
 
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -121,10 +122,28 @@ export const InventoryDesgloseView: React.FC = () => {
   }, [items, searchTerm, filterStatus]);
 
   const totalPages = Math.ceil(filteredItems.length / pageSize) || 1;
+
+  // Mantener el input sincronizado con la página actual
+  useEffect(() => {
+    setInputPage(String(currentPage));
+  }, [currentPage]);
+
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredItems.slice(start, start + pageSize);
   }, [filteredItems, currentPage, pageSize]);
+
+  // Manejo del salto de página numérico
+  const handlePageJump = () => {
+    const pageNum = parseInt(inputPage, 10);
+    if (!isNaN(pageNum)) {
+      const validPage = Math.max(1, Math.min(pageNum, totalPages));
+      setCurrentPage(validPage);
+      setInputPage(String(validPage));
+    } else {
+      setInputPage(String(currentPage));
+    }
+  };
 
   const handleVerifyPin = () => {
     if (pinInput.trim() === '1501') {
@@ -216,6 +235,7 @@ export const InventoryDesgloseView: React.FC = () => {
               <option value={25}>25 por pág.</option>
               <option value={50}>50 por pág.</option>
               <option value={100}>100 por pág.</option>
+              <option value={200}>200 por pág.</option>
             </select>
           </div>
 
@@ -286,27 +306,44 @@ export const InventoryDesgloseView: React.FC = () => {
           </table>
         </div>
 
-        {/* Paginación Inferior */}
-        <div className="flex items-center justify-between pt-4 mt-3 border-t border-white/10 text-xs text-gray-400">
+        {/* Paginación Inferior con Selector de Página Directo */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-3 border-t border-white/10 text-xs text-gray-400">
           <span>
             Mostrando <strong>{paginatedItems.length}</strong> de <strong>{filteredItems.length.toLocaleString()}</strong> artículos
           </span>
-          <div className="flex items-center gap-2">
-            <span>
-              Página <strong>{currentPage}</strong> de <strong>{totalPages}</strong>
-            </span>
+
+          <div className="flex items-center gap-3">
+            {/* Input interactivo para saltar de página */}
+            <div className="flex items-center gap-1.5">
+              <span>Página</span>
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={inputPage}
+                onChange={(e) => setInputPage(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handlePageJump()}
+                onBlur={handlePageJump}
+                className="w-16 px-2 py-1 text-center font-bold text-white bg-[#0d1017] border border-white/15 rounded-lg outline-none focus:border-[#00f2fe] transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <span>de <strong>{totalPages}</strong></span>
+            </div>
+
+            {/* Flechas de navegación */}
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                 disabled={currentPage === 1}
-                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-40 text-white cursor-pointer"
+                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-all cursor-pointer"
+                title="Página anterior"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-40 text-white cursor-pointer"
+                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-all cursor-pointer"
+                title="Página siguiente"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
