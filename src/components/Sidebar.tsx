@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'wip': activeTab === 'wip',
     'seguimiento-ordenes': activeTab === ('seguimiento-ordenes' as TabType),
-    'inventario': activeTab === 'inventario-nave-6',
+    'inventario': activeTab === 'inventario-nave-6' || activeTab === 'inventario-desglose',
   });
 
   const [dynamicSubTabs, setDynamicSubTabs] = useState<Record<string, { nombre: string; gid: string }[]>>({});
@@ -207,7 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }
             }}
             className={`flex items-center justify-between px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
-              activeTab === 'inventario-nave-6'
+              activeTab === 'inventario-nave-6' || activeTab === 'inventario-desglose'
                 ? 'text-amber-400 bg-amber-400/10 border-amber-400'
                 : 'text-[#8f9ba8] border-transparent hover:text-white hover:bg-white/5'
             }`}
@@ -223,7 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             />
           </button>
 
-          {/* Submenú de Naves (Escalable: Nave 6, Nave 7, etc.) */}
+          {/* Submenú de Inventario */}
           {openGroups['inventario'] && (
             <div className="bg-[#0d1017] border-l-4 border-amber-400 py-1 flex flex-col">
               {/* Nave 6 */}
@@ -241,6 +241,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
                   Activo
+                </span>
+              </button>
+
+              {/* Desglose Operativo */}
+              <button
+                onClick={() => onSelectTab('inventario-desglose', undefined, 'INVENTARIO - DESGLOSE OPERATIVO')}
+                className={`flex items-center justify-between px-6 py-2 text-[11px] font-semibold text-left transition-all cursor-pointer ${
+                  activeTab === 'inventario-desglose'
+                    ? 'text-amber-400 font-bold bg-amber-400/15'
+                    : 'text-[#6c7a89] hover:text-amber-400 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <FileSpreadsheet className="w-3 h-3 text-amber-400/80" />
+                  <span>Desglose Operativo</span>
+                </div>
+                <span className="text-[9px] font-mono text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                  20k+
                 </span>
               </button>
             </div>
