@@ -6,40 +6,33 @@ import {
   ExternalLink, 
   Lock, 
   Search, 
-  RefreshCw,
-  X,
-  ShieldCheck
+  X
 } from 'lucide-react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 
 export const InventoryDashboard: React.FC = () => {
-  // Estado para el modal de clave
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Enlace oficial de tu hoja de cálculo
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
 
-  // KPIs de la hoja Dashboard
+  // Métricas extraídas de la hoja Dashboard
   const kpis = {
     totalItems: 20544,
     validados: 20452,
     restantes: 92,
     totalUnidades: 155646,
     pctAvance: 99.55,
-    pctFalta: 0.45
+    pctFalta: 0.45,
   };
 
-  // Datos para la gráfica de dona
-  const chartData = [
-    { name: 'Validados', value: kpis.validados, color: '#10b981' },
-    { name: 'Restantes', value: kpis.restantes, color: '#f43f5e' }
-  ];
+  // Cálculo SVG Donut
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius; // ~439.82
+  const strokeDashoffset = circumference - (kpis.pctAvance / 100) * circumference;
 
-  // Datos de muestra de la hoja PROGRESO
   const sampleItems = [
     { validado: true, codigo: '6308', item: 'Belt B', ns: 3398, newsoft: 3479, dif: 81, ubicacion: 'G-14-1' },
     { validado: true, codigo: '6320', item: 'Belt CB', ns: 271, newsoft: 310, dif: 39, ubicacion: 'G-15-1' },
@@ -90,7 +83,7 @@ export const InventoryDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Botón protegido con clave para abrir Google Sheets */}
+        {/* Botón con clave 1501 para abrir el Sheet */}
         <button
           onClick={() => setIsPinModalOpen(true)}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500 hover:text-black font-black text-xs transition-all cursor-pointer shadow-[0_0_15px_rgba(245,158,11,0.2)]"
@@ -156,39 +149,39 @@ export const InventoryDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* SECCIÓN GRÁFICA DE DONA Y PROGRESO */}
+      {/* SECCIÓN GRÁFICA DE DONA Y DESGLOSE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Gráfica de Dona */}
+        {/* Dona Nativa en SVG */}
         <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col items-center justify-center">
           <h3 className="text-xs font-black uppercase text-gray-300 mb-2 w-full text-left tracking-wider">
             Balance de Validación
           </h3>
           <div className="w-full h-64 relative flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  innerRadius={70}
-                  outerRadius={95}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#0d1017',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: '8px'
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            {/* Porcentaje en el centro */}
+            <svg className="w-52 h-52 -rotate-90" viewBox="0 0 180 180">
+              {/* Fondo Restante (Rosa/Rojo) */}
+              <circle
+                cx="90"
+                cy="90"
+                r={radius}
+                className="text-rose-500 stroke-current"
+                strokeWidth="18"
+                fill="transparent"
+              />
+              {/* Progreso Validado (Verde Esmeralda) */}
+              <circle
+                cx="90"
+                cy="90"
+                r={radius}
+                className="text-emerald-500 stroke-current transition-all duration-1000 ease-out"
+                strokeWidth="18"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                fill="transparent"
+              />
+            </svg>
             <div className="absolute flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-black text-emerald-400">
+              <span className="text-3xl font-black text-emerald-400">
                 {kpis.pctAvance}%
               </span>
               <span className="text-[10px] font-bold uppercase text-gray-400">
@@ -214,7 +207,6 @@ export const InventoryDashboard: React.FC = () => {
             <h3 className="text-xs font-black uppercase text-gray-300 tracking-wider">
               Desglose Operativo de Artículos (Hoja Progreso)
             </h3>
-            {/* Buscador de artículos */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
