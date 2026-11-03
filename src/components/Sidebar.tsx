@@ -18,6 +18,8 @@ import {
   Database,
   Activity,
   CalendarCheck,
+  Boxes,
+  Warehouse,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -33,7 +35,7 @@ interface SidebarProps {
 }
 
 const APPS_SCRIPT_URLS: Record<string, string> = {
-  'seguimiento-ordenes': 'https://script.google.com/macros/s/AKfycbwXGZ0sU8J2M8L_SEGUIMIENTO_2026/exec', // URL o configuración asociada
+  'seguimiento-ordenes': 'https://script.google.com/macros/s/AKfycbwXGZ0sU8J2M8L_SEGUIMIENTO_2026/exec',
   'cuadre-fd': 'https://script.google.com/macros/s/AKfycbwv25duzkoZzhFv1jFXm3IvWxvCCHp2Rien6ELGGh-phzWDXVOJon37SRQ2itdGPGLnew/exec',
   'cuadre-mochilas': 'https://script.google.com/macros/s/AKfycbxEat8pLxn28Jlkq9gHIbw4ilGtXk51St54JuxThXOtA7ZmQ2501rsaQ0LO3vFyWsmI/exec',
   'wip-stocks': 'https://script.google.com/macros/s/AKfycbyTvDcxeOGU4u6gcJPnlEP-sCm-cjRbIZ-FyUS7xC9oIdDtoGrEzx5F9_e_-dxQs1MGXQ/exec',
@@ -55,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'wip': activeTab === 'wip',
     'seguimiento-ordenes': activeTab === ('seguimiento-ordenes' as TabType),
+    'inventario': activeTab === 'inventario-nave-6',
   });
 
   const [dynamicSubTabs, setDynamicSubTabs] = useState<Record<string, { nombre: string; gid: string }[]>>({});
@@ -89,7 +92,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  // Manejador seguro para cerrar sesión en Supabase y limpiar datos de almacenamiento
   const handleLogoutAsync = async () => {
     try {
       if (supabase && supabase.auth) {
@@ -109,7 +111,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const dynamicList = dynamicSubTabs[tabKey];
     const staticConfig = SHEETS_CONFIG[tabKey];
     
-    // Lista por defecto para Seguimiento Órdenes del Día si no existe en SHEETS_CONFIG
     const fallbackSubTabs = tabKey === ('seguimiento-ordenes' as TabType) 
       ? [{ nombre: '7.0 SEGUIMIENTO 2026', gid: '699586467' }] 
       : [];
@@ -192,11 +193,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span>🔍 VALIDACIÓN SLACK</span>
         </button>
 
+        {/* SECCIÓN PRINCIPAL: INVENTARIO */}
+        <div className="flex flex-col pt-1">
+          <button
+            onClick={() => {
+              const isCurrentlyOpen = !!openGroups['inventario'];
+              setOpenGroups((prev) => ({
+                ...prev,
+                inventario: !isCurrentlyOpen,
+              }));
+              if (!isCurrentlyOpen) {
+                onSelectTab('inventario-nave-6', undefined, 'INVENTARIO - NAVE 6');
+              }
+            }}
+            className={`flex items-center justify-between px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
+              activeTab === 'inventario-nave-6'
+                ? 'text-amber-400 bg-amber-400/10 border-amber-400'
+                : 'text-[#8f9ba8] border-transparent hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Boxes className="w-3.5 h-3.5 text-amber-400" />
+              <span>INVENTARIO</span>
+            </div>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                openGroups['inventario'] ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {/* Submenú de Naves (Escalable: Nave 6, Nave 7, etc.) */}
+          {openGroups['inventario'] && (
+            <div className="bg-[#0d1017] border-l-4 border-amber-400 py-1 flex flex-col">
+              {/* Nave 6 */}
+              <button
+                onClick={() => onSelectTab('inventario-nave-6', undefined, 'INVENTARIO - NAVE 6')}
+                className={`flex items-center justify-between px-6 py-2 text-[11px] font-semibold text-left transition-all cursor-pointer ${
+                  activeTab === 'inventario-nave-6'
+                    ? 'text-amber-400 font-bold bg-amber-400/15'
+                    : 'text-[#6c7a89] hover:text-amber-400 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <Warehouse className="w-3 h-3 text-amber-400/80" />
+                  <span>Nave 6</span>
+                </div>
+                <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  Activo
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="px-4 pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider text-[#5f6e7d]">
           Hojas Operativas WIP & Cuadre
         </div>
 
-        {/* NUEVA SECCIÓN: Seguimiento Órdenes del Día (Google Sheets Directo) */}
+        {/* Seguimiento Órdenes del Día */}
         <div className="flex flex-col">
           <button
             onClick={() => toggleGroup('seguimiento-ordenes', 'seguimiento-ordenes' as TabType, 'SEGUIMIENTO ÓRDENES DEL DÍA')}
@@ -232,7 +287,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span>📊 WIP STOCKS & VENDIDAS</span>
         </button>
 
-        {/* WIP Demo Nativo (PRUEBA SEGURA) */}
+        {/* WIP Demo Nativo */}
         <button
           onClick={() => onSelectTab('wip-demo', undefined, 'CONTROL WIP (DEMO)')}
           className={`flex items-center gap-3 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
@@ -314,7 +369,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* WIP Stocks & Vendidas */}
+        {/* WIP Stocks & Vendidas (Sheet) */}
         <div className="flex flex-col">
           <button
             onClick={() => toggleGroup('wip-stocks', 'wip-stocks', 'WIP Stocks & ordenes Vendidas')}
@@ -478,7 +533,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span>⚙️ CONFIGURACIÓN</span>
         </button>
 
-        {/* Cerrar Sesión con borrado completo */}
+        {/* Cerrar Sesión */}
         <button
           onClick={handleLogoutAsync}
           className="flex items-center gap-3 px-4 py-3 text-xs font-bold uppercase tracking-wider text-left text-[#ff007f] hover:bg-[#ff007f]/10 transition-all border-l-4 border-transparent hover:border-[#ff007f] cursor-pointer"
