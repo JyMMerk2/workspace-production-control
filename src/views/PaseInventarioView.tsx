@@ -135,26 +135,70 @@ export const PaseInventarioView: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // 2. Consulta automática de artículos por ubicación o texto
+  const seleccionarItemParaEditar = (it: InventoryItem) => {
+    setSelectedItem(it);
+    setColA(it.colA_Validado);
+    setColB(it.colB_Codigo);
+    setColC(it.colC_Item);
+    setColD(it.colD_NetSuite);
+    setColE(it.colE_Newsoft);
+    setColG(it.colG_Salida);
+    setColH(it.colH_Ubicacion);
+    setColI(it.colI_Candado);
+    setColL(it.colL_Comentario || '');
+    setIsUnlockedByPin(false);
+  };
+
+  // 2. Consulta con COMPORTAMIENTO A (Búsqueda global inteligente)
   const ejecutarBusqueda = async (queryTerm = searchTerm, ubiTerm = selectedUbicacion) => {
     setSearching(true);
     setNotification(null);
     setIsUnlockedByPin(false);
 
     try {
+      const tieneTerminoArticulo = queryTerm.trim() !== '';
+
+      // Si escribe/escanea un código, busca en TODA la nave sin restringir por ubicación previa
       const data = await queryGAS({
         action: 'SEARCH_ITEM',
         query: queryTerm.trim(),
-        ubicacion: ubiTerm.trim()
+        ubicacion: tieneTerminoArticulo ? '' : ubiTerm.trim()
       });
 
       if (data && data.success) {
         const items: InventoryItem[] = Array.isArray(data.items) ? data.items : (data.item ? [data.item] : []);
-        setItemsList(items);
 
-        // Si se buscó un código puntual o solo existe 1 registro, cargarlo de inmediato
-        if (items.length === 1 && queryTerm.trim() !== '') {
-          seleccionarItemParaEditar(items[0]);
+        if (tieneTerminoArticulo && items.length > 0) {
+          const primerItem = items[0];
+          const ubicacionDetectada = primerItem.colH_Ubicacion;
+
+          // Si el ítem tiene ubicación, sincronizamos el rack y cargamos todos sus artículos
+          if (ubicacionDetectada) {
+            setSelectedUbicacion(ubicacionDetectada);
+            setUbicacionInput(ubicacionDetectada);
+
+            const dataRack = await queryGAS({
+              action: 'SEARCH_ITEM',
+              query: '',
+              ubicacion: ubicacionDetectada
+            });
+
+            if (dataRack && dataRack.success && Array.isArray(dataRack.items)) {
+              setItemsList(dataRack.items);
+            } else {
+              setItemsList(items);
+            }
+          } else {
+            setItemsList(items);
+          }
+
+          // Abrir el ítem escaneado directamente en el formulario
+          seleccionarItemParaEditar(primerItem);
+        } else {
+          setItemsList(items);
+          if (items.length === 1) {
+            seleccionarItemParaEditar(items[0]);
+          }
         }
       } else {
         setItemsList([]);
@@ -173,21 +217,7 @@ export const PaseInventarioView: React.FC = () => {
     setUbicacionInput(ubi);
     setShowUbiDropdown(false);
     setSelectedItem(null);
-    ejecutarBusqueda(searchTerm, ubi);
-  };
-
-  const seleccionarItemParaEditar = (it: InventoryItem) => {
-    setSelectedItem(it);
-    setColA(it.colA_Validado);
-    setColB(it.colB_Codigo);
-    setColC(it.colC_Item);
-    setColD(it.colD_NetSuite);
-    setColE(it.colE_Newsoft);
-    setColG(it.colG_Salida);
-    setColH(it.colH_Ubicacion);
-    setColI(it.colI_Candado);
-    setColL(it.colL_Comentario || '');
-    setIsUnlockedByPin(false);
+    ejecutarBusqueda('', ubi);
   };
 
   const handleCerrarFormulario = () => {
@@ -205,10 +235,10 @@ export const PaseInventarioView: React.FC = () => {
   const diferenciaCalculada = totalBalanceNewsoft - numNetSuite;
   const cuadranCantidades = totalBalanceNewsoft === numNetSuite;
 
-  // Estado del candado: Bloquea inputs si ya estaba cerrado en Sheets y no se ha introducido el PIN
+  // Estado del candado: Bloquea inputs si ya estaba cerrado en Sheets y no se ha metido el PIN
   const isLocked = Boolean(selectedItem?.isLocked && !isUnlockedByPin);
 
-  // Manejador de la calculadora auxiliar
+  // Manejador de la calculadora auxiliar independiente
   const handleCalcBtn = (val: string) => {
     if (val === 'C') {
       setCalcDisplay('');
@@ -266,7 +296,7 @@ export const PaseInventarioView: React.FC = () => {
       if (data && data.success) {
         setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
 
-        // 1. Sincronizar el ítem seleccionado para que permanezca con sus valores actuales
+        // Sincronizar el ítem seleccionado para que permanezca visible con sus valores correctos
         const updatedItem: InventoryItem = {
           ...selectedItem,
           ...payload,
@@ -279,7 +309,7 @@ export const PaseInventarioView: React.FC = () => {
         };
         setSelectedItem(updatedItem);
 
-        // 2. Sincronizar de inmediato la tarjeta en la lista izquierda
+        // Sincronizar la tarjeta en la lista izquierda
         setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? updatedItem : it));
         setIsUnlockedByPin(false);
       } else {
@@ -410,10 +440,10 @@ export const PaseInventarioView: React.FC = () => {
             )}
           </div>
 
-          {/* Buscador de Código / Ítem */}
+          {/* Buscador Global Inteligente de Código / Ítem */}
           <div className="sm:col-span-2">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-              Escanear Pistola o Escribir Código / Ítem
+              Escanear Pistola o Escribir Código / Ítem (Búsqueda Global)
             </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -503,7 +533,7 @@ export const PaseInventarioView: React.FC = () => {
               })
             ) : (
               <div className="text-center py-16 text-gray-500 text-xs">
-                Selecciona una ubicación arriba para cargar sus artículos automáticamente.
+                Selecciona una ubicación arriba o usa el escáner global para cargar los artículos.
               </div>
             )}
           </div>
@@ -514,7 +544,7 @@ export const PaseInventarioView: React.FC = () => {
           {selectedItem ? (
             <div className="bg-[#12161f] border border-amber-500/30 rounded-2xl p-4 shadow-xl space-y-4">
               
-              {/* Barra Superior del Formulario con Estatus y Botón X de Cierre */}
+              {/* Barra Superior con Estatus y Botón X de Cierre */}
               <div className="flex items-center justify-between gap-2">
                 {isLocked ? (
                   <div className="flex-1 p-2.5 bg-rose-500/15 border border-rose-500/40 rounded-xl flex items-center justify-between">
