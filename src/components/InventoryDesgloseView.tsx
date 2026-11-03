@@ -234,7 +234,7 @@ export const InventoryDesgloseView: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabla con Columna K */}
+        {/* Tabla con encabezado oficial de la Columna K */}
         <div className="overflow-x-auto min-h-[500px] max-h-[65vh] custom-scrollbar border border-white/5 rounded-xl">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="sticky top-0 bg-[#0d1017] z-10 shadow-sm">
@@ -243,7 +243,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 <th className="py-3 px-3">Código Componente</th>
                 <th className="py-3 px-3">Item NT/NS Descripción</th>
                 <th className="py-3 px-3 text-right">Cantidad NetSuite</th>
-                <th className="py-3 px-3 text-right">Almacén Newsoft (Col K)</th>
+                <th className="py-3 px-3 text-right">Total Balance Disponible Newsoft</th>
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
               </tr>
