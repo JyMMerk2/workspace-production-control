@@ -10,8 +10,10 @@ import {
   ArrowRight, 
   History, 
   Trash2, 
-  RefreshCw 
+  RefreshCw,
+  Mail
 } from 'lucide-react';
+import { ScheduleReportModal } from './ScheduleReportModal';
 
 interface SheetRowItem {
   validado: boolean;
@@ -31,6 +33,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Estados de datos
   const [allItems, setAllItems] = useState<SheetRowItem[]>([]);
@@ -53,7 +56,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     totalItems: 20544,
     validados: 20544,
     restantes: 0,
-    totalUnidades: 166708,
+    totalUnidades: 173656,
     pctAvance: 100,
     pctFalta: 0,
   });
@@ -98,7 +101,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                 totalItems: total,
                 validados: validados,
                 restantes: diffRestantes <= 1 && avance >= 99.9 ? 0 : diffRestantes,
-                totalUnidades: isNaN(unidades) ? 166708 : unidades,
+                totalUnidades: isNaN(unidades) ? 173656 : unidades,
                 pctAvance: avance >= 99.9 ? 100 : avance,
                 pctFalta: avance >= 99.9 ? 0 : Number((100 - avance).toFixed(2)),
               });
@@ -166,7 +169,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
               totalItems: total,
               validados: effectiveValidados,
               restantes: isCompleted ? 0 : diff,
-              totalUnidades: sumUnits || 166708,
+              totalUnidades: sumUnits || 173656,
               pctAvance: pct,
               pctFalta: isCompleted ? 0 : Number((100 - pct).toFixed(2)),
             });
@@ -273,6 +276,15 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#00f2fe]' : ''}`} />
             <span>{isRefreshing ? 'Sincronizando...' : 'Actualizar'}</span>
+          </button>
+
+          {/* Botón Programar Reporte Automático */}
+          <button
+            onClick={() => setIsReportModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#00f2fe]/10 hover:bg-[#00f2fe]/20 text-[#00f2fe] border border-[#00f2fe]/30 font-bold text-xs transition-all cursor-pointer shadow-[0_0_12px_rgba(0,242,254,0.15)]"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Programar Reporte</span>
           </button>
 
           {/* Botón con PIN 1501 */}
@@ -441,7 +453,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                         >
                           <td className="py-2 px-3">
                             {row.validado ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
                                 <CheckCircle2 className="w-3 h-3" /> OK
                               </span>
                             ) : (
@@ -531,6 +543,13 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
           </div>
         </div>
       </div>
+
+      {/* Modal Programación de Correo Automático */}
+      <ScheduleReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        currentUserEmail="juan.mercado@boombah.com"
+      />
 
       {/* MODAL CON PIN 1501 */}
       {isPinModalOpen && (
