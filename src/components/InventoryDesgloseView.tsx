@@ -6,10 +6,10 @@ import {
   CheckCircle2, 
   Clock, 
   ChevronLeft, 
-  ChevronRight,
-  Lock,
-  ExternalLink,
-  X
+  ChevronRight, 
+  Lock, 
+  ExternalLink, 
+  X 
 } from 'lucide-react';
 
 interface SheetRowItem {
@@ -58,9 +58,17 @@ export const InventoryDesgloseView: React.FC = () => {
         const itemName = cols[2] || '';
         if (!itemName && !codigo) continue;
 
+        // Omitir filas de comentario o encabezados repetidos
+        if (codigo.toUpperCase() === 'COMENTARIO' || itemName.toUpperCase() === 'COMENTARIO') continue;
+
         const nsVal = parseFloat(cols[3]?.replace(/[^0-9.-]+/g, '')) || 0;
-        const newsoftVal = parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0;
-        const difVal = cols[5] || (newsoftVal - nsVal);
+        
+        // COLUMNA K (Índice 10 en base cero): TOTAL BALANCE DISPONIBLE NEWSOFT
+        const newsoftKVal = parseFloat(cols[10]?.replace(/[^0-9.-]+/g, ''));
+        const newsoftFallback = parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0;
+        const finalNewsoftVal = !isNaN(newsoftKVal) ? newsoftKVal : newsoftFallback;
+
+        const difVal = cols[5] || (finalNewsoftVal - nsVal);
         const ubicacion = cols[7] || cols[6] || '-';
 
         parsedItems.push({
@@ -68,7 +76,7 @@ export const InventoryDesgloseView: React.FC = () => {
           codigo,
           item: itemName,
           ns: nsVal,
-          newsoft: newsoftVal,
+          newsoft: finalNewsoftVal,
           dif: difVal,
           ubicacion
         });
@@ -77,19 +85,17 @@ export const InventoryDesgloseView: React.FC = () => {
       if (parsedItems.length > 0) setItems(parsedItems);
     } catch {
       setItems([
-        { validado: true, codigo: '6308', item: 'Belt B', ns: 3398, newsoft: 3479, dif: 81, ubicacion: 'G-14-1' },
-        { validado: true, codigo: '6320', item: 'Belt CB', ns: 271, newsoft: 310, dif: 39, ubicacion: 'G-15-1' },
+        { validado: true, codigo: '6308', item: 'Belt B', ns: 3398, newsoft: 3398, dif: 0, ubicacion: 'G-14-1' },
+        { validado: true, codigo: '6320', item: 'Belt CB', ns: 271, newsoft: 271, dif: 0, ubicacion: 'G-15-1' },
         { validado: false, codigo: '6310', item: 'Belt CRD', ns: 143, newsoft: 143, dif: 0, ubicacion: 'G-16-1' },
-        { validado: false, codigo: '6314', item: 'Belt DG', ns: 91, newsoft: 119, dif: 28, ubicacion: 'G-16-1' },
-        { validado: false, codigo: '6321', item: 'Belt GD', ns: 235, newsoft: 249, dif: 14, ubicacion: 'G-14-1' },
+        { validado: false, codigo: '6314', item: 'Belt DG', ns: 91, newsoft: 91, dif: 0, ubicacion: 'G-16-1' },
+        { validado: false, codigo: '6321', item: 'Belt GD', ns: 235, newsoft: 235, dif: 0, ubicacion: 'G-14-1' },
         { validado: false, codigo: '6322', item: 'Belt GY', ns: 636, newsoft: 636, dif: 0, ubicacion: 'G-14-1' },
         { validado: false, codigo: '150246', item: 'Belt LG', ns: 448, newsoft: 448, dif: 0, ubicacion: 'G-16-1' },
-        { validado: false, codigo: '6307', item: 'Belt M', ns: 249, newsoft: 250, dif: 1, ubicacion: 'G-15-1' },
-        { validado: false, codigo: '6312', item: 'Belt N', ns: 1723, newsoft: 1748, dif: 25, ubicacion: 'G-14-1' },
+        { validado: false, codigo: '6307', item: 'Belt M', ns: 249, newsoft: 249, dif: 0, ubicacion: 'G-15-1' },
+        { validado: false, codigo: '6312', item: 'Belt N', ns: 1723, newsoft: 1723, dif: 0, ubicacion: 'G-14-1' },
         { validado: false, codigo: '6309', item: 'Belt W', ns: 11, newsoft: 0, dif: 'Agregar a NS: 11', ubicacion: 'No encontrado' },
-        { validado: false, codigo: '341647', item: 'BM-1000 B-30', ns: 13, newsoft: 15, dif: 2, ubicacion: 'E-7-1' },
-        { validado: false, codigo: '998331', item: 'FD-1874-3037 B/CB : FD-1874-3037 B/CB-XL', ns: 0, newsoft: 4, dif: 'Restar a NS: 4', ubicacion: 'A-12-2' },
-        { validado: false, codigo: '998332', item: 'FD-1874-3037 B/CB : FD-1874-3037 B/CB-2X', ns: 0, newsoft: 0, dif: 'No encontrado', ubicacion: 'A-12-2' }
+        { validado: false, codigo: '341647', item: 'BM-1000 B-30', ns: 13, newsoft: 13, dif: 0, ubicacion: 'E-7-1' }
       ]);
     } finally {
       setLoading(false);
@@ -228,7 +234,7 @@ export const InventoryDesgloseView: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabla */}
+        {/* Tabla con Columna K */}
         <div className="overflow-x-auto min-h-[500px] max-h-[65vh] custom-scrollbar border border-white/5 rounded-xl">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="sticky top-0 bg-[#0d1017] z-10 shadow-sm">
@@ -237,7 +243,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 <th className="py-3 px-3">Código Componente</th>
                 <th className="py-3 px-3">Item NT/NS Descripción</th>
                 <th className="py-3 px-3 text-right">Cantidad NetSuite</th>
-                <th className="py-3 px-3 text-right">Almacén Newsoft</th>
+                <th className="py-3 px-3 text-right">Almacén Newsoft (Col K)</th>
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
               </tr>
@@ -259,7 +265,7 @@ export const InventoryDesgloseView: React.FC = () => {
                   <td className="py-2.5 px-3 font-mono font-bold text-gray-300">{row.codigo}</td>
                   <td className="py-2.5 px-3 text-white font-bold">{row.item}</td>
                   <td className="py-2.5 px-3 text-right text-gray-300 font-mono">{row.ns.toLocaleString()}</td>
-                  <td className="py-2.5 px-3 text-right text-gray-300 font-mono">{row.newsoft.toLocaleString()}</td>
+                  <td className="py-2.5 px-3 text-right text-[#00f2fe] font-mono font-bold">{row.newsoft.toLocaleString()}</td>
                   <td className="py-2.5 px-3 text-right font-mono">
                     {typeof row.dif === 'number' && row.dif > 0 ? (
                       <span className="text-amber-400 font-bold">+{row.dif}</span>
@@ -293,14 +299,14 @@ export const InventoryDesgloseView: React.FC = () => {
               <button
                 onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                 disabled={currentPage === 1}
-                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-40 text-white"
+                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-40 text-white cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-40 text-white"
+                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-40 text-white cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -317,7 +323,7 @@ export const InventoryDesgloseView: React.FC = () => {
               <span className="text-xs font-black uppercase text-[#00f2fe] flex items-center gap-2">
                 <Lock className="w-4 h-4 text-amber-400" /> Acceso Protegido
               </span>
-              <button onClick={() => { setIsPinModalOpen(false); setPinInput(''); }} className="text-gray-400 hover:text-white">
+              <button onClick={() => { setIsPinModalOpen(false); setPinInput(''); }} className="text-gray-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -334,10 +340,10 @@ export const InventoryDesgloseView: React.FC = () => {
             />
             {pinError && <p className="text-xs text-rose-400 font-bold text-center">Contraseña incorrecta.</p>}
             <div className="flex gap-2 justify-end pt-2">
-              <button onClick={() => { setIsPinModalOpen(false); setPinInput(''); }} className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-gray-300">
+              <button onClick={() => { setIsPinModalOpen(false); setPinInput(''); }} className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-gray-300 cursor-pointer">
                 Cancelar
               </button>
-              <button onClick={handleVerifyPin} className="px-5 py-2 bg-[#00f2fe] text-[#0b0e14] font-black rounded-xl text-xs">
+              <button onClick={handleVerifyPin} className="px-5 py-2 bg-[#00f2fe] text-[#0b0e14] font-black rounded-xl text-xs cursor-pointer">
                 Abrir Documento
               </button>
             </div>
