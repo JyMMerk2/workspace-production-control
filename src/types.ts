@@ -16,6 +16,7 @@ export type TabType =
   | 'ups-shipping'
   | 'reemplazos'
   | 'inventario-nave-6'
+  | 'inventario-desglose'
   | 'manual'
   | 'configuracion';
 
