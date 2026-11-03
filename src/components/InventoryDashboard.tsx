@@ -499,7 +499,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                         onClick={clearHistory}
                         className="text-[10px] text-gray-500 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
                       >
-                        <Trash2 className="w-3 h-3" /> Limpiar
+                        <Trash2 className="w-3.5 h-3.5" /> Limpiar
                       </button>
                     )}
                   </div>
