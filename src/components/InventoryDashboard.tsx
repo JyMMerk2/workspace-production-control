@@ -6,14 +6,19 @@ import {
   ExternalLink, 
   Lock, 
   Search, 
-  X
+  X,
+  ArrowRight
 } from 'lucide-react';
 
-export const InventoryDashboard: React.FC = () => {
+interface InventoryDashboardProps {
+  onNavigateDesglose?: () => void;
+}
+
+export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNavigateDesglose }) => {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [quickSearch, setQuickSearch] = useState('');
 
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
@@ -33,7 +38,7 @@ export const InventoryDashboard: React.FC = () => {
   const circumference = 2 * Math.PI * radius; // ~439.82
   const strokeDashoffset = circumference - (kpis.pctAvance / 100) * circumference;
 
-  const sampleItems = [
+  const catalogItems = [
     { validado: true, codigo: '6308', item: 'Belt B', ns: 3398, newsoft: 3479, dif: 81, ubicacion: 'G-14-1' },
     { validado: true, codigo: '6320', item: 'Belt CB', ns: 271, newsoft: 310, dif: 39, ubicacion: 'G-15-1' },
     { validado: false, codigo: '6310', item: 'Belt CRD', ns: 143, newsoft: 143, dif: 0, ubicacion: 'G-16-1' },
@@ -47,11 +52,12 @@ export const InventoryDashboard: React.FC = () => {
     { validado: false, codigo: '341647', item: 'BM-1000 B-30', ns: 13, newsoft: 15, dif: 2, ubicacion: 'E-7-1' }
   ];
 
-  const filteredItems = sampleItems.filter(
+  const filteredItems = catalogItems.filter(
     (it) =>
-      it.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      it.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      it.ubicacion.toLowerCase().includes(searchTerm.toLowerCase())
+      quickSearch.trim() === '' ||
+      it.item.toLowerCase().includes(quickSearch.toLowerCase()) ||
+      it.codigo.toLowerCase().includes(quickSearch.toLowerCase()) ||
+      it.ubicacion.toLowerCase().includes(quickSearch.toLowerCase())
   );
 
   const handleVerifyPin = () => {
@@ -149,10 +155,10 @@ export const InventoryDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* SECCIÓN GRÁFICA DE DONA Y DESGLOSE */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* SECCIÓN BALANCE + BUSCADOR DE CONSULTA RÁPIDA */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Dona Nativa en SVG */}
-        <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col items-center justify-center">
+        <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col items-center justify-center lg:col-span-4">
           <h3 className="text-xs font-black uppercase text-gray-300 mb-2 w-full text-left tracking-wider">
             Balance de Validación
           </h3>
@@ -201,81 +207,107 @@ export const InventoryDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* TABLA DE DESGLOSE OPERATIVO */}
-        <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg lg:col-span-2 flex flex-col">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h3 className="text-xs font-black uppercase text-gray-300 tracking-wider">
-              Desglose Operativo de Artículos (Hoja Progreso)
-            </h3>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* PANEL: CONSULTA RÁPIDA DE ARTÍCULOS */}
+        <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg lg:col-span-8 flex flex-col justify-between">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-xs font-black uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
+                  <Search className="w-4 h-4" /> CONSULTA RÁPIDA DE ARTÍCULOS
+                </h3>
+                <span className="text-[11px] text-gray-400">
+                  Busca al instante stock y estatus sin saturar la pantalla
+                </span>
+              </div>
+
+              {onNavigateDesglose && (
+                <button
+                  type="button"
+                  onClick={onNavigateDesglose}
+                  className="inline-flex items-center gap-1.5 text-xs text-[#00f2fe] hover:text-white bg-[#00f2fe]/10 hover:bg-[#00f2fe]/20 px-3 py-1.5 rounded-xl border border-[#00f2fe]/30 font-bold transition-all cursor-pointer"
+                >
+                  <span>Ver Desglose Completo</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Input de búsqueda interactivo */}
+            <div className="relative mb-3">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar SKU, código, ubicación..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-[#0d1017] border border-white/10 text-xs text-white placeholder-gray-500 focus:border-[#00f2fe] outline-none"
+                placeholder="Escribe código de componente, SKU o ubicación..."
+                value={quickSearch}
+                onChange={(e) => setQuickSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0d1017] border border-white/15 text-xs text-white placeholder-gray-500 focus:border-amber-400 outline-none shadow-inner"
               />
+            </div>
+
+            {/* Tabla de resultados rápidos */}
+            <div className="overflow-x-auto max-h-60 custom-scrollbar border border-white/5 rounded-xl">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 bg-[#0d1017] text-gray-400 font-bold uppercase text-[10px]">
+                  <tr className="border-b border-white/10">
+                    <th className="py-2 px-3">Estado</th>
+                    <th className="py-2 px-3">Código</th>
+                    <th className="py-2 px-3">Item / Descripción</th>
+                    <th className="py-2 px-3 text-right">Cant. NetSuite</th>
+                    <th className="py-2 px-3 text-right">Almacén Newsoft</th>
+                    <th className="py-2 px-3 text-right">Diferencia</th>
+                    <th className="py-2 px-3">Ubicación</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 font-medium">
+                  {filteredItems.slice(0, 8).map((row, idx) => (
+                    <tr key={idx} className="hover:bg-white/5 transition-colors">
+                      <td className="py-2 px-3">
+                        {row.validado ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                            <CheckCircle2 className="w-3 h-3" /> OK
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                            <Clock className="w-3 h-3" /> Pendiente
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 font-mono font-bold text-gray-300">
+                        {row.codigo}
+                      </td>
+                      <td className="py-2 px-3 text-white font-bold">
+                        {row.item}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-300 font-mono">
+                        {row.ns.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-300 font-mono">
+                        {row.newsoft.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono">
+                        {typeof row.dif === 'number' && row.dif > 0 ? (
+                          <span className="text-amber-400 font-bold">+{row.dif}</span>
+                        ) : typeof row.dif === 'string' ? (
+                          <span className="text-rose-400 font-bold text-[10px] bg-rose-500/10 px-1 rounded border border-rose-500/20">
+                            {row.dif}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400 font-bold">0</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-gray-400 font-mono">
+                        {row.ubicacion}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <div className="overflow-x-auto flex-1 max-h-72 custom-scrollbar">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-white/10 text-gray-400 font-bold uppercase text-[10px]">
-                  <th className="py-2 px-3">Estado</th>
-                  <th className="py-2 px-3">Código</th>
-                  <th className="py-2 px-3">Item / Descripción</th>
-                  <th className="py-2 px-3 text-right">Cant. NetSuite</th>
-                  <th className="py-2 px-3 text-right">Almacén Newsoft</th>
-                  <th className="py-2 px-3 text-right">Diferencia</th>
-                  <th className="py-2 px-3">Ubicación</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 font-medium">
-                {filteredItems.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-white/5 transition-colors">
-                    <td className="py-2 px-3">
-                      {row.validado ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
-                          <CheckCircle2 className="w-3 h-3" /> OK
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                          <Clock className="w-3 h-3" /> Pendiente
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 font-mono font-bold text-gray-300">
-                      {row.codigo}
-                    </td>
-                    <td className="py-2 px-3 text-white font-bold">
-                      {row.item}
-                    </td>
-                    <td className="py-2 px-3 text-right text-gray-300">
-                      {row.ns.toLocaleString()}
-                    </td>
-                    <td className="py-2 px-3 text-right text-gray-300">
-                      {row.newsoft.toLocaleString()}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      {typeof row.dif === 'number' && row.dif > 0 ? (
-                        <span className="text-amber-400 font-bold">+{row.dif}</span>
-                      ) : typeof row.dif === 'string' ? (
-                        <span className="text-rose-400 font-bold text-[10px] bg-rose-500/10 px-1 rounded border border-rose-500/20">
-                          {row.dif}
-                        </span>
-                      ) : (
-                        <span className="text-emerald-400 font-bold">0</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-3 text-gray-400 font-mono">
-                      {row.ubicacion}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="pt-2 text-[11px] text-gray-500 flex justify-between items-center">
+            <span>Mostrando {filteredItems.length} registros</span>
+            <span className="text-amber-400/80 font-bold">Nave 6 - Boombah</span>
           </div>
         </div>
       </div>
