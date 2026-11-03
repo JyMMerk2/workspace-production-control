@@ -9,8 +9,8 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Power, 
-  FileSpreadsheet,
-  CalendarCheck
+  FileSpreadsheet, 
+  CalendarCheck 
 } from 'lucide-react';
 
 interface EmailConfig {
