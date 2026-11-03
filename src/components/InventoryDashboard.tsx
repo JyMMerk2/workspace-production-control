@@ -6,11 +6,11 @@ import {
   ExternalLink, 
   Lock, 
   Search, 
-  X,
-  ArrowRight,
-  History,
-  Trash2,
-  RefreshCw
+  X, 
+  ArrowRight, 
+  History, 
+  Trash2, 
+  RefreshCw 
 } from 'lucide-react';
 
 interface SheetRowItem {
@@ -129,10 +129,10 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     }
   }, [CSV_URL]);
 
-  // Polling automático cada 10 segundos y al enfocar la pestaña
+  // Polling automático cada 5 segundos y al enfocar la pestaña
   useEffect(() => {
     syncInventoryData();
-    const interval = setInterval(syncInventoryData, 10000);
+    const interval = setInterval(syncInventoryData, 5000);
 
     const onFocus = () => syncInventoryData();
     window.addEventListener('focus', onFocus);
@@ -202,7 +202,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
               <span>CONTROL DE PRODUCCIÓN & INVENTARIO NAVE 6</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                En Vivo (10s)
+                En Vivo (5s)
               </span>
             </h2>
             <span className="text-xs text-gray-400">
@@ -388,7 +388,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                         >
                           <td className="py-2 px-3">
                             {row.validado ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
                                 <CheckCircle2 className="w-3 h-3" /> OK
                               </span>
                             ) : (
