@@ -17,6 +17,7 @@ export type TabType =
   | 'reemplazos'
   | 'inventario-nave-6'
   | 'inventario-desglose'
+  | 'inventario-pase'
   | 'manual'
   | 'configuracion';
 
@@ -144,4 +145,9 @@ export interface InventoryItem {
   balanceAlmacen: number;
   diferencia: number | string;
   ubicacion: string;
+  rowNumber?: number;
+  salida?: number;
+  candado?: boolean;
+  comentario?: string;
+  isLocked?: boolean;
 }
