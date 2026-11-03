@@ -13,6 +13,7 @@ import { ConfigView } from './components/ConfigView';
 import { TestWipNativoView } from './components/TestWipNativoView';
 import { WipStocksVendidasView } from './components/WipStocksVendidasView';
 import { InventoryDashboard } from './components/InventoryDashboard';
+import { InventoryDesgloseView } from './components/InventoryDesgloseView';
 import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
@@ -421,10 +422,19 @@ export default function App() {
             {/* 6. Módulo Slack / OCR */}
             {activeTab === 'slack-validation' && <SlackValidationView />}
 
-            {/* 7. Módulo Inventario: Nave 6 */}
-            {activeTab === 'inventario-nave-6' && <InventoryDashboard />}
+            {/* 7. Módulo Inventario: Nave 6 (Dashboard + Consulta Rápida) */}
+            {activeTab === 'inventario-nave-6' && (
+              <InventoryDashboard
+                onNavigateDesglose={() =>
+                  handleSelectTab('inventario-desglose', undefined, 'INVENTARIO - DESGLOSE OPERATIVO')
+                }
+              />
+            )}
 
-            {/* 8. Sheets Embebidos */}
+            {/* 8. Módulo Inventario: Desglose Operativo Completo */}
+            {activeTab === 'inventario-desglose' && <InventoryDesgloseView />}
+
+            {/* 9. Sheets Embebidos */}
             {isSheetTab && currentSheetConfig && (
               <SheetsView
                 config={currentSheetConfig}
@@ -436,10 +446,10 @@ export default function App() {
               />
             )}
 
-            {/* 9. Manual */}
+            {/* 10. Manual */}
             {activeTab === 'manual' && <ManualView />}
 
-            {/* 10. Configuración */}
+            {/* 11. Configuración */}
             {activeTab === 'configuracion' && (
               <ConfigView authenticatedUser={authenticatedUser} />
             )}
