@@ -12,6 +12,7 @@ import { ManualView } from './components/ManualView';
 import { ConfigView } from './components/ConfigView';
 import { TestWipNativoView } from './components/TestWipNativoView';
 import { WipStocksVendidasView } from './components/WipStocksVendidasView';
+import { InventoryDashboard } from './components/InventoryDashboard';
 import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
@@ -420,7 +421,10 @@ export default function App() {
             {/* 6. Módulo Slack / OCR */}
             {activeTab === 'slack-validation' && <SlackValidationView />}
 
-            {/* 7. Sheets Embebidos */}
+            {/* 7. Módulo Inventario: Nave 6 */}
+            {activeTab === 'inventario-nave-6' && <InventoryDashboard />}
+
+            {/* 8. Sheets Embebidos */}
             {isSheetTab && currentSheetConfig && (
               <SheetsView
                 config={currentSheetConfig}
@@ -432,10 +436,10 @@ export default function App() {
               />
             )}
 
-            {/* 8. Manual */}
+            {/* 9. Manual */}
             {activeTab === 'manual' && <ManualView />}
 
-            {/* 9. Configuración */}
+            {/* 10. Configuración */}
             {activeTab === 'configuracion' && (
               <ConfigView authenticatedUser={authenticatedUser} />
             )}
