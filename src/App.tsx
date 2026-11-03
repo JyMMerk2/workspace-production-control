@@ -14,6 +14,7 @@ import { TestWipNativoView } from './components/TestWipNativoView';
 import { WipStocksVendidasView } from './components/WipStocksVendidasView';
 import { InventoryDashboard } from './components/InventoryDashboard';
 import { InventoryDesgloseView } from './components/InventoryDesgloseView';
+import { PaseInventarioView } from './views/PaseInventarioView';
 import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
@@ -433,6 +434,9 @@ export default function App() {
 
             {/* 8. Módulo Inventario: Desglose Operativo Completo */}
             {activeTab === 'inventario-desglose' && <InventoryDesgloseView />}
+
+            {/* 8.1. Módulo Inventario: Pase de Inventario (Nueva Pestaña de Conteo) */}
+            {activeTab === 'inventario-pase' && <PaseInventarioView />}
 
             {/* 9. Sheets Embebidos */}
             {isSheetTab && currentSheetConfig && (
