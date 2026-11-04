@@ -29,6 +29,40 @@ interface InventoryDashboardProps {
   onNavigateDesglose?: () => void;
 }
 
+const APPS_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
+
+// Cliente de conexión resiliente dual (Fetch con fallback a JSONP)
+async function fetchGASMetrics(): Promise<any> {
+  const url = `${APPS_SCRIPT_URL}?action=GET_METRICS`;
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    // Si fetch es bloqueado por políticas de cabecera, se resuelve con JSONP
+  }
+
+  return new Promise((resolve, reject) => {
+    const cb = 'gas_dash_cb_' + Math.round(100000 * Math.random());
+    (window as any)[cb] = (data: any) => {
+      delete (window as any)[cb];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      resolve(data);
+    };
+
+    const script = document.createElement('script');
+    script.src = `${url}&callback=${cb}`;
+    script.onerror = () => {
+      delete (window as any)[cb];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('No se pudo conectar con Apps Script.'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
 export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNavigateDesglose }) => {
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -51,70 +85,104 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     }
   });
 
-  // KPIs oficiales inicializados en 100% y 0 restantes
+  // KPIs reales dinámicos (Sin valores hardcodeados)
   const [kpis, setKpis] = useState({
-    totalItems: 20544,
-    validados: 20544,
+    totalItems: 0,
+    validados: 0,
     restantes: 0,
-    totalUnidades: 173656,
-    pctAvance: 100,
+    totalUnidades: 0,
+    pctAvance: 0,
     pctFalta: 0,
   });
 
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1446108023#gid=1446108023';
 
-  // Endpoint CSV para métricas resumidas (Hoja Dashboard: gid=1446108023)
-  const CSV_DASHBOARD_URL =
-    'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1446108023';
-
   // Endpoint CSV para artículos detallados (Hoja PROGRESO: gid=1178501683)
   const CSV_PROGRESO_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  // Función de sincronización dual con Google Sheets
+  // Endpoint CSV para métricas resumidas (Hoja Dashboard: gid=1446108023)
+  const CSV_DASHBOARD_URL =
+    'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1446108023';
+
+  // Sincronización oficial con datos 100% reales
   const syncInventoryData = useCallback(async () => {
     setIsRefreshing(true);
+    let metricsLoaded = false;
+
     try {
-      let dashboardMetricsLoaded = false;
-
-      // 1. Intentar leer métricas oficiales desde la pestaña Dashboard
+      // 1. Intentar obtener métricas oficiales directas vía Apps Script
       try {
-        const dashRes = await fetch(CSV_DASHBOARD_URL);
-        if (dashRes.ok) {
-          const dashText = await dashRes.text();
-          const dashLines = dashText.split('\n');
+        const gasData = await fetchGASMetrics();
+        if (gasData && gasData.success && typeof gasData.totalItems === 'number') {
+          const total = gasData.totalItems;
+          const validados = gasData.validados;
+          const restantes = gasData.restantes;
+          const unidades = gasData.unidades;
+          const pct = total > 0 ? Number(((validados / total) * 100).toFixed(2)) : 0;
 
-          for (let rowIdx = 0; rowIdx < Math.min(dashLines.length, 12); rowIdx++) {
-            const rawRow = dashLines[rowIdx];
-            const cleanCols = rawRow.split(',').map(v => v.replace(/[^0-9.-]+/g, '').trim());
-            const total = parseInt(cleanCols[0], 10);
-            const validados = parseInt(cleanCols[1], 10);
-            const restantes = parseInt(cleanCols[2], 10);
-            const unidades = parseInt(cleanCols[3], 10);
-
-            if (!isNaN(total) && total >= 20000 && !isNaN(validados)) {
-              const diffRestantes = isNaN(restantes) ? Math.max(0, total - validados) : Math.max(0, restantes);
-              const avance = Number(((validados / total) * 100).toFixed(2));
-
-              setKpis({
-                totalItems: total,
-                validados: validados,
-                restantes: diffRestantes <= 1 && avance >= 99.9 ? 0 : diffRestantes,
-                totalUnidades: isNaN(unidades) ? 173656 : unidades,
-                pctAvance: avance >= 99.9 ? 100 : avance,
-                pctFalta: avance >= 99.9 ? 0 : Number((100 - avance).toFixed(2)),
-              });
-              dashboardMetricsLoaded = true;
-              break;
-            }
-          }
+          setKpis({
+            totalItems: total,
+            validados: validados,
+            restantes: restantes,
+            totalUnidades: unidades,
+            pctAvance: pct,
+            pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
+          });
+          metricsLoaded = true;
         }
-      } catch (err) {
-        console.warn('Lectura primaria de KPIs Dashboard omitida, usando respaldo PROGRESO:', err);
+      } catch (gasErr) {
+        console.warn('Endpoint Apps Script no disponible, probando lectura directa de CSV Dashboard:', gasErr);
       }
 
-      // 2. Cargar/Actualizar la base de artículos de la pestaña PROGRESO para el buscador
+      // 2. Si Apps Script no respondió, leer directamente la fila 5 de la hoja Dashboard CSV
+      if (!metricsLoaded) {
+        try {
+          const dashRes = await fetch(CSV_DASHBOARD_URL);
+          if (dashRes.ok) {
+            const dashText = await dashRes.text();
+            const dashLines = dashText.split('\n');
+
+            // Fila 5 de Dashboard (índice 4): B5 (Total), E5 (Validados), H5 (Restantes), K5 (Unidades)
+            for (let i = 0; i < Math.min(dashLines.length, 10); i++) {
+              const rawRow = dashLines[i];
+              const cols = rawRow.split(',').map(c => c.replace(/[^0-9.-]+/g, '').trim());
+              
+              // Buscamos la fila que contiene el número del inventario (alrededor de 20000)
+              const foundTotalIdx = cols.findIndex(c => {
+                const n = parseInt(c, 10);
+                return !isNaN(n) && n >= 20000;
+              });
+
+              if (foundTotalIdx !== -1) {
+                const total = parseInt(cols[foundTotalIdx], 10) || 0;
+                // En celdas combinadas de 3 columnas: siguiente bloque está a 3 columnas de distancia
+                const validados = parseInt(cols[foundTotalIdx + 3], 10) || total;
+                const restantes = parseInt(cols[foundTotalIdx + 6], 10) || Math.max(0, total - validados);
+                const unidades = parseInt(cols[foundTotalIdx + 9], 10) || 0;
+
+                const pct = total > 0 ? Number(((validados / total) * 100).toFixed(2)) : 0;
+
+                setKpis({
+                  totalItems: total,
+                  validados: validados,
+                  restantes: restantes,
+                  totalUnidades: unidades,
+                  pctAvance: pct,
+                  pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
+                });
+                metricsLoaded = true;
+                break;
+              }
+            }
+          }
+        } catch (dashCsvErr) {
+          console.warn('Lectura CSV Dashboard omitida:', dashCsvErr);
+        }
+      }
+
+      // 3. Cargar la base de artículos de PROGRESO para el buscador y respaldo final de métricas
       const progRes = await fetch(CSV_PROGRESO_URL);
       if (progRes.ok) {
         const progText = await progRes.text();
@@ -157,21 +225,19 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
         if (parsed.length > 0) {
           setAllItems(parsed);
 
-          // Si la pestaña Dashboard no respondió, calcular sobre PROGRESO corrigiendo la fila fantasma
-          if (!dashboardMetricsLoaded) {
+          // Si ni Apps Script ni Dashboard respondieron, usar el cálculo puro de PROGRESO sin alterar
+          if (!metricsLoaded) {
             const total = parsed.length;
-            const diff = total - validCount;
-            const isCompleted = diff <= 1; // Resuelve el desfase de la última fila
-            const effectiveValidados = isCompleted ? total : validCount;
-            const pct = isCompleted ? 100 : Number(((validCount / total) * 100).toFixed(2));
+            const diff = Math.max(0, total - validCount);
+            const pct = total > 0 ? Number(((validCount / total) * 100).toFixed(2)) : 0;
 
             setKpis({
               totalItems: total,
-              validados: effectiveValidados,
-              restantes: isCompleted ? 0 : diff,
-              totalUnidades: sumUnits || 173656,
+              validados: validCount,
+              restantes: diff,
+              totalUnidades: sumUnits,
               pctAvance: pct,
-              pctFalta: isCompleted ? 0 : Number((100 - pct).toFixed(2)),
+              pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
             });
           }
         }
@@ -179,7 +245,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
 
       setLastSync(new Date().toLocaleTimeString());
     } catch (err) {
-      console.warn('Sincronización en segundo plano con datos cacheados:', err);
+      console.warn('Error en la sincronización de inventario:', err);
     } finally {
       setIsRefreshing(false);
     }
@@ -516,7 +582,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                             <span className="font-mono font-bold text-amber-400">{rec.codigo}</span>
                             <span className="text-white font-medium truncate">{rec.item}</span>
                           </div>
-                          <div className="flex items-center gap-3 shrink-0 text-gray-400 font-mono text-[11px]">
+                          <div className="flex items-center gap-3 shrink-0 text-gray-400 font-mono text-11px]">
                             <span>Stock: <strong className="text-gray-200">{rec.newsoft}</strong></span>
                             <span className="bg-white/5 px-1.5 py-0.5 rounded text-gray-300">{rec.ubicacion}</span>
                           </div>
