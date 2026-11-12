@@ -32,6 +32,42 @@ const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const MASTER_PIN = '030621';
 
+// Parser CSV que respeta saltos de línea dentro de comillas (mantiene el rowNumber 100% exacto)
+function parseCSVExact(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      row.push(current.trim());
+      rows.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current !== '' || row.length > 0) {
+    row.push(current.trim());
+    rows.push(row);
+  }
+  return rows;
+}
+
 // Cliente híbrido para actualizar celdas en Google Sheets sin problemas de CORS
 async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
   const query = new URLSearchParams(params).toString();
@@ -95,13 +131,13 @@ export const InventoryDesgloseView: React.FC = () => {
     try {
       const res = await fetch(CSV_URL);
       const csvText = await res.text();
-      const lines = csvText.split('\n');
+      const allRows = parseCSVExact(csvText);
       const parsedItems: SheetRowItem[] = [];
 
-      for (let i = 3; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
+      // El índice 3 corresponde exactamente a la fila 4 de Google Sheets
+      for (let i = 3; i < allRows.length; i++) {
+        const cols = allRows[i];
+        if (!cols || cols.length < 3) continue;
         
         // Columna A (Índice 0): Validado
         const rawValidado = (cols[0] || '').toUpperCase();
@@ -130,7 +166,7 @@ export const InventoryDesgloseView: React.FC = () => {
         const ubicacion = cols[7] || cols[6] || '-';
 
         parsedItems.push({
-          rowNumber: i + 1, // Fila real en Google Sheets (1-based)
+          rowNumber: i + 1, // Fila real exacta en Google Sheets (1-based)
           validado: isValid,
           candado: isLocked,
           codigo,
@@ -188,6 +224,7 @@ export const InventoryDesgloseView: React.FC = () => {
 
     const payload = {
       rowNumber: row.rowNumber,
+      codigo: row.codigo, // Respaldo de seguridad para ubicar fila exacta en Apps Script
       colI: nuevoEstadoCandado,
       forceUnlock: conPinAutorizado
     };
