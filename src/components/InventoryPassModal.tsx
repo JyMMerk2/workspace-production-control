@@ -136,9 +136,11 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
 
     const payload = {
       rowNumber: item.rowNumber,
+      codigo: colB,
       colA,
       colB,
       colC,
+      colD: Number(colD) || 0,
       colE: Number(colE) || 0,
       colG: Number(colG) || 0,
       colH,
@@ -353,10 +355,14 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
               {/* Métricas y Diferencia en Vivo */}
               <div className="grid grid-cols-4 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">NetSuite (D)</label>
-                  <div className="w-full bg-[#0b0e14] border border-white/5 rounded-xl p-2 text-xs text-center font-bold text-gray-300">
-                    {colD}
-                  </div>
+                  <label className="text-[10px] font-bold text-indigo-400 uppercase">NetSuite (D)</label>
+                  <input
+                    type="number"
+                    disabled={isLocked}
+                    value={colD}
+                    onChange={(e) => setColD(e.target.value)}
+                    className="w-full bg-[#0d1017] border border-indigo-500/40 rounded-xl p-2 text-xs text-center font-bold text-white outline-none focus:border-indigo-400 disabled:opacity-50"
+                  />
                 </div>
 
                 <div className="space-y-1">
