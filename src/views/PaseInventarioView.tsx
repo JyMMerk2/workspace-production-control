@@ -255,7 +255,7 @@ export const PaseInventarioView: React.FC = () => {
     }
   };
 
-  // Guardar en Google Sheets y sincronizar estado reactivo local (Opción A)
+  // Guardar en Google Sheets (incluyendo Col D: NetSuite) y sincronizar estado reactivo local
   const handleSave = async () => {
     if (!selectedItem) return;
 
@@ -276,9 +276,11 @@ export const PaseInventarioView: React.FC = () => {
 
     const payload = {
       rowNumber: selectedItem.rowNumber,
+      codigo: colB,
       colA,
       colB,
       colC,
+      colD: Number(colD) || 0,
       colE: Number(colE) || 0,
       colG: Number(colG) || 0,
       colH,
@@ -301,6 +303,7 @@ export const PaseInventarioView: React.FC = () => {
           ...selectedItem,
           ...payload,
           colA_Validado: colA,
+          colD_NetSuite: Number(colD) || 0,
           colE_Newsoft: Number(colE) || 0,
           colG_Salida: Number(colG) || 0,
           colF_Diferencia: diferenciaCalculada,
@@ -698,14 +701,18 @@ export const PaseInventarioView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Métricas: NetSuite (Solo Lectura), Almacén, Salida, Total Balance Newsoft y DIF */}
+              {/* Métricas: NetSuite (EDITABLE), Almacén, Salida, Total Balance Newsoft y DIF */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">NetSuite (D)</label>
-                  <div className="w-full bg-[#0b0e14] border border-white/5 rounded-xl p-2.5 text-xs text-center font-bold text-gray-400 select-none">
-                    {colD}
-                  </div>
+                  <label className="text-[10px] font-bold text-indigo-400 uppercase">NetSuite (D)</label>
+                  <input
+                    type="number"
+                    disabled={isLocked}
+                    value={colD}
+                    onChange={(e) => setColD(e.target.value)}
+                    className="w-full bg-[#0d1017] border border-indigo-500/40 rounded-xl p-2.5 text-xs text-center font-bold text-white outline-none focus:border-indigo-400 disabled:opacity-50"
+                  />
                 </div>
 
                 <div className="space-y-1">
