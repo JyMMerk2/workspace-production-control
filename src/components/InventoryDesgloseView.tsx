@@ -111,6 +111,10 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingNsRow, setEditingNsRow] = useState<number | null>(null);
   const [editingNsValue, setEditingNsValue] = useState<string>('');
 
+  // Estados para edición en línea de Comentarios (Col L)
+  const [editingCommentRow, setEditingCommentRow] = useState<number | null>(null);
+  const [editingCommentValue, setEditingCommentValue] = useState<string>('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'CERRADO'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
@@ -236,6 +240,51 @@ export const InventoryDesgloseView: React.FC = () => {
         });
       } else {
         setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar NetSuite en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
+
+  // Guardar nuevo Comentario (Col L) en Google Sheets
+  const handleSaveComment = async (row: SheetRowItem) => {
+    setEditingCommentRow(null);
+    if (row.candado) return;
+
+    const nuevoComentario = editingCommentValue.trim();
+    if (nuevoComentario === row.comentario.trim()) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colL: nuevoComentario
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, comentario: nuevoComentario }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Comentario del ítem ${row.codigo} actualizado en Google Sheets.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar el comentario.' });
       }
     } catch (err: any) {
       setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
@@ -543,6 +592,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isDifCero = tieneDiferenciaCero(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
                 const isEditingNs = editingNsRow === row.rowNumber;
+                const isEditingComment = editingCommentRow === row.rowNumber;
 
                 return (
                   <tr key={row.rowNumber} className="hover:bg-white/5 transition-colors">
@@ -670,8 +720,46 @@ export const InventoryDesgloseView: React.FC = () => {
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-gray-400 font-mono font-bold">{row.ubicacion}</td>
-                    <td className="py-2.5 px-3 text-gray-300 text-[11px] max-w-[240px] truncate" title={row.comentario}>
-                      {row.comentario || <span className="text-gray-600">—</span>}
+
+                    {/* COMENTARIOS (COL L - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    <td className="py-2.5 px-3 text-gray-300 text-[11px] min-w-[200px] max-w-[280px]">
+                      {isEditingComment ? (
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingCommentValue}
+                          onChange={(e) => setEditingCommentValue(e.target.value)}
+                          onBlur={() => handleSaveComment(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveComment(row);
+                            if (e.key === 'Escape') setEditingCommentRow(null);
+                          }}
+                          placeholder="Escribir comentario..."
+                          className="w-full px-2 py-1 text-xs text-white bg-[#0d1017] border border-amber-400 rounded-lg outline-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingCommentRow(row.rowNumber);
+                              setEditingCommentValue(row.comentario);
+                            }
+                          }}
+                          title={row.candado ? 'Bloqueado con candado' : (row.comentario ? `${row.comentario} (Clic para editar)` : 'Clic para agregar comentario')}
+                          className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-gray-400 cursor-default'
+                              : 'hover:bg-amber-500/15 hover:text-amber-200 cursor-pointer group'
+                          }`}
+                        >
+                          <span className="truncate">
+                            {row.comentario || <span className="text-gray-600">—</span>}
+                          </span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
