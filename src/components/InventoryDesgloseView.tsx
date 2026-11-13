@@ -13,7 +13,8 @@ import {
   X,
   KeyRound,
   AlertCircle,
-  ShieldCheck
+  ShieldCheck,
+  Edit2
 } from 'lucide-react';
 
 interface SheetRowItem {
@@ -26,6 +27,7 @@ interface SheetRowItem {
   newsoft: number;
   dif: string | number;
   ubicacion: string;
+  comentario: string;
 }
 
 const APPS_SCRIPT_URL =
@@ -105,6 +107,10 @@ export const InventoryDesgloseView: React.FC = () => {
   const [updatingRow, setUpdatingRow] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Estados para edición en línea de Cantidad NetSuite (Col D)
+  const [editingNsRow, setEditingNsRow] = useState<number | null>(null);
+  const [editingNsValue, setEditingNsValue] = useState<string>('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'CERRADO'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
@@ -164,6 +170,7 @@ export const InventoryDesgloseView: React.FC = () => {
 
         const difVal = cols[5] !== undefined && cols[5] !== '' ? cols[5] : (finalNewsoftVal - nsVal);
         const ubicacion = cols[7] || cols[6] || '-';
+        const comentario = cols[11] || ''; // Columna L (Índice 11)
 
         parsedItems.push({
           rowNumber: i + 1, // Fila real exacta en Google Sheets (1-based)
@@ -174,7 +181,8 @@ export const InventoryDesgloseView: React.FC = () => {
           ns: nsVal,
           newsoft: finalNewsoftVal,
           dif: difVal,
-          ubicacion
+          ubicacion,
+          comentario
         });
       }
 
@@ -189,6 +197,52 @@ export const InventoryDesgloseView: React.FC = () => {
   useEffect(() => {
     fetchSheetData();
   }, []);
+
+  // Guardar nuevo valor de Cantidad NetSuite (Col D) en Google Sheets
+  const handleSaveNetSuite = async (row: SheetRowItem) => {
+    setEditingNsRow(null);
+    if (row.candado) return;
+
+    const nuevoNs = parseFloat(editingNsValue);
+    if (isNaN(nuevoNs) || nuevoNs === row.ns) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colD: nuevoNs
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        const nuevaDif = row.newsoft - nuevoNs;
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, ns: nuevoNs, dif: nuevaDif }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Cantidad NetSuite del ítem ${row.codigo} actualizada a ${nuevoNs}.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar NetSuite en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
 
   // Verificar si un registro tiene Diferencia = 0
   const tieneDiferenciaCero = (row: SheetRowItem): boolean => {
@@ -291,7 +345,8 @@ export const InventoryDesgloseView: React.FC = () => {
       const matchSearch =
         it.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
         it.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        it.ubicacion.toLowerCase().includes(searchTerm.toLowerCase());
+        it.ubicacion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        it.comentario.toLowerCase().includes(searchTerm.toLowerCase());
       
       if (!matchSearch) return false;
       if (filterStatus === 'PENDIENTE') return !it.validado && !it.candado;
@@ -456,7 +511,7 @@ export const InventoryDesgloseView: React.FC = () => {
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Buscar SKU, código o ubicación..."
+              placeholder="Buscar SKU, código, ubicación o comentario..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -480,12 +535,14 @@ export const InventoryDesgloseView: React.FC = () => {
                 <th className="py-3 px-3 text-right">Total Balance Disponible Newsoft</th>
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
+                <th className="py-3 px-3">Comentarios</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 font-medium">
               {paginatedItems.map((row) => {
                 const isDifCero = tieneDiferenciaCero(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
+                const isEditingNs = editingNsRow === row.rowNumber;
 
                 return (
                   <tr key={row.rowNumber} className="hover:bg-white/5 transition-colors">
@@ -559,7 +616,45 @@ export const InventoryDesgloseView: React.FC = () => {
 
                     <td className="py-2.5 px-3 font-mono font-bold text-gray-300">{row.codigo}</td>
                     <td className="py-2.5 px-3 text-white font-bold">{row.item}</td>
-                    <td className="py-2.5 px-3 text-right text-gray-300 font-mono">{row.ns.toLocaleString()}</td>
+
+                    {/* CANTIDAD NETSUITE (EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    <td className="py-2.5 px-3 text-right font-mono">
+                      {isEditingNs ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          value={editingNsValue}
+                          onChange={(e) => setEditingNsValue(e.target.value)}
+                          onBlur={() => handleSaveNetSuite(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveNetSuite(row);
+                            if (e.key === 'Escape') setEditingNsRow(null);
+                          }}
+                          className="w-20 px-2 py-1 text-right font-bold text-white bg-[#0d1017] border border-indigo-400 rounded-lg outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingNsRow(row.rowNumber);
+                              setEditingNsValue(String(row.ns));
+                            }
+                          }}
+                          title={row.candado ? 'Bloqueado con candado' : 'Clic para editar Cantidad NetSuite'}
+                          className={`inline-flex items-center justify-end gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-gray-400 cursor-default'
+                              : 'text-gray-200 hover:bg-indigo-500/15 hover:text-indigo-300 cursor-pointer group'
+                          }`}
+                        >
+                          <span>{row.ns.toLocaleString()}</span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
+                    </td>
+
                     <td className="py-2.5 px-3 text-right text-[#00f2fe] font-mono font-bold">{row.newsoft.toLocaleString()}</td>
                     <td className="py-2.5 px-3 text-right font-mono">
                       {typeof row.dif === 'number' && row.dif > 0 ? (
@@ -575,6 +670,9 @@ export const InventoryDesgloseView: React.FC = () => {
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-gray-400 font-mono font-bold">{row.ubicacion}</td>
+                    <td className="py-2.5 px-3 text-gray-300 text-[11px] max-w-[240px] truncate" title={row.comentario}>
+                      {row.comentario || <span className="text-gray-600">—</span>}
+                    </td>
                   </tr>
                 );
               })}
