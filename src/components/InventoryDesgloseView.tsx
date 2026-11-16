@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   FileSpreadsheet, 
   Search, 
@@ -104,6 +104,7 @@ async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
 export const InventoryDesgloseView: React.FC = () => {
   const [items, setItems] = useState<SheetRowItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<string>('');
   const [updatingRow, setUpdatingRow] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -131,15 +132,33 @@ export const InventoryDesgloseView: React.FC = () => {
   const [unlockPinInput, setUnlockPinInput] = useState('');
   const [unlockPinError, setUnlockPinError] = useState(false);
 
+  // Controles de concurrencia para evitar solapamiento de red o interrumpir ediciones activas
+  const isFetchingRef = useRef(false);
+  const isBusyRef = useRef(false);
+
+  useEffect(() => {
+    isBusyRef.current = Boolean(
+      editingNsRow !== null ||
+      editingCommentRow !== null ||
+      updatingRow !== null ||
+      unlockTargetRow !== null
+    );
+  }, [editingNsRow, editingCommentRow, updatingRow, unlockTargetRow]);
+
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  const fetchSheetData = async () => {
-    setLoading(true);
+  const fetchSheetData = useCallback(async (silent = false) => {
+    if (isFetchingRef.current) return;
+    if (silent && (isBusyRef.current || document.hidden)) return;
+
+    isFetchingRef.current = true;
+    if (!silent) setLoading(true);
+
     try {
-      const res = await fetch(CSV_URL);
+      const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
       const csvText = await res.text();
       const allRows = parseCSVExact(csvText);
       const parsedItems: SheetRowItem[] = [];
@@ -190,17 +209,36 @@ export const InventoryDesgloseView: React.FC = () => {
         });
       }
 
-      if (parsedItems.length > 0) setItems(parsedItems);
+      if (parsedItems.length > 0 && (!silent || !isBusyRef.current)) {
+        setItems(parsedItems);
+        setLastSync(new Date().toLocaleTimeString());
+      }
     } catch {
-      setItems([]);
+      if (!silent) setItems([]);
     } finally {
-      setLoading(false);
+      isFetchingRef.current = false;
+      if (!silent) setLoading(false);
     }
-  };
+  }, [CSV_URL]);
 
+  // Carga inicial + Sincronización en tiempo real cada 2 segundos
   useEffect(() => {
-    fetchSheetData();
-  }, []);
+    fetchSheetData(false);
+
+    const interval = setInterval(() => {
+      fetchSheetData(true);
+    }, 2000);
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchSheetData(true);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [fetchSheetData]);
 
   // Guardar nuevo valor de Cantidad NetSuite (Col D) en Google Sheets
   const handleSaveNetSuite = async (row: SheetRowItem) => {
@@ -447,18 +485,23 @@ export const InventoryDesgloseView: React.FC = () => {
             <FileSpreadsheet className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-black uppercase text-white tracking-wide">
-              DESGLOSE OPERATIVO COMPLETO (NAVE 6)
+            <h2 className="text-base font-black uppercase text-white tracking-wide flex items-center gap-2">
+              <span>DESGLOSE OPERATIVO COMPLETO (NAVE 6)</span>
+              <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                En Vivo (2s)
+              </span>
             </h2>
             <span className="text-xs text-gray-400">
               Registros Totales: {items.length.toLocaleString()} artículos
+              {lastSync ? ` • Sincronizado: ${lastSync}` : ''}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchSheetData}
+            onClick={() => fetchSheetData(false)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-xs border border-white/10 transition-all cursor-pointer"
           >
