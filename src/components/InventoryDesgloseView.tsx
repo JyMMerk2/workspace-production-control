@@ -134,6 +134,10 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingAlmacenRow, setEditingAlmacenRow] = useState<number | null>(null);
   const [editingAlmacenValue, setEditingAlmacenValue] = useState<string>('');
 
+  // Estados para edición en línea de Ubicación (Col H)
+  const [editingUbicacionRow, setEditingUbicacionRow] = useState<number | null>(null);
+  const [editingUbicacionValue, setEditingUbicacionValue] = useState<string>('');
+
   // Estados para edición en línea de Comentarios (Col L)
   const [editingCommentRow, setEditingCommentRow] = useState<number | null>(null);
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
@@ -164,11 +168,21 @@ export const InventoryDesgloseView: React.FC = () => {
       editingSalidaRow !== null ||
       editingNave7Row !== null ||
       editingAlmacenRow !== null ||
+      editingUbicacionRow !== null ||
       editingCommentRow !== null ||
       updatingRow !== null ||
       unlockTargetRow !== null
     );
-  }, [editingNsRow, editingSalidaRow, editingNave7Row, editingAlmacenRow, editingCommentRow, updatingRow, unlockTargetRow]);
+  }, [
+    editingNsRow,
+    editingSalidaRow,
+    editingNave7Row,
+    editingAlmacenRow,
+    editingUbicacionRow,
+    editingCommentRow,
+    updatingRow,
+    unlockTargetRow
+  ]);
 
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
@@ -452,6 +466,51 @@ export const InventoryDesgloseView: React.FC = () => {
         });
       } else {
         setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Newsoft (Col E) en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
+
+  // Guardar nueva Ubicación (Col H) en Google Sheets
+  const handleSaveUbicacion = async (row: SheetRowItem) => {
+    setEditingUbicacionRow(null);
+    if (row.candado) return;
+
+    const nuevaUbicacion = editingUbicacionValue.trim().toUpperCase();
+    if (!nuevaUbicacion || nuevaUbicacion === row.ubicacion.trim().toUpperCase()) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colH: nuevaUbicacion
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, ubicacion: nuevaUbicacion }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Ubicación del ítem ${row.codigo} actualizada a ${nuevaUbicacion}.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar la ubicación en Sheets.' });
       }
     } catch (err: any) {
       setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
@@ -849,6 +908,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isEditingSalida = editingSalidaRow === row.rowNumber;
                 const isEditingNave7 = editingNave7Row === row.rowNumber;
                 const isEditingAlmacen = editingAlmacenRow === row.rowNumber;
+                const isEditingUbicacion = editingUbicacionRow === row.rowNumber;
                 const isEditingComment = editingCommentRow === row.rowNumber;
 
                 return (
@@ -1106,7 +1166,45 @@ export const InventoryDesgloseView: React.FC = () => {
                         <span className="text-emerald-400 font-bold">0</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 text-gray-400 font-mono font-bold">{row.ubicacion}</td>
+
+                    {/* UBICACIÓN (COL H - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    <td className="py-2.5 px-3 font-mono font-bold">
+                      {isEditingUbicacion ? (
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingUbicacionValue}
+                          onChange={(e) => setEditingUbicacionValue(e.target.value.toUpperCase())}
+                          onBlur={() => handleSaveUbicacion(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveUbicacion(row);
+                            if (e.key === 'Escape') setEditingUbicacionRow(null);
+                          }}
+                          placeholder="Ej. G-15-1"
+                          className="w-24 px-2 py-1 font-bold text-white uppercase bg-[#0d1017] border border-amber-400 rounded-lg outline-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingUbicacionRow(row.rowNumber);
+                              setEditingUbicacionValue(row.ubicacion === '-' ? '' : row.ubicacion);
+                            }
+                          }}
+                          title={row.candado ? 'Bloqueado con candado' : 'Clic para editar Ubicación (Col H)'}
+                          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-gray-400 cursor-default'
+                              : 'text-gray-300 hover:bg-amber-500/15 hover:text-amber-300 cursor-pointer group'
+                          }`}
+                        >
+                          <span>{row.ubicacion}</span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
+                    </td>
 
                     {/* COMENTARIOS (COL L - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
                     <td className="py-2.5 px-3 text-gray-300 text-[11px] min-w-[200px] max-w-[280px]">
