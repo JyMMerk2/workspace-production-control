@@ -38,6 +38,11 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTP
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
 
+// Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
+function limpiarEtiquetaRevision(comentario: string): string {
+  return comentario.replace(/\[REVISIÓN[^\]]*\]\s*/gi, '').trim();
+}
+
 // Parser CSV exacto para sincronización en tiempo real sin consumir cuota de Apps Script
 function parseCSVExact(text: string): string[][] {
   const rows: string[][] = [];
@@ -381,6 +386,8 @@ export const PaseInventarioView: React.FC = () => {
     setNotification(null);
 
     const willBeLocked = Boolean(colA && colI);
+    // Al volver a cerrar el candado (Col I = TRUE) se limpia automáticamente la etiqueta [REVISIÓN...]
+    const comentarioFinal = colI ? limpiarEtiquetaRevision(colL) : colL;
 
     const payload = {
       rowNumber: selectedItem.rowNumber,
@@ -393,7 +400,7 @@ export const PaseInventarioView: React.FC = () => {
       colG: Number(colG) || 0,
       colH,
       colI,
-      colL,
+      colL: comentarioFinal,
       colN: Number(colN) || 0,
       forceUnlock: isUnlockedByPin
     };
@@ -405,6 +412,7 @@ export const PaseInventarioView: React.FC = () => {
       });
 
       if (data && data.success) {
+        setColL(comentarioFinal);
         setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
 
         // Sincronizar el ítem seleccionado para que permanezca visible con sus valores correctos
@@ -418,6 +426,7 @@ export const PaseInventarioView: React.FC = () => {
           colN_Nave7: Number(colN) || 0,
           colF_Diferencia: diferenciaCalculada,
           colI_Candado: colI,
+          colL_Comentario: comentarioFinal,
           isLocked: willBeLocked
         };
         setSelectedItem(updatedItem);
