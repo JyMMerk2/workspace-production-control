@@ -24,6 +24,9 @@ interface SheetRowItem {
   codigo: string;
   item: string;
   ns: number;
+  almacen: number;
+  salida: number;
+  nave7: number;
   newsoft: number;
   dif: string | number;
   ubicacion: string;
@@ -112,6 +115,14 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingNsRow, setEditingNsRow] = useState<number | null>(null);
   const [editingNsValue, setEditingNsValue] = useState<string>('');
 
+  // Estados para edición en línea de Salidas (Col G)
+  const [editingSalidaRow, setEditingSalidaRow] = useState<number | null>(null);
+  const [editingSalidaValue, setEditingSalidaValue] = useState<string>('');
+
+  // Estados para edición en línea de Nave 7 (Col N)
+  const [editingNave7Row, setEditingNave7Row] = useState<number | null>(null);
+  const [editingNave7Value, setEditingNave7Value] = useState<string>('');
+
   // Estados para edición en línea de Comentarios (Col L)
   const [editingCommentRow, setEditingCommentRow] = useState<number | null>(null);
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
@@ -139,11 +150,13 @@ export const InventoryDesgloseView: React.FC = () => {
   useEffect(() => {
     isBusyRef.current = Boolean(
       editingNsRow !== null ||
+      editingSalidaRow !== null ||
+      editingNave7Row !== null ||
       editingCommentRow !== null ||
       updatingRow !== null ||
       unlockTargetRow !== null
     );
-  }, [editingNsRow, editingCommentRow, updatingRow, unlockTargetRow]);
+  }, [editingNsRow, editingSalidaRow, editingNave7Row, editingCommentRow, updatingRow, unlockTargetRow]);
 
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
@@ -158,7 +171,7 @@ export const InventoryDesgloseView: React.FC = () => {
     if (!silent) setLoading(true);
 
     try {
-      const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      const res = await fetch(CSV_URL, { cache: 'no-store' });
       const csvText = await res.text();
       const allRows = parseCSVExact(csvText);
       const parsedItems: SheetRowItem[] = [];
@@ -184,12 +197,13 @@ export const InventoryDesgloseView: React.FC = () => {
         if (codigo.toUpperCase() === 'COMENTARIO' || itemName.toUpperCase() === 'COMENTARIO') continue;
 
         const nsVal = parseFloat(cols[3]?.replace(/[^0-9.-]+/g, '')) || 0;
-        
-        // Columna K (Índice 10) o Columna E (Índice 4) para Balance Newsoft
-        const newsoftKVal = parseFloat(cols[10]?.replace(/[^0-9.-]+/g, ''));
-        const newsoftEVal = parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0;
+        const almacenEVal = parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0;
         const salidaGVal = parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0;
-        const finalNewsoftVal = !isNaN(newsoftKVal) ? newsoftKVal : (newsoftEVal - salidaGVal);
+        const nave7NVal = parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0;
+        
+        // Columna K (Índice 10) o cálculo directo ((Col E - Col G) + Col N)
+        const newsoftKVal = parseFloat(cols[10]?.replace(/[^0-9.-]+/g, ''));
+        const finalNewsoftVal = !isNaN(newsoftKVal) ? newsoftKVal : ((almacenEVal - salidaGVal) + nave7NVal);
 
         const difVal = cols[5] !== undefined && cols[5] !== '' ? cols[5] : (finalNewsoftVal - nsVal);
         const ubicacion = cols[7] || cols[6] || '-';
@@ -202,6 +216,9 @@ export const InventoryDesgloseView: React.FC = () => {
           codigo,
           item: itemName,
           ns: nsVal,
+          almacen: almacenEVal,
+          salida: salidaGVal,
+          nave7: nave7NVal,
           newsoft: finalNewsoftVal,
           dif: difVal,
           ubicacion,
@@ -286,6 +303,100 @@ export const InventoryDesgloseView: React.FC = () => {
     }
   };
 
+  // Guardar nuevo valor de Salidas (Col G) en Google Sheets
+  const handleSaveSalida = async (row: SheetRowItem) => {
+    setEditingSalidaRow(null);
+    if (row.candado) return;
+
+    const nuevaSalida = parseFloat(editingSalidaValue);
+    if (isNaN(nuevaSalida) || nuevaSalida === row.salida) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colG: nuevaSalida
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        const nuevoBalance = (row.almacen - nuevaSalida) + row.nave7;
+        const nuevaDif = nuevoBalance - row.ns;
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, salida: nuevaSalida, newsoft: nuevoBalance, dif: nuevaDif }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Salida del ítem ${row.codigo} actualizada a ${nuevaSalida}.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar la salida en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
+
+  // Guardar nuevo valor de Nave 7 (Col N) en Google Sheets
+  const handleSaveNave7 = async (row: SheetRowItem) => {
+    setEditingNave7Row(null);
+    if (row.candado) return;
+
+    const nuevaNave7 = parseFloat(editingNave7Value);
+    if (isNaN(nuevaNave7) || nuevaNave7 === row.nave7) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colN: nuevaNave7
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        const nuevoBalance = (row.almacen - row.salida) + nuevaNave7;
+        const nuevaDif = nuevoBalance - row.ns;
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, nave7: nuevaNave7, newsoft: nuevoBalance, dif: nuevaDif }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Cantidad Nave 7 del ítem ${row.codigo} actualizada a ${nuevaNave7}.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Nave 7 en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
+
   // Guardar nuevo Comentario (Col L) en Google Sheets
   const handleSaveComment = async (row: SheetRowItem) => {
     setEditingCommentRow(null);
@@ -343,7 +454,6 @@ export const InventoryDesgloseView: React.FC = () => {
 
   // Acción directa para activar o desactivar el candado (Col I) en Google Sheets
   const toggleCandadoFila = async (row: SheetRowItem, nuevoEstadoCandado: boolean, conPinAutorizado = false) => {
-    // Si intenta cerrar el candado, exigir Diferencia === 0
     if (nuevoEstadoCandado && !tieneDiferenciaCero(row)) {
       setNotification({
         type: 'error',
@@ -352,7 +462,6 @@ export const InventoryDesgloseView: React.FC = () => {
       return;
     }
 
-    // Si el ítem ya está cerrado y quiere abrirlo, exigir el modal de PIN 030621
     if (!nuevoEstadoCandado && row.candado && !conPinAutorizado) {
       setUnlockTargetRow(row);
       setUnlockPinInput('');
@@ -365,7 +474,7 @@ export const InventoryDesgloseView: React.FC = () => {
 
     const payload = {
       rowNumber: row.rowNumber,
-      codigo: row.codigo, // Respaldo de seguridad para ubicar fila exacta en Apps Script
+      codigo: row.codigo,
       colI: nuevoEstadoCandado,
       forceUnlock: conPinAutorizado
     };
@@ -624,6 +733,8 @@ export const InventoryDesgloseView: React.FC = () => {
                 <th className="py-3 px-3">Código Componente</th>
                 <th className="py-3 px-3">Item NT/NS Descripción</th>
                 <th className="py-3 px-3 text-right">Cantidad NetSuite</th>
+                <th className="py-3 px-3 text-right">Salida (Col G)</th>
+                <th className="py-3 px-3 text-right">Nave 7 (Col N)</th>
                 <th className="py-3 px-3 text-right">Total Balance Disponible Newsoft</th>
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
@@ -635,6 +746,8 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isDifCero = tieneDiferenciaCero(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
                 const isEditingNs = editingNsRow === row.rowNumber;
+                const isEditingSalida = editingSalidaRow === row.rowNumber;
+                const isEditingNave7 = editingNave7Row === row.rowNumber;
                 const isEditingComment = editingCommentRow === row.rowNumber;
 
                 return (
@@ -743,6 +856,86 @@ export const InventoryDesgloseView: React.FC = () => {
                           <span>{row.ns.toLocaleString()}</span>
                           {!row.candado && (
                             <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-indigo-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* SALIDA (COL G - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    <td className="py-2.5 px-3 text-right font-mono">
+                      {isEditingSalida ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          value={editingSalidaValue}
+                          onChange={(e) => setEditingSalidaValue(e.target.value)}
+                          onBlur={() => handleSaveSalida(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveSalida(row);
+                            if (e.key === 'Escape') setEditingSalidaRow(null);
+                          }}
+                          className="w-20 px-2 py-1 text-right font-bold text-white bg-[#0d1017] border border-rose-400 rounded-lg outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingSalidaRow(row.rowNumber);
+                              setEditingSalidaValue(String(row.salida));
+                            }
+                          }}
+                          title={row.candado ? 'Bloqueado con candado' : 'Clic para editar Salida (Col G)'}
+                          className={`inline-flex items-center justify-end gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-gray-400 cursor-default'
+                              : row.salida > 0
+                              ? 'text-rose-300 hover:bg-rose-500/15 cursor-pointer group font-bold'
+                              : 'text-gray-400 hover:bg-rose-500/15 hover:text-rose-300 cursor-pointer group'
+                          }`}
+                        >
+                          <span>{row.salida.toLocaleString()}</span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-rose-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* NAVE 7 (COL N - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    <td className="py-2.5 px-3 text-right font-mono">
+                      {isEditingNave7 ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          value={editingNave7Value}
+                          onChange={(e) => setEditingNave7Value(e.target.value)}
+                          onBlur={() => handleSaveNave7(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveNave7(row);
+                            if (e.key === 'Escape') setEditingNave7Row(null);
+                          }}
+                          className="w-20 px-2 py-1 text-right font-bold text-white bg-[#0d1017] border border-purple-400 rounded-lg outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingNave7Row(row.rowNumber);
+                              setEditingNave7Value(String(row.nave7));
+                            }
+                          }}
+                          title={row.candado ? 'Bloqueado con candado' : 'Clic para editar Nave 7 (Col N)'}
+                          className={`inline-flex items-center justify-end gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-gray-400 cursor-default'
+                              : row.nave7 > 0
+                              ? 'text-purple-300 hover:bg-purple-500/15 cursor-pointer group font-bold'
+                              : 'text-gray-400 hover:bg-purple-500/15 hover:text-purple-300 cursor-pointer group'
+                          }`}
+                        >
+                          <span>{row.nave7.toLocaleString()}</span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-purple-400 transition-opacity" />
                           )}
                         </div>
                       )}
