@@ -122,6 +122,10 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingNsRow, setEditingNsRow] = useState<number | null>(null);
   const [editingNsValue, setEditingNsValue] = useState<string>('');
 
+  // Estados para edición en línea de Cantidad Inventario / Almacén (Col E)
+  const [editingAlmacenRow, setEditingAlmacenRow] = useState<number | null>(null);
+  const [editingAlmacenValue, setEditingAlmacenValue] = useState<string>('');
+
   // Estados para edición en línea de Salidas (Col G)
   const [editingSalidaRow, setEditingSalidaRow] = useState<number | null>(null);
   const [editingSalidaValue, setEditingSalidaValue] = useState<string>('');
@@ -129,10 +133,6 @@ export const InventoryDesgloseView: React.FC = () => {
   // Estados para edición en línea de Nave 7 (Col N)
   const [editingNave7Row, setEditingNave7Row] = useState<number | null>(null);
   const [editingNave7Value, setEditingNave7Value] = useState<string>('');
-
-  // Estados para edición en línea de Balance Almacén Newsoft (Col E)
-  const [editingAlmacenRow, setEditingAlmacenRow] = useState<number | null>(null);
-  const [editingAlmacenValue, setEditingAlmacenValue] = useState<string>('');
 
   // Estados para edición en línea de Ubicación (Col H)
   const [editingUbicacionRow, setEditingUbicacionRow] = useState<number | null>(null);
@@ -165,9 +165,9 @@ export const InventoryDesgloseView: React.FC = () => {
   useEffect(() => {
     isBusyRef.current = Boolean(
       editingNsRow !== null ||
+      editingAlmacenRow !== null ||
       editingSalidaRow !== null ||
       editingNave7Row !== null ||
-      editingAlmacenRow !== null ||
       editingUbicacionRow !== null ||
       editingCommentRow !== null ||
       updatingRow !== null ||
@@ -175,9 +175,9 @@ export const InventoryDesgloseView: React.FC = () => {
     );
   }, [
     editingNsRow,
+    editingAlmacenRow,
     editingSalidaRow,
     editingNave7Row,
-    editingAlmacenRow,
     editingUbicacionRow,
     editingCommentRow,
     updatingRow,
@@ -268,13 +268,13 @@ export const InventoryDesgloseView: React.FC = () => {
     }
   }, [CSV_URL]);
 
-  // Carga inicial + Sincronización en tiempo real cada 2 segundos
+  // Carga inicial + Sincronización en tiempo real cada 4 segundos
   useEffect(() => {
     fetchSheetData(false);
 
     const interval = setInterval(() => {
       fetchSheetData(true);
-    }, 2000);
+    }, 4000);
 
     const onVisibilityChange = () => {
       if (!document.hidden) fetchSheetData(true);
@@ -325,6 +325,53 @@ export const InventoryDesgloseView: React.FC = () => {
         });
       } else {
         setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar NetSuite en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
+
+  // Guardar nuevo valor de Cantidad Inventario / Almacén (Col E) en Google Sheets
+  const handleSaveAlmacen = async (row: SheetRowItem) => {
+    setEditingAlmacenRow(null);
+    if (row.candado) return;
+
+    const nuevoAlmacen = parseFloat(editingAlmacenValue);
+    if (isNaN(nuevoAlmacen) || nuevoAlmacen === row.almacen) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colE: nuevoAlmacen
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        const nuevoBalance = (nuevoAlmacen - row.salida) + row.nave7;
+        const nuevaDif = nuevoBalance - row.ns;
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, almacen: nuevoAlmacen, newsoft: nuevoBalance, dif: nuevaDif }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Cantidad Inventario (Col E) del ítem ${row.codigo} actualizada a ${nuevoAlmacen}.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Cantidad Inventario (Col E) en Sheets.' });
       }
     } catch (err: any) {
       setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
@@ -419,53 +466,6 @@ export const InventoryDesgloseView: React.FC = () => {
         });
       } else {
         setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Nave 7 en Sheets.' });
-      }
-    } catch (err: any) {
-      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
-    } finally {
-      setUpdatingRow(null);
-    }
-  };
-
-  // Guardar nuevo valor de Balance Almacén Newsoft (Col E) en Google Sheets
-  const handleSaveAlmacen = async (row: SheetRowItem) => {
-    setEditingAlmacenRow(null);
-    if (row.candado) return;
-
-    const nuevoAlmacen = parseFloat(editingAlmacenValue);
-    if (isNaN(nuevoAlmacen) || nuevoAlmacen === row.almacen) return;
-
-    setUpdatingRow(row.rowNumber);
-    setNotification(null);
-
-    const payload = {
-      rowNumber: row.rowNumber,
-      codigo: row.codigo,
-      colE: nuevoAlmacen
-    };
-
-    try {
-      const res = await updateSheetRowGAS({
-        action: 'UPDATE_ITEM',
-        payload: JSON.stringify(payload)
-      });
-
-      if (res && res.success) {
-        const nuevoBalance = (nuevoAlmacen - row.salida) + row.nave7;
-        const nuevaDif = nuevoBalance - row.ns;
-        setItems(prev =>
-          prev.map(it =>
-            it.rowNumber === row.rowNumber
-              ? { ...it, almacen: nuevoAlmacen, newsoft: nuevoBalance, dif: nuevaDif }
-              : it
-          )
-        );
-        setNotification({
-          type: 'success',
-          text: `Balance Almacén Newsoft (Col E) del ítem ${row.codigo} actualizado a ${nuevoAlmacen}.`
-        });
-      } else {
-        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Newsoft (Col E) en Sheets.' });
       }
     } catch (err: any) {
       setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
@@ -743,7 +743,7 @@ export const InventoryDesgloseView: React.FC = () => {
               <span>DESGLOSE OPERATIVO COMPLETO (NAVE 6)</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                En Vivo (2s)
+                En Vivo (4s)
               </span>
             </h2>
             <span className="text-xs text-gray-400">
@@ -892,6 +892,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 <th className="py-3 px-3">Código Componente</th>
                 <th className="py-3 px-3">Item NT/NS Descripción</th>
                 <th className="py-3 px-3 text-right">Cantidad NetSuite</th>
+                <th className="py-3 px-3 text-right text-emerald-400">Cantidad Inventario (Col E)</th>
                 <th className="py-3 px-3 text-right">Salida (Col G)</th>
                 <th className="py-3 px-3 text-right">Nave 7 (Col N)</th>
                 <th className="py-3 px-3 text-right">Total Balance Disponible Newsoft</th>
@@ -905,9 +906,9 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isDifCero = tieneDiferenciaCero(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
                 const isEditingNs = editingNsRow === row.rowNumber;
+                const isEditingAlmacen = editingAlmacenRow === row.rowNumber;
                 const isEditingSalida = editingSalidaRow === row.rowNumber;
                 const isEditingNave7 = editingNave7Row === row.rowNumber;
-                const isEditingAlmacen = editingAlmacenRow === row.rowNumber;
                 const isEditingUbicacion = editingUbicacionRow === row.rowNumber;
                 const isEditingComment = editingCommentRow === row.rowNumber;
 
@@ -1031,6 +1032,44 @@ export const InventoryDesgloseView: React.FC = () => {
                       )}
                     </td>
 
+                    {/* CANTIDAD INVENTARIO / ALMACÉN (COL E - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    <td className="py-2.5 px-3 text-right font-mono font-bold">
+                      {isEditingAlmacen ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          value={editingAlmacenValue}
+                          onChange={(e) => setEditingAlmacenValue(e.target.value)}
+                          onBlur={() => handleSaveAlmacen(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveAlmacen(row);
+                            if (e.key === 'Escape') setEditingAlmacenRow(null);
+                          }}
+                          className="w-20 px-2 py-1 text-right font-bold text-white bg-[#0d1017] border border-emerald-400 rounded-lg outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingAlmacenRow(row.rowNumber);
+                              setEditingAlmacenValue(String(row.almacen));
+                            }
+                          }}
+                          title={row.candado ? 'Bloqueado con candado' : 'Clic para editar Cantidad Inventario (Col E)'}
+                          className={`inline-flex items-center justify-end gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-emerald-400/60 cursor-default'
+                              : 'text-emerald-300 hover:bg-emerald-500/15 cursor-pointer group'
+                          }`}
+                        >
+                          <span>{row.almacen.toLocaleString()}</span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-emerald-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
+                    </td>
+
                     {/* SALIDA (COL G - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
                     <td className="py-2.5 px-3 text-right font-mono">
                       {isEditingSalida ? (
@@ -1111,46 +1150,9 @@ export const InventoryDesgloseView: React.FC = () => {
                       )}
                     </td>
 
-                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT (EDITA COL E - ALMACÉN NEWSOFT EN LÍNEA) */}
-                    <td className="py-2.5 px-3 text-right font-mono font-bold">
-                      {isEditingAlmacen ? (
-                        <input
-                          type="number"
-                          autoFocus
-                          value={editingAlmacenValue}
-                          onChange={(e) => setEditingAlmacenValue(e.target.value)}
-                          onBlur={() => handleSaveAlmacen(row)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveAlmacen(row);
-                            if (e.key === 'Escape') setEditingAlmacenRow(null);
-                          }}
-                          className="w-20 px-2 py-1 text-right font-bold text-white bg-[#0d1017] border border-cyan-400 rounded-lg outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      ) : (
-                        <div
-                          onClick={() => {
-                            if (!row.candado && !isRowUpdating) {
-                              setEditingAlmacenRow(row.rowNumber);
-                              setEditingAlmacenValue(String(row.almacen));
-                            }
-                          }}
-                          title={
-                            row.candado
-                              ? 'Bloqueado con candado'
-                              : `Almacén Newsoft (Col E): ${row.almacen.toLocaleString()} • Clic para editar Col E`
-                          }
-                          className={`inline-flex items-center justify-end gap-1.5 px-2 py-1 rounded-lg transition-colors ${
-                            row.candado
-                              ? 'text-[#00f2fe]/70 cursor-default'
-                              : 'text-[#00f2fe] hover:bg-cyan-500/15 cursor-pointer group'
-                          }`}
-                        >
-                          <span>{row.newsoft.toLocaleString()}</span>
-                          {!row.candado && (
-                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
-                          )}
-                        </div>
-                      )}
+                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT ((Col E - Col G) + Col N) */}
+                    <td className="py-2.5 px-3 text-right text-[#00f2fe] font-mono font-bold">
+                      {row.newsoft.toLocaleString()}
                     </td>
 
                     <td className="py-2.5 px-3 text-right font-mono">
