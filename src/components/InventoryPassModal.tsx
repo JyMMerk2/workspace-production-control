@@ -36,7 +36,44 @@ interface InventoryPassModalProps {
 }
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
+
+// Parser CSV exacto para verificar estado de candado en tiempo real sin consumir cuota de Apps Script
+function parseCSVExact(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      row.push(current.trim());
+      rows.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current !== '' || row.length > 0) {
+    row.push(current.trim());
+    rows.push(row);
+  }
+  return rows;
+}
 
 export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,6 +103,7 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
   const [sendingPinEmail, setSendingPinEmail] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const isCheckingLockRef = useRef(false);
 
   // Cargar ubicaciones únicas al abrir
   useEffect(() => {
@@ -79,6 +117,51 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
       })
       .catch(() => {});
   }, [isOpen]);
+
+  // Verificación en tiempo real cada 2 segundos del estado de candado del ítem abierto
+  useEffect(() => {
+    if (!isOpen || !item) return;
+
+    const checkLockEnVivo = async () => {
+      if (isCheckingLockRef.current || saving || searching || document.hidden) return;
+      isCheckingLockRef.current = true;
+
+      try {
+        const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+        const csvText = await res.text();
+        const allRows = parseCSVExact(csvText);
+        const rowIdx = item.rowNumber - 1;
+
+        if (rowIdx >= 3 && rowIdx < allRows.length) {
+          const cols = allRows[rowIdx];
+          if (cols && cols.length > 8) {
+            const rawA = (cols[0] || '').toUpperCase();
+            const rawI = (cols[8] || '').toUpperCase();
+            const remoteA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
+            const remoteI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
+
+            // Si otro usuario activó el candado en Sheets mientras este modal estaba abierto
+            if (remoteA && remoteI && !item.isLocked && !isUnlockedByPin) {
+              setColA(true);
+              setColI(true);
+              setItem(prev => prev ? { ...prev, colA_Validado: true, colI_Candado: true, isLocked: true } : null);
+              setNotification({
+                type: 'error',
+                text: `Aviso: Otro usuario acaba de cerrar con candado el ítem ${item.colB_Codigo}.`
+              });
+            }
+          }
+        }
+      } catch {
+        // Silencioso en segundo plano
+      } finally {
+        isCheckingLockRef.current = false;
+      }
+    };
+
+    const interval = setInterval(checkLockEnVivo, 2000);
+    return () => clearInterval(interval);
+  }, [isOpen, item, saving, searching, isUnlockedByPin]);
 
   // Regla del candado activa si Col A e I están marcadas y no se ha introducido el PIN
   const isLocked = (colA && colI) && !isUnlockedByPin;
@@ -207,8 +290,12 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
               <Edit3 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-black uppercase text-white tracking-wide">
-                Pase de Inventario Nave 6
+              <h3 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
+                <span>Pase de Inventario Nave 6</span>
+                <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  En Vivo (2s)
+                </span>
               </h3>
               <span className="text-[11px] text-gray-400">Captura en Vivo & Validación Multiusuario</span>
             </div>
