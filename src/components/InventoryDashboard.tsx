@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Boxes, 
   CheckCircle2, 
@@ -75,6 +75,9 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
   const [lastSync, setLastSync] = useState<string>('');
   const [quickSearch, setQuickSearch] = useState('');
 
+  // Control anti-solapamiento para 10-15 usuarios en tiempo real (2s)
+  const isSyncingRef = useRef(false);
+
   // Historial de búsquedas recientes persistente
   const [searchHistory, setSearchHistory] = useState<SheetRowItem[]>(() => {
     try {
@@ -85,7 +88,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     }
   });
 
-  // KPIs reales dinámicos (Sin valores hardcodeados)
+  // KPIs reales dinámicos
   const [kpis, setKpis] = useState({
     totalItems: 0,
     validados: 0,
@@ -106,50 +109,28 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
   const CSV_DASHBOARD_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1446108023';
 
-  // Sincronización oficial con datos 100% reales
-  const syncInventoryData = useCallback(async () => {
-    setIsRefreshing(true);
+  // Sincronización oficial en tiempo real (2s) optimizada para multiusuario
+  const syncInventoryData = useCallback(async (silent = false) => {
+    if (isSyncingRef.current) return;
+    if (silent && document.hidden) return;
+
+    isSyncingRef.current = true;
+    if (!silent) setIsRefreshing(true);
     let metricsLoaded = false;
 
     try {
-      // 1. Intentar obtener métricas oficiales directas vía Apps Script
-      try {
-        const gasData = await fetchGASMetrics();
-        if (gasData && gasData.success && typeof gasData.totalItems === 'number') {
-          const total = gasData.totalItems;
-          const validados = gasData.validados;
-          const restantes = gasData.restantes;
-          const unidades = gasData.unidades;
-          const pct = total > 0 ? Number(((validados / total) * 100).toFixed(2)) : 0;
-
-          setKpis({
-            totalItems: total,
-            validados: validados,
-            restantes: restantes,
-            totalUnidades: unidades,
-            pctAvance: pct,
-            pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
-          });
-          metricsLoaded = true;
-        }
-      } catch (gasErr) {
-        console.warn('Endpoint Apps Script no disponible, probando lectura directa de CSV Dashboard:', gasErr);
-      }
-
-      // 2. Si Apps Script no respondió, leer directamente la fila 5 de la hoja Dashboard CSV
-      if (!metricsLoaded) {
+      // 1. En sincronización automática (cada 2s), leer primero CSV Dashboard para no saturar cuota de Apps Script
+      if (silent) {
         try {
-          const dashRes = await fetch(CSV_DASHBOARD_URL);
+          const dashRes = await fetch(`${CSV_DASHBOARD_URL}&t=${Date.now()}`, { cache: 'no-store' });
           if (dashRes.ok) {
             const dashText = await dashRes.text();
             const dashLines = dashText.split('\n');
 
-            // Fila 5 de Dashboard (índice 4): B5 (Total), E5 (Validados), H5 (Restantes), K5 (Unidades)
             for (let i = 0; i < Math.min(dashLines.length, 10); i++) {
               const rawRow = dashLines[i];
               const cols = rawRow.split(',').map(c => c.replace(/[^0-9.-]+/g, '').trim());
               
-              // Buscamos la fila que contiene el número del inventario (alrededor de 20000)
               const foundTotalIdx = cols.findIndex(c => {
                 const n = parseInt(c, 10);
                 return !isNaN(n) && n >= 20000;
@@ -157,8 +138,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
 
               if (foundTotalIdx !== -1) {
                 const total = parseInt(cols[foundTotalIdx], 10) || 0;
-                // En celdas combinadas de 3 columnas: siguiente bloque está a 3 columnas de distancia
-                const validados = parseInt(cols[foundTotalIdx + 3], 10) || total;
+                const validados = parseInt(cols[foundTotalIdx + 3], 10) || 0;
                 const restantes = parseInt(cols[foundTotalIdx + 6], 10) || Math.max(0, total - validados);
                 const unidades = parseInt(cols[foundTotalIdx + 9], 10) || 0;
 
@@ -177,13 +157,39 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
               }
             }
           }
-        } catch (dashCsvErr) {
-          console.warn('Lectura CSV Dashboard omitida:', dashCsvErr);
+        } catch {
+          // Si falla CSV Dashboard, continúa al respaldo
+        }
+      }
+
+      // 2. Si es carga inicial/manual o CSV Dashboard no respondió, consultar Apps Script
+      if (!metricsLoaded) {
+        try {
+          const gasData = await fetchGASMetrics();
+          if (gasData && gasData.success && typeof gasData.totalItems === 'number') {
+            const total = gasData.totalItems;
+            const validados = gasData.validados;
+            const restantes = gasData.restantes;
+            const unidades = gasData.unidades;
+            const pct = total > 0 ? Number(((validados / total) * 100).toFixed(2)) : 0;
+
+            setKpis({
+              totalItems: total,
+              validados: validados,
+              restantes: restantes,
+              totalUnidades: unidades,
+              pctAvance: pct,
+              pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
+            });
+            metricsLoaded = true;
+          }
+        } catch (gasErr) {
+          console.warn('Endpoint Apps Script no disponible, probando lectura directa de CSV Dashboard:', gasErr);
         }
       }
 
       // 3. Cargar la base de artículos de PROGRESO para el buscador y respaldo final de métricas
-      const progRes = await fetch(CSV_PROGRESO_URL);
+      const progRes = await fetch(`${CSV_PROGRESO_URL}&t=${Date.now()}`, { cache: 'no-store' });
       if (progRes.ok) {
         const progText = await progRes.text();
         const lines = progText.split('\n');
@@ -225,7 +231,6 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
         if (parsed.length > 0) {
           setAllItems(parsed);
 
-          // Si ni Apps Script ni Dashboard respondieron, usar el cálculo puro de PROGRESO sin alterar
           if (!metricsLoaded) {
             const total = parsed.length;
             const diff = Math.max(0, total - validCount);
@@ -247,21 +252,26 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     } catch (err) {
       console.warn('Error en la sincronización de inventario:', err);
     } finally {
-      setIsRefreshing(false);
+      isSyncingRef.current = false;
+      if (!silent) setIsRefreshing(false);
     }
   }, [CSV_DASHBOARD_URL, CSV_PROGRESO_URL]);
 
-  // Polling automático cada 5 segundos y al recuperar el foco de ventana
+  // Polling automático cada 2 segundos y al recuperar visibilidad de la pestaña
   useEffect(() => {
-    syncInventoryData();
-    const interval = setInterval(syncInventoryData, 5000);
+    syncInventoryData(false);
+    const interval = setInterval(() => {
+      syncInventoryData(true);
+    }, 2000);
 
-    const onFocus = () => syncInventoryData();
-    window.addEventListener('focus', onFocus);
+    const onVisibilityChange = () => {
+      if (!document.hidden) syncInventoryData(true);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [syncInventoryData]);
 
@@ -324,7 +334,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
               <span>CONTROL DE PRODUCCIÓN & INVENTARIO NAVE 6</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                En Vivo (5s)
+                En Vivo (2s)
               </span>
             </h2>
             <span className="text-xs text-gray-400">
@@ -336,7 +346,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
         <div className="flex items-center gap-2">
           {/* Botón Refrescar Manual */}
           <button
-            onClick={() => syncInventoryData()}
+            onClick={() => syncInventoryData(false)}
             disabled={isRefreshing}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-xs border border-white/10 transition-all cursor-pointer"
           >
@@ -582,7 +592,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                             <span className="font-mono font-bold text-amber-400">{rec.codigo}</span>
                             <span className="text-white font-medium truncate">{rec.item}</span>
                           </div>
-                          <div className="flex items-center gap-3 shrink-0 text-gray-400 font-mono text-11px]">
+                          <div className="flex items-center gap-3 shrink-0 text-gray-400 font-mono text-[11px]">
                             <span>Stock: <strong className="text-gray-200">{rec.newsoft}</strong></span>
                             <span className="bg-white/5 px-1.5 py-0.5 rounded text-gray-300">{rec.ubicacion}</span>
                           </div>
