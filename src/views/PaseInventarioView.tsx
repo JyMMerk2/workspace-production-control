@@ -34,7 +34,44 @@ interface InventoryItem {
 }
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
+
+// Parser CSV exacto para sincronización en tiempo real sin consumir cuota de Apps Script
+function parseCSVExact(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      row.push(current.trim());
+      rows.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current !== '' || row.length > 0) {
+    row.push(current.trim());
+    rows.push(row);
+  }
+  return rows;
+}
 
 // Cliente de conexión híbrido y resistente (Fetch con fallback a JSONP)
 async function queryGAS(params: Record<string, string>): Promise<any> {
@@ -107,6 +144,7 @@ export const PaseInventarioView: React.FC = () => {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const ubiContainerRef = useRef<HTMLDivElement>(null);
+  const isSyncingRackRef = useRef(false);
 
   // 1. Cargar lista única de ubicaciones al montar el componente
   const cargarUbicaciones = async () => {
@@ -123,6 +161,71 @@ export const PaseInventarioView: React.FC = () => {
   useEffect(() => {
     cargarUbicaciones();
   }, []);
+
+  // 2. Sincronización en tiempo real cada 2 segundos del rack seleccionado vía CSV
+  useEffect(() => {
+    if (!selectedUbicacion) return;
+
+    const syncRackEnVivo = async () => {
+      if (isSyncingRackRef.current || saving || searching || document.hidden) return;
+      isSyncingRackRef.current = true;
+
+      try {
+        const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+        const csvText = await res.text();
+        const allRows = parseCSVExact(csvText);
+        const ubiObjetivo = selectedUbicacion.trim().toLowerCase();
+        const actualizados: InventoryItem[] = [];
+
+        for (let i = 3; i < allRows.length; i++) {
+          const cols = allRows[i];
+          if (!cols || cols.length < 3) continue;
+
+          const ubi = String(cols[7] || '').trim().toLowerCase();
+          if (ubi !== ubiObjetivo) continue;
+
+          const rawA = (cols[0] || '').toUpperCase();
+          const rawI = (cols[8] || '').toUpperCase();
+          const isColA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
+          const isColI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
+
+          actualizados.push({
+            rowNumber: i + 1,
+            colA_Validado: isColA,
+            colB_Codigo: String(cols[1] || ''),
+            colC_Item: String(cols[2] || ''),
+            colD_NetSuite: parseFloat(cols[3]?.replace(/[^0-9.-]+/g, '')) || 0,
+            colE_Newsoft: parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0,
+            colF_Diferencia: parseFloat(cols[5]?.replace(/[^0-9.-]+/g, '')) || 0,
+            colG_Salida: parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0,
+            colH_Ubicacion: String(cols[7] || ''),
+            colI_Candado: isColI,
+            colL_Comentario: String(cols[11] || ''),
+            isLocked: isColA && isColI
+          });
+        }
+
+        if (actualizados.length > 0 && !saving && !searching) {
+          setItemsList(actualizados);
+        }
+      } catch {
+        // Silencioso en segundo plano
+      } finally {
+        isSyncingRackRef.current = false;
+      }
+    };
+
+    const interval = setInterval(syncRackEnVivo, 2000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) syncRackEnVivo();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [selectedUbicacion, saving, searching]);
 
   // Cerrar dropdown de ubicaciones al hacer clic fuera
   useEffect(() => {
@@ -149,7 +252,7 @@ export const PaseInventarioView: React.FC = () => {
     setIsUnlockedByPin(false);
   };
 
-  // 2. Consulta con COMPORTAMIENTO A (Búsqueda global inteligente)
+  // Consulta con COMPORTAMIENTO A (Búsqueda global inteligente)
   const ejecutarBusqueda = async (queryTerm = searchTerm, ubiTerm = selectedUbicacion) => {
     setSearching(true);
     setNotification(null);
@@ -364,8 +467,12 @@ export const PaseInventarioView: React.FC = () => {
             <Edit3 className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-black uppercase text-white tracking-wide">
-              Toma y Pase de Inventario
+            <h1 className="text-base font-black uppercase text-white tracking-wide flex items-center gap-2">
+              <span>Toma y Pase de Inventario</span>
+              <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                En Vivo (2s)
+              </span>
             </h1>
             <p className="text-[11px] text-gray-400">Captura en Vivo, Ubicaciones & Control de Candado (Nave 6)</p>
           </div>
