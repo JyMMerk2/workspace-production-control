@@ -30,6 +30,7 @@ interface InventoryItem {
   colH_Ubicacion: string;
   colI_Candado: boolean;
   colL_Comentario: string;
+  colN_Nave7: number;
   isLocked: boolean;
 }
 
@@ -131,6 +132,7 @@ export const PaseInventarioView: React.FC = () => {
   const [colH, setColH] = useState('');
   const [colI, setColI] = useState(false);
   const [colL, setColL] = useState('');
+  const [colN, setColN] = useState<number | string>(0);
 
   // Candado y PIN
   const [isUnlockedByPin, setIsUnlockedByPin] = useState(false);
@@ -171,7 +173,7 @@ export const PaseInventarioView: React.FC = () => {
       isSyncingRackRef.current = true;
 
       try {
-        const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+        const res = await fetch(CSV_URL, { cache: 'no-store' });
         const csvText = await res.text();
         const allRows = parseCSVExact(csvText);
         const ubiObjetivo = selectedUbicacion.trim().toLowerCase();
@@ -201,6 +203,7 @@ export const PaseInventarioView: React.FC = () => {
             colH_Ubicacion: String(cols[7] || ''),
             colI_Candado: isColI,
             colL_Comentario: String(cols[11] || ''),
+            colN_Nave7: parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0,
             isLocked: isColA && isColI
           });
         }
@@ -249,6 +252,7 @@ export const PaseInventarioView: React.FC = () => {
     setColH(it.colH_Ubicacion);
     setColI(it.colI_Candado);
     setColL(it.colL_Comentario || '');
+    setColN(it.colN_Nave7 || 0);
     setIsUnlockedByPin(false);
   };
 
@@ -330,11 +334,12 @@ export const PaseInventarioView: React.FC = () => {
     setShowCalculator(false);
   };
 
-  // Cálculos dinámicos en tiempo real
+  // Cálculos dinámicos en tiempo real: Tot. Bal. Newsoft = (Almacén - Salida) + Nave 7
   const numNetSuite = Number(colD) || 0;
   const numAlmacen = Number(colE) || 0;
   const numSalida = Number(colG) || 0;
-  const totalBalanceNewsoft = numAlmacen - numSalida;
+  const numNave7 = Number(colN) || 0;
+  const totalBalanceNewsoft = (numAlmacen - numSalida) + numNave7;
   const diferenciaCalculada = totalBalanceNewsoft - numNetSuite;
   const cuadranCantidades = totalBalanceNewsoft === numNetSuite;
 
@@ -358,7 +363,7 @@ export const PaseInventarioView: React.FC = () => {
     }
   };
 
-  // Guardar en Google Sheets (incluyendo Col D: NetSuite) y sincronizar estado reactivo local
+  // Guardar en Google Sheets (incluyendo Col D: NetSuite y Col N: Nave 7) y sincronizar estado reactivo local
   const handleSave = async () => {
     if (!selectedItem) return;
 
@@ -389,6 +394,7 @@ export const PaseInventarioView: React.FC = () => {
       colH,
       colI,
       colL,
+      colN: Number(colN) || 0,
       forceUnlock: isUnlockedByPin
     };
 
@@ -409,6 +415,7 @@ export const PaseInventarioView: React.FC = () => {
           colD_NetSuite: Number(colD) || 0,
           colE_Newsoft: Number(colE) || 0,
           colG_Salida: Number(colG) || 0,
+          colN_Nave7: Number(colN) || 0,
           colF_Diferencia: diferenciaCalculada,
           colI_Candado: colI,
           isLocked: willBeLocked
@@ -601,7 +608,7 @@ export const PaseInventarioView: React.FC = () => {
           <div className="overflow-y-auto space-y-2 flex-1 custom-scrollbar pr-1">
             {itemsList.length > 0 ? (
               itemsList.map((it) => {
-                const bal = (Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0);
+                const bal = ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0);
                 const dif = bal - (Number(it.colD_NetSuite) || 0);
 
                 return (
@@ -622,6 +629,9 @@ export const PaseInventarioView: React.FC = () => {
                       <div className="flex items-center gap-3 text-[11px] text-gray-400">
                         <span>NS: <strong className="text-white">{it.colD_NetSuite}</strong></span>
                         <span>Bal. Newsoft: <strong className="text-cyan-300">{bal}</strong></span>
+                        {(Number(it.colN_Nave7) || 0) > 0 && (
+                          <span>N7: <strong className="text-purple-400">+{it.colN_Nave7}</strong></span>
+                        )}
                         <span>DIF: <strong className={dif === 0 ? 'text-emerald-400' : 'text-rose-400'}>{dif}</strong></span>
                       </div>
                     </div>
@@ -808,8 +818,8 @@ export const PaseInventarioView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Métricas: NetSuite (EDITABLE), Almacén, Salida, Total Balance Newsoft y DIF */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              {/* Métricas: NetSuite (D), Almacén (E), Salida (G), Nave 7 (N), Total Balance Newsoft y DIF */}
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
                 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-indigo-400 uppercase">NetSuite (D)</label>
@@ -845,7 +855,18 @@ export const PaseInventarioView: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-cyan-400 uppercase truncate block text-center" title="Total Balance Disponible Newsoft (E - G)">
+                  <label className="text-[10px] font-bold text-purple-400 uppercase">Nave 7 (N)</label>
+                  <input
+                    type="number"
+                    disabled={isLocked}
+                    value={colN}
+                    onChange={(e) => setColN(e.target.value)}
+                    className="w-full bg-[#0d1017] border border-purple-500/40 rounded-xl p-2.5 text-xs text-center font-bold text-white outline-none focus:border-purple-400 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-cyan-400 uppercase truncate block text-center" title="Total Balance Disponible Newsoft ((E - G) + N)">
                     Tot. Bal. Newsoft
                   </label>
                   <div className="w-full bg-[#0d1017] border border-cyan-500/40 rounded-xl p-2.5 text-xs text-center font-black text-cyan-300">
