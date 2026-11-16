@@ -88,27 +88,57 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     }
   });
 
-  // KPIs reales dinámicos
-  const [kpis, setKpis] = useState({
-    totalItems: 0,
-    validados: 0,
-    restantes: 0,
-    totalUnidades: 0,
-    pctAvance: 0,
-    pctFalta: 0,
+  // KPIs reales dinámicos con persistencia local para mantener siempre los últimos números mientras actualiza
+  const [kpis, setKpis] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nave6_last_kpis_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.totalItems === 'number' && parsed.totalItems > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return {
+      totalItems: 0,
+      validados: 0,
+      restantes: 0,
+      totalUnidades: 0,
+      pctAvance: 0,
+      pctFalta: 0,
+    };
   });
+
+  const applyValidKpis = useCallback((next: {
+    totalItems: number;
+    validados: number;
+    restantes: number;
+    totalUnidades: number;
+    pctAvance: number;
+    pctFalta: number;
+  }) => {
+    if (next.totalItems <= 0) return;
+
+    setKpis((prev: typeof next) => {
+      // Proteger los últimos números válidos contra lecturas incompletas en 0
+      if (prev.validados > 0 && next.validados === 0) return prev;
+      if (prev.totalUnidades > 0 && next.totalUnidades === 0) return prev;
+
+      try {
+        localStorage.setItem('nave6_last_kpis_v2', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1446108023#gid=1446108023';
 
-  // URLs CSV limpias (sin parámetros extra que Google Sheets bloquea en /export)
+  // Única fuente de verdad: Hoja PROGRESO (gid=1178501683)
   const CSV_PROGRESO_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  const CSV_DASHBOARD_URL =
-    'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1446108023';
-
-  // Sincronización oficial en tiempo real (2s) optimizada para multiusuario
+  // Sincronización oficial en tiempo real (2s) conservando siempre los últimos números
   const syncInventoryData = useCallback(async (silent = false) => {
     if (isSyncingRef.current) return;
     if (silent && document.hidden) return;
@@ -118,52 +148,8 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     let metricsLoaded = false;
 
     try {
-      // 1. En sincronización automática (cada 2s), leer primero CSV Dashboard limpio para no saturar cuota de Apps Script
-      if (silent) {
-        try {
-          const dashRes = await fetch(CSV_DASHBOARD_URL, { cache: 'no-store' });
-          if (dashRes.ok) {
-            const dashText = await dashRes.text();
-            const dashLines = dashText.split('\n');
-
-            for (let i = 0; i < Math.min(dashLines.length, 10); i++) {
-              const rawRow = dashLines[i];
-              const cols = rawRow.split(',').map(c => c.replace(/[^0-9.-]+/g, '').trim());
-              
-              const foundTotalIdx = cols.findIndex(c => {
-                const n = parseInt(c, 10);
-                return !isNaN(n) && n >= 20000;
-              });
-
-              if (foundTotalIdx !== -1) {
-                const total = parseInt(cols[foundTotalIdx], 10) || 0;
-                const validados = parseInt(cols[foundTotalIdx + 3], 10) || 0;
-                const restantes = parseInt(cols[foundTotalIdx + 6], 10) || Math.max(0, total - validados);
-                const unidades = parseInt(cols[foundTotalIdx + 9], 10) || 0;
-
-                if (total > 0) {
-                  const pct = Number(((validados / total) * 100).toFixed(2));
-                  setKpis({
-                    totalItems: total,
-                    validados: validados,
-                    restantes: restantes,
-                    totalUnidades: unidades,
-                    pctAvance: pct,
-                    pctFalta: Number(Math.max(0, 100 - pct).toFixed(2)),
-                  });
-                  metricsLoaded = true;
-                }
-                break;
-              }
-            }
-          }
-        } catch {
-          // Si falla CSV Dashboard, continúa al respaldo
-        }
-      }
-
-      // 2. Si es carga inicial/manual o CSV Dashboard no respondió, consultar Apps Script
-      if (!metricsLoaded) {
+      // 1. En carga inicial o manual, consultar Apps Script para métricas exactas
+      if (!silent) {
         try {
           const gasData = await fetchGASMetrics();
           if (gasData && gasData.success && typeof gasData.totalItems === 'number' && gasData.totalItems > 0) {
@@ -173,7 +159,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
             const unidades = gasData.unidades;
             const pct = Number(((validados / total) * 100).toFixed(2));
 
-            setKpis({
+            applyValidKpis({
               totalItems: total,
               validados: validados,
               restantes: restantes,
@@ -184,17 +170,45 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
             metricsLoaded = true;
           }
         } catch (gasErr) {
-          console.warn('Endpoint Apps Script no disponible, probando lectura directa de CSV:', gasErr);
+          console.warn('Endpoint Apps Script no disponible, usando lectura directa de PROGRESO:', gasErr);
         }
       }
 
-      // 3. Cargar la base de artículos de PROGRESO para el buscador y respaldo final de métricas
+      // 2. Leer la base de artículos y celdas maestras directamente desde PROGRESO (sin tocar gid=1446108023)
       const progRes = await fetch(CSV_PROGRESO_URL, { cache: 'no-store' });
       if (progRes.ok) {
         const progText = await progRes.text();
         const lines = progText.split('\n');
-        const parsed: SheetRowItem[] = [];
 
+        // Intentar leer las celdas maestras de la fila 2 (D2=Validados, E2=Restantes, F2=Unidades, I2=Total)
+        if (!metricsLoaded && lines.length > 1) {
+          const row2Cols = lines[1]
+            .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+            .map(c => c.replace(/^"|"$/g, '').trim());
+
+          const validadosD2 = parseInt(String(row2Cols[3] || '').replace(/[^0-9]/g, ''), 10);
+          const restantesE2 = parseInt(String(row2Cols[4] || '').replace(/[^0-9]/g, ''), 10);
+          const unidadesF2 = parseFloat(String(row2Cols[5] || '').replace(/,/g, ''));
+          const totalI2 = parseInt(String(row2Cols[8] || '').replace(/[^0-9]/g, ''), 10);
+
+          if (!isNaN(totalI2) && totalI2 > 0 && !isNaN(validadosD2) && validadosD2 > 0) {
+            const restFinal = !isNaN(restantesE2) ? restantesE2 : Math.max(0, totalI2 - validadosD2);
+            const uniFinal = !isNaN(unidadesF2) ? unidadesF2 : 0;
+            const pct = Number(((validadosD2 / totalI2) * 100).toFixed(2));
+
+            applyValidKpis({
+              totalItems: totalI2,
+              validados: validadosD2,
+              restantes: restFinal,
+              totalUnidades: uniFinal,
+              pctAvance: pct,
+              pctFalta: Number(Math.max(0, 100 - pct).toFixed(2)),
+            });
+            metricsLoaded = true;
+          }
+        }
+
+        const parsed: SheetRowItem[] = [];
         let validCount = 0;
         let sumUnits = 0;
 
@@ -214,8 +228,10 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
           const difVal = cols[5] || (newsoftVal - nsVal);
           const ubicacion = cols[7] || cols[6] || '-';
 
-          if (isValid) validCount++;
-          sumUnits += (newsoftVal > 0 ? newsoftVal : nsVal);
+          if (isValid) {
+            validCount++;
+            sumUnits += newsoftVal;
+          }
 
           parsed.push({
             validado: isValid,
@@ -236,7 +252,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
             const diff = Math.max(0, total - validCount);
             const pct = total > 0 ? Number(((validCount / total) * 100).toFixed(2)) : 0;
 
-            setKpis({
+            applyValidKpis({
               totalItems: total,
               validados: validCount,
               restantes: diff,
@@ -255,7 +271,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
       isSyncingRef.current = false;
       if (!silent) setIsRefreshing(false);
     }
-  }, [CSV_DASHBOARD_URL, CSV_PROGRESO_URL]);
+  }, [CSV_PROGRESO_URL, applyValidKpis]);
 
   // Polling automático cada 2 segundos y al recuperar visibilidad de la pestaña
   useEffect(() => {
