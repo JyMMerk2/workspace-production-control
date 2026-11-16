@@ -101,11 +101,10 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1446108023#gid=1446108023';
 
-  // Endpoint CSV para artículos detallados (Hoja PROGRESO: gid=1178501683)
+  // URLs CSV limpias (sin parámetros extra que Google Sheets bloquea en /export)
   const CSV_PROGRESO_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  // Endpoint CSV para métricas resumidas (Hoja Dashboard: gid=1446108023)
   const CSV_DASHBOARD_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1446108023';
 
@@ -119,10 +118,10 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     let metricsLoaded = false;
 
     try {
-      // 1. En sincronización automática (cada 2s), leer primero CSV Dashboard para no saturar cuota de Apps Script
+      // 1. En sincronización automática (cada 2s), leer primero CSV Dashboard limpio para no saturar cuota de Apps Script
       if (silent) {
         try {
-          const dashRes = await fetch(`${CSV_DASHBOARD_URL}&t=${Date.now()}`, { cache: 'no-store' });
+          const dashRes = await fetch(CSV_DASHBOARD_URL, { cache: 'no-store' });
           if (dashRes.ok) {
             const dashText = await dashRes.text();
             const dashLines = dashText.split('\n');
@@ -142,17 +141,18 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
                 const restantes = parseInt(cols[foundTotalIdx + 6], 10) || Math.max(0, total - validados);
                 const unidades = parseInt(cols[foundTotalIdx + 9], 10) || 0;
 
-                const pct = total > 0 ? Number(((validados / total) * 100).toFixed(2)) : 0;
-
-                setKpis({
-                  totalItems: total,
-                  validados: validados,
-                  restantes: restantes,
-                  totalUnidades: unidades,
-                  pctAvance: pct,
-                  pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
-                });
-                metricsLoaded = true;
+                if (total > 0) {
+                  const pct = Number(((validados / total) * 100).toFixed(2));
+                  setKpis({
+                    totalItems: total,
+                    validados: validados,
+                    restantes: restantes,
+                    totalUnidades: unidades,
+                    pctAvance: pct,
+                    pctFalta: Number(Math.max(0, 100 - pct).toFixed(2)),
+                  });
+                  metricsLoaded = true;
+                }
                 break;
               }
             }
@@ -166,12 +166,12 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
       if (!metricsLoaded) {
         try {
           const gasData = await fetchGASMetrics();
-          if (gasData && gasData.success && typeof gasData.totalItems === 'number') {
+          if (gasData && gasData.success && typeof gasData.totalItems === 'number' && gasData.totalItems > 0) {
             const total = gasData.totalItems;
             const validados = gasData.validados;
             const restantes = gasData.restantes;
             const unidades = gasData.unidades;
-            const pct = total > 0 ? Number(((validados / total) * 100).toFixed(2)) : 0;
+            const pct = Number(((validados / total) * 100).toFixed(2));
 
             setKpis({
               totalItems: total,
@@ -179,17 +179,17 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
               restantes: restantes,
               totalUnidades: unidades,
               pctAvance: pct,
-              pctFalta: total > 0 ? Number(Math.max(0, 100 - pct).toFixed(2)) : 0,
+              pctFalta: Number(Math.max(0, 100 - pct).toFixed(2)),
             });
             metricsLoaded = true;
           }
         } catch (gasErr) {
-          console.warn('Endpoint Apps Script no disponible, probando lectura directa de CSV Dashboard:', gasErr);
+          console.warn('Endpoint Apps Script no disponible, probando lectura directa de CSV:', gasErr);
         }
       }
 
       // 3. Cargar la base de artículos de PROGRESO para el buscador y respaldo final de métricas
-      const progRes = await fetch(`${CSV_PROGRESO_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      const progRes = await fetch(CSV_PROGRESO_URL, { cache: 'no-store' });
       if (progRes.ok) {
         const progText = await progRes.text();
         const lines = progText.split('\n');
