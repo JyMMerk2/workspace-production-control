@@ -130,6 +130,10 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingNave7Row, setEditingNave7Row] = useState<number | null>(null);
   const [editingNave7Value, setEditingNave7Value] = useState<string>('');
 
+  // Estados para edición en línea de Balance Almacén Newsoft (Col E)
+  const [editingAlmacenRow, setEditingAlmacenRow] = useState<number | null>(null);
+  const [editingAlmacenValue, setEditingAlmacenValue] = useState<string>('');
+
   // Estados para edición en línea de Comentarios (Col L)
   const [editingCommentRow, setEditingCommentRow] = useState<number | null>(null);
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
@@ -159,11 +163,12 @@ export const InventoryDesgloseView: React.FC = () => {
       editingNsRow !== null ||
       editingSalidaRow !== null ||
       editingNave7Row !== null ||
+      editingAlmacenRow !== null ||
       editingCommentRow !== null ||
       updatingRow !== null ||
       unlockTargetRow !== null
     );
-  }, [editingNsRow, editingSalidaRow, editingNave7Row, editingCommentRow, updatingRow, unlockTargetRow]);
+  }, [editingNsRow, editingSalidaRow, editingNave7Row, editingAlmacenRow, editingCommentRow, updatingRow, unlockTargetRow]);
 
   const GOOGLE_SHEETS_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
@@ -400,6 +405,53 @@ export const InventoryDesgloseView: React.FC = () => {
         });
       } else {
         setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Nave 7 en Sheets.' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingRow(null);
+    }
+  };
+
+  // Guardar nuevo valor de Balance Almacén Newsoft (Col E) en Google Sheets
+  const handleSaveAlmacen = async (row: SheetRowItem) => {
+    setEditingAlmacenRow(null);
+    if (row.candado) return;
+
+    const nuevoAlmacen = parseFloat(editingAlmacenValue);
+    if (isNaN(nuevoAlmacen) || nuevoAlmacen === row.almacen) return;
+
+    setUpdatingRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      colE: nuevoAlmacen
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'UPDATE_ITEM',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        const nuevoBalance = (nuevoAlmacen - row.salida) + row.nave7;
+        const nuevaDif = nuevoBalance - row.ns;
+        setItems(prev =>
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? { ...it, almacen: nuevoAlmacen, newsoft: nuevoBalance, dif: nuevaDif }
+              : it
+          )
+        );
+        setNotification({
+          type: 'success',
+          text: `Balance Almacén Newsoft (Col E) del ítem ${row.codigo} actualizado a ${nuevoAlmacen}.`
+        });
+      } else {
+        setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar Newsoft (Col E) en Sheets.' });
       }
     } catch (err: any) {
       setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
@@ -796,6 +848,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isEditingNs = editingNsRow === row.rowNumber;
                 const isEditingSalida = editingSalidaRow === row.rowNumber;
                 const isEditingNave7 = editingNave7Row === row.rowNumber;
+                const isEditingAlmacen = editingAlmacenRow === row.rowNumber;
                 const isEditingComment = editingCommentRow === row.rowNumber;
 
                 return (
@@ -998,7 +1051,48 @@ export const InventoryDesgloseView: React.FC = () => {
                       )}
                     </td>
 
-                    <td className="py-2.5 px-3 text-right text-[#00f2fe] font-mono font-bold">{row.newsoft.toLocaleString()}</td>
+                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT (EDITA COL E - ALMACÉN NEWSOFT EN LÍNEA) */}
+                    <td className="py-2.5 px-3 text-right font-mono font-bold">
+                      {isEditingAlmacen ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          value={editingAlmacenValue}
+                          onChange={(e) => setEditingAlmacenValue(e.target.value)}
+                          onBlur={() => handleSaveAlmacen(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveAlmacen(row);
+                            if (e.key === 'Escape') setEditingAlmacenRow(null);
+                          }}
+                          className="w-20 px-2 py-1 text-right font-bold text-white bg-[#0d1017] border border-cyan-400 rounded-lg outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      ) : (
+                        <div
+                          onClick={() => {
+                            if (!row.candado && !isRowUpdating) {
+                              setEditingAlmacenRow(row.rowNumber);
+                              setEditingAlmacenValue(String(row.almacen));
+                            }
+                          }}
+                          title={
+                            row.candado
+                              ? 'Bloqueado con candado'
+                              : `Almacén Newsoft (Col E): ${row.almacen.toLocaleString()} • Clic para editar Col E`
+                          }
+                          className={`inline-flex items-center justify-end gap-1.5 px-2 py-1 rounded-lg transition-colors ${
+                            row.candado
+                              ? 'text-[#00f2fe]/70 cursor-default'
+                              : 'text-[#00f2fe] hover:bg-cyan-500/15 cursor-pointer group'
+                          }`}
+                        >
+                          <span>{row.newsoft.toLocaleString()}</span>
+                          {!row.candado && (
+                            <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
+                          )}
+                        </div>
+                      )}
+                    </td>
+
                     <td className="py-2.5 px-3 text-right font-mono">
                       {typeof row.dif === 'number' && row.dif > 0 ? (
                         <span className="text-amber-400 font-bold">+{row.dif}</span>
