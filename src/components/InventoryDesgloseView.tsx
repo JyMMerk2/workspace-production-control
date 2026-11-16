@@ -14,13 +14,15 @@ import {
   KeyRound,
   AlertCircle,
   ShieldCheck,
-  Edit2
+  Edit2,
+  AlertTriangle
 } from 'lucide-react';
 
 interface SheetRowItem {
   rowNumber: number;
   validado: boolean;
   candado: boolean;
+  enRevision: boolean;
   codigo: string;
   item: string;
   ns: number;
@@ -36,6 +38,11 @@ interface SheetRowItem {
 const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const MASTER_PIN = '030621';
+
+// Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
+function limpiarEtiquetaRevision(comentario: string): string {
+  return comentario.replace(/\[REVISIÓN[^\]]*\]\s*/gi, '').trim();
+}
 
 // Parser CSV que respeta saltos de línea dentro de comillas (mantiene el rowNumber 100% exacto)
 function parseCSVExact(text: string): string[][] {
@@ -128,7 +135,7 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'CERRADO'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [inputPage, setInputPage] = useState('1');
@@ -209,10 +216,14 @@ export const InventoryDesgloseView: React.FC = () => {
         const ubicacion = cols[7] || cols[6] || '-';
         const comentario = cols[11] || ''; // Columna L (Índice 11)
 
+        // Está en Revisión si tiene Col A activa, candado abierto y la etiqueta [REVISIÓN...] en comentarios
+        const enRevision = isValid && !isLocked && /\[REVISIÓN/i.test(comentario);
+
         parsedItems.push({
           rowNumber: i + 1, // Fila real exacta en Google Sheets (1-based)
           validado: isValid,
           candado: isLocked,
+          enRevision,
           codigo,
           item: itemName,
           ns: nsVal,
@@ -421,10 +432,11 @@ export const InventoryDesgloseView: React.FC = () => {
       });
 
       if (res && res.success) {
+        const sigueEnRevision = row.validado && !row.candado && /\[REVISIÓN/i.test(nuevoComentario);
         setItems(prev =>
           prev.map(it =>
             it.rowNumber === row.rowNumber
-              ? { ...it, comentario: nuevoComentario }
+              ? { ...it, comentario: nuevoComentario, enRevision: sigueEnRevision }
               : it
           )
         );
@@ -472,12 +484,21 @@ export const InventoryDesgloseView: React.FC = () => {
     setUpdatingRow(row.rowNumber);
     setNotification(null);
 
-    const payload = {
+    // Al volver a cerrar el candado (Col I = TRUE) limpia automáticamente la etiqueta [REVISIÓN...]
+    const comentarioFinal = nuevoEstadoCandado
+      ? limpiarEtiquetaRevision(row.comentario)
+      : row.comentario;
+
+    const payload: Record<string, any> = {
       rowNumber: row.rowNumber,
       codigo: row.codigo,
       colI: nuevoEstadoCandado,
       forceUnlock: conPinAutorizado
     };
+
+    if (nuevoEstadoCandado && comentarioFinal !== row.comentario) {
+      payload.colL = comentarioFinal;
+    }
 
     try {
       const res = await updateSheetRowGAS({
@@ -487,7 +508,16 @@ export const InventoryDesgloseView: React.FC = () => {
 
       if (res && res.success) {
         setItems(prev =>
-          prev.map(it => (it.rowNumber === row.rowNumber ? { ...it, candado: nuevoEstadoCandado } : it))
+          prev.map(it =>
+            it.rowNumber === row.rowNumber
+              ? {
+                  ...it,
+                  candado: nuevoEstadoCandado,
+                  comentario: comentarioFinal,
+                  enRevision: nuevoEstadoCandado ? false : it.enRevision
+                }
+              : it
+          )
         );
         setNotification({
           type: 'success',
@@ -522,18 +552,21 @@ export const InventoryDesgloseView: React.FC = () => {
   const counts = useMemo(() => {
     let pendientes = 0;
     let validadosOk = 0;
+    let revision = 0;
     let cerrados = 0;
 
     for (const it of items) {
       if (it.validado && it.candado) {
         cerrados++;
+      } else if (it.enRevision) {
+        revision++;
       } else if (it.validado && !it.candado) {
         validadosOk++;
       } else {
         pendientes++;
       }
     }
-    return { pendientes, validadosOk, cerrados };
+    return { pendientes, validadosOk, revision, cerrados };
   }, [items]);
 
   const filteredItems = useMemo(() => {
@@ -546,7 +579,8 @@ export const InventoryDesgloseView: React.FC = () => {
       
       if (!matchSearch) return false;
       if (filterStatus === 'PENDIENTE') return !it.validado && !it.candado;
-      if (filterStatus === 'OK') return it.validado && !it.candado;
+      if (filterStatus === 'OK') return it.validado && !it.candado && !it.enRevision;
+      if (filterStatus === 'REVISION') return it.enRevision;
       if (filterStatus === 'CERRADO') return it.validado && it.candado;
       return true;
     });
@@ -686,6 +720,20 @@ export const InventoryDesgloseView: React.FC = () => {
               </button>
 
               <button
+                onClick={() => { setFilterStatus('REVISION'); setCurrentPage(1); }}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === 'REVISION'
+                    ? 'bg-orange-500/25 text-orange-300 border border-orange-500/40'
+                    : counts.revision > 0
+                    ? 'text-orange-400 hover:bg-orange-500/10'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Revisión ({counts.revision.toLocaleString()})</span>
+              </button>
+
+              <button
                 onClick={() => { setFilterStatus('CERRADO'); setCurrentPage(1); }}
                 className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   filterStatus === 'CERRADO' ? 'bg-rose-500/20 text-rose-400' : 'text-gray-400 hover:text-white'
@@ -751,12 +799,21 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isEditingComment = editingCommentRow === row.rowNumber;
 
                 return (
-                  <tr key={row.rowNumber} className="hover:bg-white/5 transition-colors">
+                  <tr
+                    key={row.rowNumber}
+                    className={`transition-colors ${
+                      row.enRevision ? 'bg-orange-500/5 hover:bg-orange-500/10' : 'hover:bg-white/5'
+                    }`}
+                  >
                     {/* ESTADO */}
                     <td className="py-2.5 px-3">
                       {row.validado && row.candado ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
                           <ShieldCheck className="w-3 h-3" /> Cerrado
+                        </span>
+                      ) : row.enRevision ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-orange-300 bg-orange-500/15 px-2 py-0.5 rounded border border-orange-500/40">
+                          <AlertTriangle className="w-3 h-3" /> Revisión
                         </span>
                       ) : row.validado ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
@@ -781,7 +838,7 @@ export const InventoryDesgloseView: React.FC = () => {
                               row.candado
                                 ? 'Cerrado (Clic para desbloquear con PIN 030621)'
                                 : isDifCero
-                                ? 'Activar Candado (Cerrar ítem)'
+                                ? 'Activar Candado (Cerrar ítem y limpiar Revisión)'
                                 : 'Requiere Diferencia = 0 para cerrar candado'
                             }
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all ${
@@ -985,6 +1042,8 @@ export const InventoryDesgloseView: React.FC = () => {
                           className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg transition-colors ${
                             row.candado
                               ? 'text-gray-400 cursor-default'
+                              : row.enRevision
+                              ? 'text-orange-300 hover:bg-orange-500/15 cursor-pointer group font-semibold'
                               : 'hover:bg-amber-500/15 hover:text-amber-200 cursor-pointer group'
                           }`}
                         >
