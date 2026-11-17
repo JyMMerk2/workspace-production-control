@@ -146,7 +146,7 @@ export const InventoryDesgloseView: React.FC = () => {
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO' | 'NAVE7'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [inputPage, setInputPage] = useState('1');
@@ -355,18 +355,13 @@ export const InventoryDesgloseView: React.FC = () => {
     }
   };
 
-  // Descargar archivo de Excel nativo (.xls SpreadsheetML) únicamente de los ítems CERRADOS
-  const handleDownloadCerradosExcel = () => {
-    const cerradosList = items.filter((it) => it.validado && it.candado);
-
-    if (cerradosList.length === 0) {
-      setNotification({
-        type: 'error',
-        text: 'No hay artículos cerrados con candado disponibles para descargar.'
-      });
-      return;
-    }
-
+  // Helper reutilizable para exportar listas a Excel nativo (.xls SpreadsheetML)
+  const exportToExcelXML = (
+    rowsToExport: SheetRowItem[],
+    sheetName: string,
+    filePrefix: string,
+    getEstadoLabel?: (row: SheetRowItem) => string
+  ) => {
     const escapeXML = (val: string | number) =>
       String(val ?? '')
         .replace(/&/g, '&amp;')
@@ -397,8 +392,18 @@ export const InventoryDesgloseView: React.FC = () => {
       )
       .join('');
 
-    const dataRows = cerradosList
+    const dataRows = rowsToExport
       .map((row) => {
+        const estadoTexto = getEstadoLabel
+          ? getEstadoLabel(row)
+          : row.validado && row.candado
+          ? 'Cerrado'
+          : row.enRevision
+          ? 'Revisión'
+          : row.validado
+          ? 'Validado OK'
+          : 'Pendiente';
+
         const difNum = typeof row.dif === 'number' ? row.dif : Number(row.dif);
         const difCell = !isNaN(difNum)
           ? `<Cell><Data ss:Type="Number">${difNum}</Data></Cell>`
@@ -406,7 +411,7 @@ export const InventoryDesgloseView: React.FC = () => {
 
         return `<Row>
           <Cell><Data ss:Type="Number">${row.rowNumber}</Data></Cell>
-          <Cell><Data ss:Type="String">Cerrado</Data></Cell>
+          <Cell><Data ss:Type="String">${escapeXML(estadoTexto)}</Data></Cell>
           <Cell><Data ss:Type="String">${escapeXML(row.codigo)}</Data></Cell>
           <Cell><Data ss:Type="String">${escapeXML(row.item)}</Data></Cell>
           <Cell><Data ss:Type="Number">${Number(row.ns) || 0}</Data></Cell>
@@ -433,7 +438,7 @@ export const InventoryDesgloseView: React.FC = () => {
       <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
     </Style>
   </Styles>
-  <Worksheet ss:Name="Cerrados Nave 6">
+  <Worksheet ss:Name="${escapeXML(sheetName)}">
     <Table>
       <Row>${headerCells}</Row>
       ${dataRows}
@@ -453,15 +458,50 @@ export const InventoryDesgloseView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Inventario_Cerrados_Nave6_${fechaStr}.xls`);
+    link.setAttribute('download', `${filePrefix}_${fechaStr}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Descargar archivo de Excel nativo (.xls SpreadsheetML) únicamente de los ítems CERRADOS
+  const handleDownloadCerradosExcel = () => {
+    const cerradosList = items.filter((it) => it.validado && it.candado);
+
+    if (cerradosList.length === 0) {
+      setNotification({
+        type: 'error',
+        text: 'No hay artículos cerrados con candado disponibles para descargar.'
+      });
+      return;
+    }
+
+    exportToExcelXML(cerradosList, 'Cerrados Nave 6', 'Inventario_Cerrados_Nave6', () => 'Cerrado');
 
     setNotification({
       type: 'success',
       text: `Se descargó el Excel con ${cerradosList.length.toLocaleString()} artículo(s) cerrado(s).`
+    });
+  };
+
+  // Descargar archivo de Excel nativo (.xls SpreadsheetML) de todos los artículos con stock en NAVE 7 (Col N > 0)
+  const handleDownloadNave7Excel = () => {
+    const nave7List = items.filter((it) => (Number(it.nave7) || 0) > 0);
+
+    if (nave7List.length === 0) {
+      setNotification({
+        type: 'error',
+        text: 'No hay artículos con unidades en Nave 7 (Col N) disponibles para descargar.'
+      });
+      return;
+    }
+
+    exportToExcelXML(nave7List, 'Inventario Nave 7', 'Inventario_Nave7');
+
+    setNotification({
+      type: 'success',
+      text: `Se descargó el Excel de Nave 7 con ${nave7List.length.toLocaleString()} artículo(s).`
     });
   };
 
@@ -843,8 +883,12 @@ export const InventoryDesgloseView: React.FC = () => {
     let validadosOk = 0;
     let revision = 0;
     let cerrados = 0;
+    let nave7 = 0;
 
     for (const it of items) {
+      if ((Number(it.nave7) || 0) > 0) {
+        nave7++;
+      }
       if (it.validado && it.candado) {
         cerrados++;
       } else if (it.enRevision) {
@@ -855,7 +899,7 @@ export const InventoryDesgloseView: React.FC = () => {
         pendientes++;
       }
     }
-    return { pendientes, validadosOk, revision, cerrados };
+    return { pendientes, validadosOk, revision, cerrados, nave7 };
   }, [items]);
 
   const filteredItems = useMemo(() => {
@@ -871,6 +915,7 @@ export const InventoryDesgloseView: React.FC = () => {
       if (filterStatus === 'OK') return it.validado && !it.candado && !it.enRevision;
       if (filterStatus === 'REVISION') return it.enRevision;
       if (filterStatus === 'CERRADO') return it.validado && it.candado;
+      if (filterStatus === 'NAVE7') return (Number(it.nave7) || 0) > 0;
       return true;
     });
   }, [items, searchTerm, filterStatus]);
@@ -932,6 +977,16 @@ export const InventoryDesgloseView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleDownloadNave7Excel}
+            disabled={counts.nave7 === 0}
+            title="Descargar archivo Excel con todos los artículos que tienen stock en Nave 7 (Col N)"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500 hover:text-white text-purple-300 font-black text-xs border border-purple-500/40 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Descargar Nave 7 ({counts.nave7.toLocaleString()})</span>
+          </button>
+
           <button
             onClick={handleDownloadCerradosExcel}
             disabled={counts.cerrados === 0}
@@ -1040,6 +1095,19 @@ export const InventoryDesgloseView: React.FC = () => {
               >
                 <Lock className="w-3 h-3" />
                 <span>Cerrados ({counts.cerrados.toLocaleString()})</span>
+              </button>
+
+              <button
+                onClick={() => { setFilterStatus('NAVE7'); setCurrentPage(1); }}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === 'NAVE7'
+                    ? 'bg-purple-500/25 text-purple-300 border border-purple-500/40'
+                    : counts.nave7 > 0
+                    ? 'text-purple-400 hover:bg-purple-500/10'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <span>Nave 7 ({counts.nave7.toLocaleString()})</span>
               </button>
             </div>
 
