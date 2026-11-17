@@ -15,7 +15,8 @@ import {
   AlertCircle,
   ShieldCheck,
   Edit2,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
 
 interface SheetRowItem {
@@ -286,6 +287,88 @@ export const InventoryDesgloseView: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [fetchSheetData]);
+
+  // Descargar archivo compatible con Excel (.csv con BOM UTF-8) únicamente de los ítems CERRADOS
+  const handleDownloadCerradosExcel = () => {
+    const cerradosList = items.filter((it) => it.validado && it.candado);
+
+    if (cerradosList.length === 0) {
+      setNotification({
+        type: 'error',
+        text: 'No hay artículos cerrados con candado disponibles para descargar.'
+      });
+      return;
+    }
+
+    const headers = [
+      'Fila Sheet',
+      'Estado',
+      'Codigo Componente',
+      'Item NT/NS Descripcion',
+      'Cantidad NetSuite',
+      'Cantidad Inventario (Col E)',
+      'Salida (Col G)',
+      'Nave 7 (Col N)',
+      'Total Balance Disponible Newsoft',
+      'Diferencia',
+      'Ubicacion',
+      'Comentarios'
+    ];
+
+    const escapeCSV = (val: string | number) => {
+      const str = String(val ?? '');
+      if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csvLines = [
+      headers.map(escapeCSV).join(','),
+      ...cerradosList.map((row) =>
+        [
+          row.rowNumber,
+          'Cerrado',
+          row.codigo,
+          row.item,
+          row.ns,
+          row.almacen,
+          row.salida,
+          row.nave7,
+          row.newsoft,
+          row.dif,
+          row.ubicacion,
+          row.comentario
+        ]
+          .map(escapeCSV)
+          .join(',')
+      )
+    ];
+
+    // BOM \uFEFF para que Excel reconozca acentos y ñ automáticamente
+    const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], {
+      type: 'text/csv;charset=utf-8;'
+    });
+
+    const now = new Date();
+    const fechaStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Inventario_Cerrados_Nave6_${fechaStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setNotification({
+      type: 'success',
+      text: `Se descargó el Excel con ${cerradosList.length.toLocaleString()} artículo(s) cerrado(s).`
+    });
+  };
 
   // Guardar nuevo valor de Cantidad NetSuite (Col D) en Google Sheets
   const handleSaveNetSuite = async (row: SheetRowItem) => {
@@ -753,7 +836,17 @@ export const InventoryDesgloseView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleDownloadCerradosExcel}
+            disabled={counts.cerrados === 0}
+            title="Descargar archivo Excel (.csv) con todos los artículos cerrados con candado"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 hover:text-black text-emerald-300 font-black text-xs border border-emerald-500/40 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Descargar Cerrados ({counts.cerrados.toLocaleString()})</span>
+          </button>
+
           <button
             onClick={() => fetchSheetData(false)}
             disabled={loading}
