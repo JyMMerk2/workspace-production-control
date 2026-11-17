@@ -15,7 +15,8 @@ import {
   X, 
   Layers, 
   ShieldAlert,
-  Check
+  Check,
+  AlertTriangle
 } from 'lucide-react';
 
 interface InventoryItem {
@@ -123,6 +124,7 @@ export const PaseInventarioView: React.FC = () => {
 
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sendingSlack, setSendingSlack] = useState(false);
   const [itemsList, setItemsList] = useState<InventoryItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -365,6 +367,50 @@ export const PaseInventarioView: React.FC = () => {
       }
     } else {
       setCalcDisplay(prev => prev + val);
+    }
+  };
+
+  // Enviar reporte de descuadre directamente al canal #alerta-inventario-nave-6 en Slack
+  const handleSendSlackAlert = async () => {
+    if (!selectedItem) return;
+    setSendingSlack(true);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: selectedItem.rowNumber,
+      codigo: colB,
+      item: colC,
+      ubicacion: colH,
+      ns: numNetSuite,
+      almacen: numAlmacen,
+      salida: numSalida,
+      nave7: numNave7,
+      newsoft: totalBalanceNewsoft,
+      dif: diferenciaCalculada,
+      comentario: colL
+    };
+
+    try {
+      const res = await queryGAS({
+        action: 'SEND_SLACK_ALERT',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        setNotification({
+          type: 'success',
+          text: res.message || `Alerta del ítem ${colB} enviada a Slack (#alerta-inventario-nave-6).`
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudo enviar la alerta a Slack.'
+        });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error al enviar a Slack: ' + err.message });
+    } finally {
+      setSendingSlack(false);
     }
   };
 
@@ -925,8 +971,8 @@ export const PaseInventarioView: React.FC = () => {
                 />
               </div>
 
-              {/* Botonera: Cancelar & Confirmar */}
-              <div className="pt-3 flex justify-between items-center border-t border-white/10">
+              {/* Botonera: Cancelar, Reportar Descuadre a Slack & Confirmar */}
+              <div className="pt-3 flex flex-wrap justify-between items-center gap-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={handleCerrarFormulario}
@@ -935,15 +981,34 @@ export const PaseInventarioView: React.FC = () => {
                   Cancelar
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving || isLocked}
-                  className="px-7 py-2.5 rounded-xl bg-emerald-500 text-black font-black text-xs hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{saving ? 'Guardando en Sheets...' : 'Confirmar & Guardar Conteo'}</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!cuadranCantidades && (
+                    <button
+                      type="button"
+                      onClick={handleSendSlackAlert}
+                      disabled={sendingSlack}
+                      title="Reportar este descuadre en el canal #alerta-inventario-nave-6 de Slack"
+                      className="px-5 py-2.5 rounded-xl bg-[#4A154B] hover:bg-[#611f69] text-purple-100 border border-purple-400/40 font-black text-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {sendingSlack ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-300" />
+                      )}
+                      <span>{sendingSlack ? 'Enviando a Slack...' : 'Reportar Descuadre a Slack'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving || isLocked}
+                    className="px-7 py-2.5 rounded-xl bg-emerald-500 text-black font-black text-xs hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{saving ? 'Guardando en Sheets...' : 'Confirmar & Guardar Conteo'}</span>
+                  </button>
+                </div>
               </div>
 
             </div>
