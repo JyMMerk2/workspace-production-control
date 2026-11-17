@@ -355,7 +355,7 @@ export const InventoryDesgloseView: React.FC = () => {
     }
   };
 
-  // Descargar archivo compatible con Excel (.csv con BOM UTF-8) únicamente de los ítems CERRADOS
+  // Descargar archivo de Excel nativo (.xls SpreadsheetML) únicamente de los ítems CERRADOS
   const handleDownloadCerradosExcel = () => {
     const cerradosList = items.filter((it) => it.validado && it.candado);
 
@@ -367,54 +367,82 @@ export const InventoryDesgloseView: React.FC = () => {
       return;
     }
 
+    const escapeXML = (val: string | number) =>
+      String(val ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+
     const headers = [
       'Fila Sheet',
       'Estado',
-      'Codigo Componente',
-      'Item NT/NS Descripcion',
+      'Código Componente',
+      'Item NT/NS Descripción',
       'Cantidad NetSuite',
       'Cantidad Inventario (Col E)',
       'Salida (Col G)',
       'Nave 7 (Col N)',
       'Total Balance Disponible Newsoft',
       'Diferencia',
-      'Ubicacion',
+      'Ubicación',
       'Comentarios'
     ];
 
-    const escapeCSV = (val: string | number) => {
-      const str = String(val ?? '');
-      if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
-
-    const csvLines = [
-      headers.map(escapeCSV).join(','),
-      ...cerradosList.map((row) =>
-        [
-          row.rowNumber,
-          'Cerrado',
-          row.codigo,
-          row.item,
-          row.ns,
-          row.almacen,
-          row.salida,
-          row.nave7,
-          row.newsoft,
-          row.dif,
-          row.ubicacion,
-          row.comentario
-        ]
-          .map(escapeCSV)
-          .join(',')
+    const headerCells = headers
+      .map(
+        (h) =>
+          `<Cell ss:StyleID="Header"><Data ss:Type="String">${escapeXML(h)}</Data></Cell>`
       )
-    ];
+      .join('');
 
-    // BOM \uFEFF para que Excel reconozca acentos y ñ automáticamente
-    const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], {
-      type: 'text/csv;charset=utf-8;'
+    const dataRows = cerradosList
+      .map((row) => {
+        const difNum = typeof row.dif === 'number' ? row.dif : Number(row.dif);
+        const difCell = !isNaN(difNum)
+          ? `<Cell><Data ss:Type="Number">${difNum}</Data></Cell>`
+          : `<Cell><Data ss:Type="String">${escapeXML(row.dif)}</Data></Cell>`;
+
+        return `<Row>
+          <Cell><Data ss:Type="Number">${row.rowNumber}</Data></Cell>
+          <Cell><Data ss:Type="String">Cerrado</Data></Cell>
+          <Cell><Data ss:Type="String">${escapeXML(row.codigo)}</Data></Cell>
+          <Cell><Data ss:Type="String">${escapeXML(row.item)}</Data></Cell>
+          <Cell><Data ss:Type="Number">${Number(row.ns) || 0}</Data></Cell>
+          <Cell><Data ss:Type="Number">${Number(row.almacen) || 0}</Data></Cell>
+          <Cell><Data ss:Type="Number">${Number(row.salida) || 0}</Data></Cell>
+          <Cell><Data ss:Type="Number">${Number(row.nave7) || 0}</Data></Cell>
+          <Cell><Data ss:Type="Number">${Number(row.newsoft) || 0}</Data></Cell>
+          ${difCell}
+          <Cell><Data ss:Type="String">${escapeXML(row.ubicacion)}</Data></Cell>
+          <Cell><Data ss:Type="String">${escapeXML(row.comentario)}</Data></Cell>
+        </Row>`;
+      })
+      .join('');
+
+    const xmlExcel = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Header">
+      <Font ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Cerrados Nave 6">
+    <Table>
+      <Row>${headerCells}</Row>
+      ${dataRows}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([xmlExcel], {
+      type: 'application/vnd.ms-excel;charset=utf-8;'
     });
 
     const now = new Date();
@@ -425,7 +453,7 @@ export const InventoryDesgloseView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Inventario_Cerrados_Nave6_${fechaStr}.csv`);
+    link.setAttribute('download', `Inventario_Cerrados_Nave6_${fechaStr}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -907,7 +935,7 @@ export const InventoryDesgloseView: React.FC = () => {
           <button
             onClick={handleDownloadCerradosExcel}
             disabled={counts.cerrados === 0}
-            title="Descargar archivo Excel (.csv) con todos los artículos cerrados con candado"
+            title="Descargar archivo Excel con todos los artículos cerrados con candado"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 hover:text-black text-emerald-300 font-black text-xs border border-emerald-500/40 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Download className="w-3.5 h-3.5" />
