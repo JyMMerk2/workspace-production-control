@@ -16,7 +16,8 @@ import {
   ShieldCheck,
   Edit2,
   AlertTriangle,
-  Download
+  Download,
+  Send
 } from 'lucide-react';
 
 interface SheetRowItem {
@@ -81,7 +82,7 @@ function parseCSVExact(text: string): string[][] {
   return rows;
 }
 
-// Cliente híbrido para actualizar celdas en Google Sheets sin problemas de CORS
+// Cliente híbrido para actualizar celdas o enviar alertas en Google Apps Script sin problemas de CORS
 async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
   const query = new URLSearchParams(params).toString();
   const url = `${APPS_SCRIPT_URL}?${query}`;
@@ -117,6 +118,7 @@ export const InventoryDesgloseView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<string>('');
   const [updatingRow, setUpdatingRow] = useState<number | null>(null);
+  const [sendingSlackRow, setSendingSlackRow] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Estados para edición en línea de Cantidad NetSuite (Col D)
@@ -172,6 +174,7 @@ export const InventoryDesgloseView: React.FC = () => {
       editingUbicacionRow !== null ||
       editingCommentRow !== null ||
       updatingRow !== null ||
+      sendingSlackRow !== null ||
       unlockTargetRow !== null
     );
   }, [
@@ -182,6 +185,7 @@ export const InventoryDesgloseView: React.FC = () => {
     editingUbicacionRow,
     editingCommentRow,
     updatingRow,
+    sendingSlackRow,
     unlockTargetRow
   ]);
 
@@ -287,6 +291,49 @@ export const InventoryDesgloseView: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [fetchSheetData]);
+
+  // Enviar alerta de descuadre directamente al canal #alerta-inventario-nave-6 en Slack
+  const handleSendSlackAlert = async (row: SheetRowItem) => {
+    setSendingSlackRow(row.rowNumber);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: row.rowNumber,
+      codigo: row.codigo,
+      item: row.item,
+      ubicacion: row.ubicacion,
+      ns: row.ns,
+      almacen: row.almacen,
+      salida: row.salida,
+      nave7: row.nave7,
+      newsoft: row.newsoft,
+      dif: row.dif,
+      comentario: row.comentario
+    };
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'SEND_SLACK_ALERT',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        setNotification({
+          type: 'success',
+          text: res.message || `Alerta del ítem ${row.codigo} enviada a Slack (#alerta-inventario-nave-6).`
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudo enviar la alerta a Slack.'
+        });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error de conexión con Slack: ' + err.message });
+    } finally {
+      setSendingSlackRow(null);
+    }
+  };
 
   // Descargar archivo compatible con Excel (.csv con BOM UTF-8) únicamente de los ítems CERRADOS
   const handleDownloadCerradosExcel = () => {
@@ -867,7 +914,7 @@ export const InventoryDesgloseView: React.FC = () => {
         </div>
       </div>
 
-      {/* Notificaciones de Candado / Guardado */}
+      {/* Notificaciones de Candado / Guardado / Slack */}
       {notification && (
         <div
           className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 ${
@@ -992,12 +1039,14 @@ export const InventoryDesgloseView: React.FC = () => {
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
                 <th className="py-3 px-3">Comentarios</th>
+                <th className="py-3 px-3 text-center">Slack</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 font-medium">
               {paginatedItems.map((row) => {
                 const isDifCero = tieneDiferenciaCero(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
+                const isSendingSlack = sendingSlackRow === row.rowNumber;
                 const isEditingNs = editingNsRow === row.rowNumber;
                 const isEditingAlmacen = editingAlmacenRow === row.rowNumber;
                 const isEditingSalida = editingSalidaRow === row.rowNumber;
@@ -1341,6 +1390,28 @@ export const InventoryDesgloseView: React.FC = () => {
                             <Edit2 className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 text-amber-400 transition-opacity" />
                           )}
                         </div>
+                      )}
+                    </td>
+
+                    {/* BOTÓN ENVIAR DESCUADRE A SLACK */}
+                    <td className="py-2.5 px-3 text-center">
+                      {!isDifCero ? (
+                        <button
+                          type="button"
+                          disabled={isSendingSlack}
+                          onClick={() => handleSendSlackAlert(row)}
+                          title="Reportar este descuadre en Slack (#alerta-inventario-nave-6)"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4A154B]/60 hover:bg-[#611f69] text-purple-200 hover:text-white border border-purple-400/30 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          {isSendingSlack ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                          <span>Alertar</span>
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-gray-600 font-mono">—</span>
                       )}
                     </td>
                   </tr>
