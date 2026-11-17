@@ -292,7 +292,7 @@ export const InventoryDesgloseView: React.FC = () => {
     };
   }, [fetchSheetData]);
 
-  // Enviar alerta de descuadre directamente al canal #alerta-inventario-nave-6 en Slack
+  // Enviar alerta de descuadre directamente al canal #alerta-inventario-nave-6 en Slack y mover a Revisión
   const handleSendSlackAlert = async (row: SheetRowItem) => {
     setSendingSlackRow(row.rowNumber);
     setNotification(null);
@@ -318,9 +318,29 @@ export const InventoryDesgloseView: React.FC = () => {
       });
 
       if (res && res.success) {
+        const comentarioActualizado =
+          res.nuevoComentario ||
+          (/\[REVISIÓN/i.test(row.comentario)
+            ? row.comentario
+            : `[REVISIÓN SLACK] ${row.comentario}`.trim());
+
+        setItems((prev) =>
+          prev.map((it) =>
+            it.rowNumber === row.rowNumber
+              ? {
+                  ...it,
+                  validado: true,
+                  candado: false,
+                  enRevision: true,
+                  comentario: comentarioActualizado
+                }
+              : it
+          )
+        );
+
         setNotification({
           type: 'success',
-          text: res.message || `Alerta del ítem ${row.codigo} enviada a Slack (#alerta-inventario-nave-6).`
+          text: res.message || `Alerta del ítem ${row.codigo} enviada a Slack y movida a Revisión.`
         });
       } else {
         setNotification({
@@ -1400,7 +1420,7 @@ export const InventoryDesgloseView: React.FC = () => {
                           type="button"
                           disabled={isSendingSlack}
                           onClick={() => handleSendSlackAlert(row)}
-                          title="Reportar este descuadre en Slack (#alerta-inventario-nave-6)"
+                          title="Reportar este descuadre en Slack (#alerta-inventario-nave-6) y mover a Revisión"
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4A154B]/60 hover:bg-[#611f69] text-purple-200 hover:text-white border border-purple-400/30 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
                         >
                           {isSendingSlack ? (
