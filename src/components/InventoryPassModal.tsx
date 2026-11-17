@@ -12,7 +12,8 @@ import {
   KeyRound, 
   Send,
   Calculator,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 
 interface InventoryItem {
@@ -27,6 +28,7 @@ interface InventoryItem {
   colH_Ubicacion: string;
   colI_Candado: boolean;
   colL_Comentario: string;
+  colN_Nave7?: number;
   isLocked: boolean;
 }
 
@@ -75,6 +77,37 @@ function parseCSVExact(text: string): string[][] {
   return rows;
 }
 
+// Cliente híbrido para enviar alertas a Google Apps Script sin problemas de CORS
+async function callGASAction(params: Record<string, string>): Promise<any> {
+  const query = new URLSearchParams(params).toString();
+  const url = `${APPS_SCRIPT_URL}?${query}`;
+
+  try {
+    const res = await fetch(url);
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback a JSONP
+  }
+
+  return new Promise((resolve, reject) => {
+    const cb = 'gas_modal_cb_' + Math.round(100000 * Math.random());
+    (window as any)[cb] = (data: any) => {
+      delete (window as any)[cb];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      resolve(data);
+    };
+
+    const script = document.createElement('script');
+    script.src = `${url}&callback=${cb}`;
+    script.onerror = () => {
+      delete (window as any)[cb];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('No se pudo conectar con Google Apps Script.'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
 export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUbicacion, setSelectedUbicacion] = useState('');
@@ -82,6 +115,7 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
   
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sendingSlack, setSendingSlack] = useState(false);
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -170,6 +204,7 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
   const numNetSuite = Number(colD) || 0;
   const numAlmacen = Number(colE) || 0;
   const numSalida = Number(colG) || 0;
+  const numNave7 = Number(item?.colN_Nave7) || 0;
   const diferenciaCalculada = (numAlmacen + numSalida) - numNetSuite;
 
   const handleSearch = async () => {
@@ -250,6 +285,50 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
       setNotification({ type: 'error', text: 'Error al registrar conteo: ' + err.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Enviar reporte de descuadre al canal #alerta-inventario-nave-6 en Slack
+  const handleSendSlackAlert = async () => {
+    if (!item) return;
+    setSendingSlack(true);
+    setNotification(null);
+
+    const payload = {
+      rowNumber: item.rowNumber,
+      codigo: colB,
+      item: colC,
+      ubicacion: colH,
+      ns: numNetSuite,
+      almacen: numAlmacen,
+      salida: numSalida,
+      nave7: numNave7,
+      newsoft: (numAlmacen - numSalida) + numNave7,
+      dif: diferenciaCalculada,
+      comentario: colL
+    };
+
+    try {
+      const res = await callGASAction({
+        action: 'SEND_SLACK_ALERT',
+        payload: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        setNotification({
+          type: 'success',
+          text: res.message || `Alerta del ítem ${colB} enviada a Slack (#alerta-inventario-nave-6).`
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudo enviar la alerta a Slack.'
+        });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error al enviar a Slack: ' + err.message });
+    } finally {
+      setSendingSlack(false);
     }
   };
 
@@ -524,9 +603,28 @@ export const InventoryPassModal: React.FC<InventoryPassModalProps> = ({ isOpen, 
           )}
         </div>
 
-        {/* Botón de Confirmación y Guardado */}
+        {/* Botones de Acción (Reportar Descuadre a Slack + Confirmar & Guardar) */}
         {item && (
-          <div className="p-4 border-t border-white/10 flex justify-end gap-2 shrink-0">
+          <div className="p-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            {diferenciaCalculada !== 0 ? (
+              <button
+                type="button"
+                onClick={handleSendSlackAlert}
+                disabled={sendingSlack}
+                title="Enviar alerta de descuadre al canal #alerta-inventario-nave-6 en Slack"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#4A154B] hover:bg-[#611f69] text-purple-100 border border-purple-400/40 font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {sendingSlack ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-amber-300" />
+                )}
+                <span>{sendingSlack ? 'Enviando a Slack...' : 'Reportar Descuadre a Slack'}</span>
+              </button>
+            ) : (
+              <div />
+            )}
+
             <button
               onClick={handleSave}
               disabled={saving || isLocked}
