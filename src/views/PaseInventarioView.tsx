@@ -370,7 +370,7 @@ export const PaseInventarioView: React.FC = () => {
     }
   };
 
-  // Enviar reporte de descuadre directamente al canal #alerta-inventario-nave-6 en Slack
+  // Enviar reporte de descuadre directamente al canal #alerta-inventario-nave-6 en Slack y mover a Revisión
   const handleSendSlackAlert = async () => {
     if (!selectedItem) return;
     setSendingSlack(true);
@@ -397,9 +397,29 @@ export const PaseInventarioView: React.FC = () => {
       });
 
       if (res && res.success) {
+        const comentarioActualizado =
+          res.nuevoComentario ||
+          (/\[REVISIÓN/i.test(colL) ? colL : `[REVISIÓN SLACK] ${colL}`.trim());
+
+        setColA(true);
+        setColI(false);
+        setColL(comentarioActualizado);
+
+        const updatedItem: InventoryItem = {
+          ...selectedItem,
+          colA_Validado: true,
+          colI_Candado: false,
+          colL_Comentario: comentarioActualizado,
+          isLocked: false
+        };
+        setSelectedItem(updatedItem);
+        setItemsList((prev) =>
+          prev.map((it) => (it.rowNumber === selectedItem.rowNumber ? updatedItem : it))
+        );
+
         setNotification({
           type: 'success',
-          text: res.message || `Alerta del ítem ${colB} enviada a Slack (#alerta-inventario-nave-6).`
+          text: res.message || `Alerta del ítem ${colB} enviada a Slack y movida a Revisión.`
         });
       } else {
         setNotification({
@@ -987,7 +1007,7 @@ export const PaseInventarioView: React.FC = () => {
                       type="button"
                       onClick={handleSendSlackAlert}
                       disabled={sendingSlack}
-                      title="Reportar este descuadre en el canal #alerta-inventario-nave-6 de Slack"
+                      title="Reportar este descuadre en el canal #alerta-inventario-nave-6 de Slack y mover a Revisión"
                       className="px-5 py-2.5 rounded-xl bg-[#4A154B] hover:bg-[#611f69] text-purple-100 border border-purple-400/40 font-black text-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                     >
                       {sendingSlack ? (
