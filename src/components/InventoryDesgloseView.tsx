@@ -17,7 +17,9 @@ import {
   Edit2,
   AlertTriangle,
   Download,
-  Send
+  Send,
+  Users,
+  Plus
 } from 'lucide-react';
 
 interface SheetRowItem {
@@ -35,6 +37,14 @@ interface SheetRowItem {
   dif: string | number;
   ubicacion: string;
   comentario: string;
+}
+
+interface LoteActivo {
+  id: string;
+  usuario: string;
+  lote: string;
+  hora: string;
+  timestamp: number;
 }
 
 const APPS_SCRIPT_URL =
@@ -121,6 +131,19 @@ export const InventoryDesgloseView: React.FC = () => {
   const [sendingSlackRow, setSendingSlackRow] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Control Colaborativo de Lotes Activos en Tiempo Real
+  const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>([]);
+  const [operadorNombre, setOperadorNombre] = useState<string>(() => {
+    try {
+      return localStorage.getItem('nave6_operador_lote') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [loteInput, setLoteInput] = useState<string>('');
+  const [claimingLote, setClaimingLote] = useState<boolean>(false);
+  const [releasingLoteId, setReleasingLoteId] = useState<string | null>(null);
+
   // Estados para edición en línea de Cantidad NetSuite (Col D)
   const [editingNsRow, setEditingNsRow] = useState<number | null>(null);
   const [editingNsValue, setEditingNsValue] = useState<string>('');
@@ -163,6 +186,7 @@ export const InventoryDesgloseView: React.FC = () => {
 
   // Controles de concurrencia para evitar solapamiento de red o interrumpir ediciones activas
   const isFetchingRef = useRef(false);
+  const isFetchingLotesRef = useRef(false);
   const isBusyRef = useRef(false);
 
   useEffect(() => {
@@ -194,6 +218,85 @@ export const InventoryDesgloseView: React.FC = () => {
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
+  // Consultar lotes activos de los compañeros en tiempo real
+  const fetchLotesActivos = useCallback(async () => {
+    if (isFetchingLotesRef.current || claimingLote || releasingLoteId !== null) return;
+    isFetchingLotesRef.current = true;
+    try {
+      const res = await updateSheetRowGAS({ action: 'GET_LOTES' });
+      if (res && res.success && Array.isArray(res.lotes)) {
+        setLotesActivos(res.lotes);
+      }
+    } catch {
+      // Silencioso en segundo plano
+    } finally {
+      isFetchingLotesRef.current = false;
+    }
+  }, [claimingLote, releasingLoteId]);
+
+  // Registrar un nuevo lote/grupo tomado por el operador
+  const handleClaimLote = async () => {
+    const user = operadorNombre.trim();
+    const lote = loteInput.trim();
+
+    if (!user || !lote) {
+      setNotification({
+        type: 'error',
+        text: 'Escribe tu nombre y el grupo o cantidad fija que vas a trabajar.'
+      });
+      return;
+    }
+
+    try {
+      localStorage.setItem('nave6_operador_lote', user);
+    } catch {
+      // Ignorar si localStorage no está disponible
+    }
+
+    setClaimingLote(true);
+    setNotification(null);
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'CLAIM_LOTE',
+        usuario: user,
+        lote: lote
+      });
+
+      if (res && res.success && Array.isArray(res.lotes)) {
+        setLotesActivos(res.lotes);
+        setLoteInput('');
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudo registrar el lote.'
+        });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', text: 'Error al registrar lote: ' + err.message });
+    } finally {
+      setClaimingLote(false);
+    }
+  };
+
+  // Liberar un lote cuando el compañero termina su grupo
+  const handleReleaseLote = async (id: string) => {
+    setReleasingLoteId(id);
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'RELEASE_LOTE',
+        id
+      });
+      if (res && res.success && Array.isArray(res.lotes)) {
+        setLotesActivos(res.lotes);
+      }
+    } catch {
+      // Silencioso
+    } finally {
+      setReleasingLoteId(null);
+    }
+  };
+
   const fetchSheetData = useCallback(async (silent = false) => {
     if (isFetchingRef.current) return;
     if (silent && (isBusyRef.current || document.hidden)) return;
@@ -202,7 +305,7 @@ export const InventoryDesgloseView: React.FC = () => {
     if (!silent) setLoading(true);
 
     try {
-      const res = await fetch(CSV_URL, { cache: 'no-store' });
+      const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
       const csvText = await res.text();
       const allRows = parseCSVExact(csvText);
       const parsedItems: SheetRowItem[] = [];
@@ -273,16 +376,21 @@ export const InventoryDesgloseView: React.FC = () => {
     }
   }, [CSV_URL]);
 
-  // Carga inicial + Sincronización en tiempo real cada 4 segundos
+  // Carga inicial + Sincronización en tiempo real cada 2 segundos
   useEffect(() => {
     fetchSheetData(false);
+    fetchLotesActivos();
 
     const interval = setInterval(() => {
       fetchSheetData(true);
-    }, 4000);
+      if (!document.hidden) fetchLotesActivos();
+    }, 2000);
 
     const onVisibilityChange = () => {
-      if (!document.hidden) fetchSheetData(true);
+      if (!document.hidden) {
+        fetchSheetData(true);
+        fetchLotesActivos();
+      }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
@@ -290,7 +398,7 @@ export const InventoryDesgloseView: React.FC = () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [fetchSheetData]);
+  }, [fetchSheetData, fetchLotesActivos]);
 
   // Enviar alerta de descuadre directamente al canal #alerta-inventario-nave-6 en Slack y mover a Revisión
   const handleSendSlackAlert = async (row: SheetRowItem) => {
@@ -966,7 +1074,7 @@ export const InventoryDesgloseView: React.FC = () => {
               <span>DESGLOSE OPERATIVO COMPLETO (NAVE 6)</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                En Vivo (4s)
+                En Vivo (2s)
               </span>
             </h2>
             <span className="text-xs text-gray-400">
@@ -1015,6 +1123,104 @@ export const InventoryDesgloseView: React.FC = () => {
             <ExternalLink className="w-3.5 h-3.5 ml-0.5" />
           </button>
         </div>
+      </div>
+
+      {/* Ventana Colaborativa de Lotes / Grupos Activos en Tiempo Real */}
+      <div className="bg-[#12161f] border border-cyan-500/25 rounded-2xl p-3.5 shadow-lg space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/30 text-[#00f2fe]">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase text-white tracking-wide flex items-center gap-2">
+                <span>Lotes en Proceso (Equipo en Vivo)</span>
+                <span className="text-[10px] font-mono font-bold text-[#00f2fe] bg-[#00f2fe]/10 px-2 py-0.5 rounded-full border border-[#00f2fe]/25">
+                  {lotesActivos.length} {lotesActivos.length === 1 ? 'activo' : 'activos'}
+                </span>
+              </h3>
+              <p className="text-[11px] text-gray-400">
+                Anota la cantidad fija o grupo que estás pasando a Newsoft para evitar choques entre compañeros
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Tu nombre..."
+              value={operadorNombre}
+              onChange={(e) => setOperadorNombre(e.target.value)}
+              className="px-3 py-1.5 rounded-xl bg-[#0d1017] border border-white/15 text-xs text-white placeholder-gray-500 focus:border-[#00f2fe] outline-none w-32 sm:w-36 font-bold"
+            />
+            <input
+              type="text"
+              placeholder="Grupo / Cant. fija (ej. Cant. 12 A-11)..."
+              value={loteInput}
+              onChange={(e) => setLoteInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleClaimLote()}
+              className="px-3 py-1.5 rounded-xl bg-[#0d1017] border border-white/15 text-xs text-white placeholder-gray-500 focus:border-[#00f2fe] outline-none w-52 sm:w-64"
+            />
+            <button
+              type="button"
+              onClick={handleClaimLote}
+              disabled={claimingLote || !operadorNombre.trim() || !loteInput.trim()}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#00f2fe] hover:bg-[#00f2fe]/85 text-[#0b0e14] font-black text-xs transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {claimingLote ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>Tomar Lote</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Lista de Etiquetas de Lotes Activos */}
+        {lotesActivos.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
+            {lotesActivos.map((itemLote) => {
+              const esMio =
+                operadorNombre.trim() !== '' &&
+                itemLote.usuario.toLowerCase() === operadorNombre.trim().toLowerCase();
+              const isReleasing = releasingLoteId === itemLote.id;
+
+              return (
+                <div
+                  key={itemLote.id}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all ${
+                    esMio
+                      ? 'bg-[#00f2fe]/15 border-[#00f2fe]/40 text-white'
+                      : 'bg-[#0d1017] border-white/15 text-gray-200'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="font-black text-[#00f2fe]">{itemLote.usuario}:</span>
+                  <span className="font-bold text-amber-300">{itemLote.lote}</span>
+                  <span className="text-[10px] font-mono text-gray-400">({itemLote.hora})</span>
+                  <button
+                    type="button"
+                    disabled={isReleasing}
+                    onClick={() => handleReleaseLote(itemLote.id)}
+                    title="Liberar lote al terminar"
+                    className="ml-0.5 p-0.5 rounded-md text-gray-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isReleasing ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <X className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-[11px] text-gray-500 pt-1 border-t border-white/5">
+            Ningún lote registrado en este momento. Escribe tu nombre y la cantidad fija que estás trabajando para avisar al equipo.
+          </div>
+        )}
       </div>
 
       {/* Notificaciones de Candado / Guardado / Slack */}
