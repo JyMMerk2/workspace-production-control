@@ -374,15 +374,21 @@ export const InventoryDesgloseView: React.FC = () => {
     });
   }, [lotesActivos]);
 
-  // Buscar si una fila abierta coincide con el lote activo de algún compañero
+  // Buscar si una fila abierta coincide con el lote activo del operador de la sesión actual
   const getMatchLoteForRow = useCallback(
     (row: SheetRowItem) => {
       // No resaltar si ya está cerrado con candado
       if (row.validado && row.candado) return null;
 
+      const sesionActiva = operadorNombre.trim().toLowerCase();
+      if (!sesionActiva) return null;
+
       const rowUbi = row.ubicacion.trim().toUpperCase();
 
       for (const lote of parsedLotesActivos) {
+        // Solo resaltar los lotes que pertenezcan al nombre de la sesión activa
+        if (lote.usuario.trim().toLowerCase() !== sesionActiva) continue;
+
         if (lote.targetQty === null) continue;
         if (Number(row.newsoft) !== lote.targetQty) continue;
 
@@ -400,7 +406,7 @@ export const InventoryDesgloseView: React.FC = () => {
 
       return null;
     },
-    [parsedLotesActivos]
+    [parsedLotesActivos, operadorNombre]
   );
 
   // Consultar lotes activos de los compañeros en tiempo real
