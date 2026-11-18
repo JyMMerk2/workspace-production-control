@@ -47,6 +47,137 @@ interface LoteActivo {
   timestamp: number;
 }
 
+interface UserColorTheme {
+  chipBg: string;
+  chipBorder: string;
+  chipText: string;
+  dotBg: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeText: string;
+}
+
+const USER_COLOR_PALETTE: UserColorTheme[] = [
+  {
+    chipBg: 'bg-cyan-500/15',
+    chipBorder: 'border-cyan-400/50',
+    chipText: 'text-cyan-300',
+    dotBg: 'bg-cyan-400',
+    badgeBg: 'bg-cyan-500/20',
+    badgeBorder: 'border-cyan-400/60',
+    badgeText: 'text-cyan-200'
+  },
+  {
+    chipBg: 'bg-pink-500/15',
+    chipBorder: 'border-pink-400/50',
+    chipText: 'text-pink-300',
+    dotBg: 'bg-pink-400',
+    badgeBg: 'bg-pink-500/20',
+    badgeBorder: 'border-pink-400/60',
+    badgeText: 'text-pink-200'
+  },
+  {
+    chipBg: 'bg-amber-500/15',
+    chipBorder: 'border-amber-400/50',
+    chipText: 'text-amber-300',
+    dotBg: 'bg-amber-400',
+    badgeBg: 'bg-amber-500/20',
+    badgeBorder: 'border-amber-400/60',
+    badgeText: 'text-amber-200'
+  },
+  {
+    chipBg: 'bg-purple-500/15',
+    chipBorder: 'border-purple-400/50',
+    chipText: 'text-purple-300',
+    dotBg: 'bg-purple-400',
+    badgeBg: 'bg-purple-500/20',
+    badgeBorder: 'border-purple-400/60',
+    badgeText: 'text-purple-200'
+  },
+  {
+    chipBg: 'bg-emerald-500/15',
+    chipBorder: 'border-emerald-400/50',
+    chipText: 'text-emerald-300',
+    dotBg: 'bg-emerald-400',
+    badgeBg: 'bg-emerald-500/20',
+    badgeBorder: 'border-emerald-400/60',
+    badgeText: 'text-emerald-200'
+  },
+  {
+    chipBg: 'bg-orange-500/15',
+    chipBorder: 'border-orange-400/50',
+    chipText: 'text-orange-300',
+    dotBg: 'bg-orange-400',
+    badgeBg: 'bg-orange-500/20',
+    badgeBorder: 'border-orange-400/60',
+    badgeText: 'text-orange-200'
+  },
+  {
+    chipBg: 'bg-sky-500/15',
+    chipBorder: 'border-sky-400/50',
+    chipText: 'text-sky-300',
+    dotBg: 'bg-sky-400',
+    badgeBg: 'bg-sky-500/20',
+    badgeBorder: 'border-sky-400/60',
+    badgeText: 'text-sky-200'
+  },
+  {
+    chipBg: 'bg-lime-500/15',
+    chipBorder: 'border-lime-400/50',
+    chipText: 'text-lime-300',
+    dotBg: 'bg-lime-400',
+    badgeBg: 'bg-lime-500/20',
+    badgeBorder: 'border-lime-400/60',
+    badgeText: 'text-lime-200'
+  },
+  {
+    chipBg: 'bg-rose-500/15',
+    chipBorder: 'border-rose-400/50',
+    chipText: 'text-rose-300',
+    dotBg: 'bg-rose-400',
+    badgeBg: 'bg-rose-500/20',
+    badgeBorder: 'border-rose-400/60',
+    badgeText: 'text-rose-200'
+  },
+  {
+    chipBg: 'bg-indigo-500/15',
+    chipBorder: 'border-indigo-400/50',
+    chipText: 'text-indigo-300',
+    dotBg: 'bg-indigo-400',
+    badgeBg: 'bg-indigo-500/20',
+    badgeBorder: 'border-indigo-400/60',
+    badgeText: 'text-indigo-200'
+  }
+];
+
+function getInitials(nombre: string): string {
+  const parts = nombre.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '??';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Extraer cantidad numérica y ubicación opcional (ej. "14", "Cant. 12 A-11", "12 B-7-2")
+function parseLoteTarget(loteText: string): { qty: number | null; locationFilter: string | null } {
+  const clean = loteText.trim().toUpperCase();
+  if (!clean) return { qty: null, locationFilter: null };
+
+  // Detectar ubicación tipo A-11, B-7-2, G-14-1, etc.
+  const locMatch = clean.match(/\b([A-Z]{1,3}-\d+(?:-\d+)?)\b/);
+  const locationFilter = locMatch ? locMatch[1] : null;
+
+  // Quitar la ubicación y palabras prefijo como "CANT." para leer el número de cantidad
+  const sinUbicacion = locationFilter ? clean.replace(locationFilter, ' ') : clean;
+  const numMatch = sinUbicacion.match(/(?:^|\s|[:=#])(-?\d+(?:\.\d+)?)(?:\s|$)/);
+
+  if (numMatch) {
+    const parsed = parseFloat(numMatch[1]);
+    return { qty: isNaN(parsed) ? null : parsed, locationFilter };
+  }
+
+  return { qty: null, locationFilter };
+}
+
 const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const MASTER_PIN = '030621';
@@ -217,6 +348,60 @@ export const InventoryDesgloseView: React.FC = () => {
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
+
+  // Asignación consistente de un color distinto por cada usuario activo
+  const parsedLotesActivos = useMemo(() => {
+    const userColorMap = new Map<string, UserColorTheme>();
+    let colorIdx = 0;
+
+    return lotesActivos.map((itemLote) => {
+      const userKey = itemLote.usuario.trim().toLowerCase();
+      let theme = userColorMap.get(userKey);
+      if (!theme) {
+        theme = USER_COLOR_PALETTE[colorIdx % USER_COLOR_PALETTE.length];
+        userColorMap.set(userKey, theme);
+        colorIdx++;
+      }
+
+      const { qty, locationFilter } = parseLoteTarget(itemLote.lote);
+      return {
+        ...itemLote,
+        theme,
+        initials: getInitials(itemLote.usuario),
+        targetQty: qty,
+        targetLocation: locationFilter
+      };
+    });
+  }, [lotesActivos]);
+
+  // Buscar si una fila abierta coincide con el lote activo de algún compañero
+  const getMatchLoteForRow = useCallback(
+    (row: SheetRowItem) => {
+      // No resaltar si ya está cerrado con candado
+      if (row.validado && row.candado) return null;
+
+      const rowUbi = row.ubicacion.trim().toUpperCase();
+
+      for (const lote of parsedLotesActivos) {
+        if (lote.targetQty === null) continue;
+        if (Number(row.newsoft) !== lote.targetQty) continue;
+
+        if (lote.targetLocation) {
+          if (
+            rowUbi !== lote.targetLocation &&
+            !rowUbi.startsWith(`${lote.targetLocation}-`)
+          ) {
+            continue;
+          }
+        }
+
+        return lote;
+      }
+
+      return null;
+    },
+    [parsedLotesActivos]
+  );
 
   // Consultar lotes activos de los compañeros en tiempo real
   const fetchLotesActivos = useCallback(async () => {
@@ -1136,11 +1321,11 @@ export const InventoryDesgloseView: React.FC = () => {
               <h3 className="text-xs font-black uppercase text-white tracking-wide flex items-center gap-2">
                 <span>Lotes en Proceso (Equipo en Vivo)</span>
                 <span className="text-[10px] font-mono font-bold text-[#00f2fe] bg-[#00f2fe]/10 px-2 py-0.5 rounded-full border border-[#00f2fe]/25">
-                  {lotesActivos.length} {lotesActivos.length === 1 ? 'activo' : 'activos'}
+                  {parsedLotesActivos.length} {parsedLotesActivos.length === 1 ? 'activo' : 'activos'}
                 </span>
               </h3>
               <p className="text-[11px] text-gray-400">
-                Anota la cantidad fija o grupo que estás pasando a Newsoft para evitar choques entre compañeros
+                Anota la cantidad fija o grupo que estás pasando a Newsoft (ej. 14 o Cant. 12 A-11) para resaltarlo por color
               </p>
             </div>
           </div>
@@ -1155,7 +1340,7 @@ export const InventoryDesgloseView: React.FC = () => {
             />
             <input
               type="text"
-              placeholder="Grupo / Cant. fija (ej. Cant. 12 A-11)..."
+              placeholder="Cantidad o Grupo (ej. 14 o 12 B-7)..."
               value={loteInput}
               onChange={(e) => setLoteInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleClaimLote()}
@@ -1177,34 +1362,30 @@ export const InventoryDesgloseView: React.FC = () => {
           </div>
         </div>
 
-        {/* Lista de Etiquetas de Lotes Activos */}
-        {lotesActivos.length > 0 ? (
+        {/* Lista de Etiquetas de Lotes Activos con Color Único por Usuario */}
+        {parsedLotesActivos.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
-            {lotesActivos.map((itemLote) => {
-              const esMio =
-                operadorNombre.trim() !== '' &&
-                itemLote.usuario.toLowerCase() === operadorNombre.trim().toLowerCase();
+            {parsedLotesActivos.map((itemLote) => {
               const isReleasing = releasingLoteId === itemLote.id;
+              const { theme } = itemLote;
 
               return (
                 <div
                   key={itemLote.id}
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all ${
-                    esMio
-                      ? 'bg-[#00f2fe]/15 border-[#00f2fe]/40 text-white'
-                      : 'bg-[#0d1017] border-white/15 text-gray-200'
-                  }`}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all ${theme.chipBg} ${theme.chipBorder}`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  <span className="font-black text-[#00f2fe]">{itemLote.usuario}:</span>
-                  <span className="font-bold text-amber-300">{itemLote.lote}</span>
-                  <span className="text-[10px] font-mono text-gray-400">({itemLote.hora})</span>
+                  <span className={`w-2 h-2 rounded-full ${theme.dotBg} animate-pulse shrink-0`} />
+                  <span className={`font-black ${theme.chipText}`}>
+                    {itemLote.usuario} ({itemLote.initials}):
+                  </span>
+                  <span className="font-black text-white">{itemLote.lote}</span>
+                  <span className="text-[10px] font-mono text-gray-300/80">({itemLote.hora})</span>
                   <button
                     type="button"
                     disabled={isReleasing}
                     onClick={() => handleReleaseLote(itemLote.id)}
                     title="Liberar lote al terminar"
-                    className="ml-0.5 p-0.5 rounded-md text-gray-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer disabled:opacity-50"
+                    className="ml-0.5 p-0.5 rounded-md text-gray-300 hover:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {isReleasing ? (
                       <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1375,6 +1556,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isEditingNave7 = editingNave7Row === row.rowNumber;
                 const isEditingUbicacion = editingUbicacionRow === row.rowNumber;
                 const isEditingComment = editingCommentRow === row.rowNumber;
+                const matchedLote = getMatchLoteForRow(row);
 
                 return (
                   <tr
@@ -1614,9 +1796,19 @@ export const InventoryDesgloseView: React.FC = () => {
                       )}
                     </td>
 
-                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT ((Col E - Col G) + Col N) */}
-                    <td className="py-2.5 px-3 text-right text-[#00f2fe] font-mono font-bold">
-                      {row.newsoft.toLocaleString()}
+                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT ((Col E - Col G) + Col N) CON INSIGNIA POR OPERADOR */}
+                    <td className="py-2.5 px-3 text-right font-mono font-bold">
+                      {matchedLote ? (
+                        <span
+                          title={`Tomado por ${matchedLote.usuario} (${matchedLote.lote})`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg border font-black ${matchedLote.theme.badgeBg} ${matchedLote.theme.badgeBorder} ${matchedLote.theme.badgeText}`}
+                        >
+                          <span>{row.newsoft.toLocaleString()}</span>
+                          <span className="text-[10px] opacity-90">({matchedLote.initials})</span>
+                        </span>
+                      ) : (
+                        <span className="text-[#00f2fe]">{row.newsoft.toLocaleString()}</span>
+                      )}
                     </td>
 
                     <td className="py-2.5 px-3 text-right font-mono">
