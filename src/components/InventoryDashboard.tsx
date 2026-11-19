@@ -34,7 +34,7 @@ const APPS_SCRIPT_URL =
 
 // Cliente de conexión resiliente dual (Fetch con fallback a JSONP)
 async function fetchGASMetrics(): Promise<any> {
-  const url = `${APPS_SCRIPT_URL}?action=GET_METRICS`;
+  const url = `${APPS_SCRIPT_URL}?action=GET_METRICS&t=${Date.now()}`;
   try {
     const res = await fetch(url);
     if (res.ok) {
@@ -138,7 +138,7 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
   const CSV_PROGRESO_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  // Sincronización oficial en tiempo real (2s) conservando siempre los últimos números
+  // Sincronización oficial en tiempo real (2s) conservando siempre los últimos números reales sin parpadeos
   const syncInventoryData = useCallback(async (silent = false) => {
     if (isSyncingRef.current) return;
     if (silent && document.hidden) return;
@@ -148,39 +148,37 @@ export const InventoryDashboard: React.FC<InventoryDashboardProps> = ({ onNaviga
     let metricsLoaded = false;
 
     try {
-      // 1. En carga inicial o manual, consultar Apps Script para métricas exactas
-      if (!silent) {
-        try {
-          const gasData = await fetchGASMetrics();
-          if (gasData && gasData.success && typeof gasData.totalItems === 'number' && gasData.totalItems > 0) {
-            const total = gasData.totalItems;
-            const validados = gasData.validados;
-            const restantes = gasData.restantes;
-            const unidades = gasData.unidades;
-            const pct = Number(((validados / total) * 100).toFixed(2));
+      // 1. Siempre consultar Apps Script (API v4 en tiempo real) para las 4 tarjetas KPI (evita caché atrasada del CSV)
+      try {
+        const gasData = await fetchGASMetrics();
+        if (gasData && gasData.success && typeof gasData.totalItems === 'number' && gasData.totalItems > 0) {
+          const total = gasData.totalItems;
+          const validados = gasData.validados;
+          const restantes = gasData.restantes;
+          const unidades = gasData.unidades;
+          const pct = Number(((validados / total) * 100).toFixed(2));
 
-            applyValidKpis({
-              totalItems: total,
-              validados: validados,
-              restantes: restantes,
-              totalUnidades: unidades,
-              pctAvance: pct,
-              pctFalta: Number(Math.max(0, 100 - pct).toFixed(2)),
-            });
-            metricsLoaded = true;
-          }
-        } catch (gasErr) {
-          console.warn('Endpoint Apps Script no disponible, usando lectura directa de PROGRESO:', gasErr);
+          applyValidKpis({
+            totalItems: total,
+            validados: validados,
+            restantes: restantes,
+            totalUnidades: unidades,
+            pctAvance: pct,
+            pctFalta: Number(Math.max(0, 100 - pct).toFixed(2)),
+          });
+          metricsLoaded = true;
         }
+      } catch (gasErr) {
+        console.warn('Endpoint Apps Script no disponible, usando lectura directa de PROGRESO:', gasErr);
       }
 
-      // 2. Leer la base de artículos y celdas maestras directamente desde PROGRESO (sin tocar gid=1446108023)
-      const progRes = await fetch(CSV_PROGRESO_URL, { cache: 'no-store' });
+      // 2. Leer la base de artículos desde PROGRESO únicamente para la Consulta Rápida (y KPIs solo si falló Apps Script)
+      const progRes = await fetch(`${CSV_PROGRESO_URL}&t=${Date.now()}`, { cache: 'no-store' });
       if (progRes.ok) {
         const progText = await progRes.text();
         const lines = progText.split('\n');
 
-        // Intentar leer las celdas maestras de la fila 2 (D2=Validados, E2=Restantes, F2=Unidades, I2=Total)
+        // Respaldo de métricas desde fila 2 solo si GET_METRICS falló
         if (!metricsLoaded && lines.length > 1) {
           const row2Cols = lines[1]
             .split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
