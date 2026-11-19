@@ -1404,6 +1404,11 @@ export const InventoryDesgloseView: React.FC = () => {
                     {itemLote.usuario} ({itemLote.initials}):
                   </span>
                   <span className="font-black text-white">{itemLote.lote}</span>
+                  {itemLote.targetQty !== null && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-[10px] font-mono font-black text-emerald-300">
+                      {itemLote.matchCount} {itemLote.matchCount === 1 ? 'ítem' : 'ítems'}
+                    </span>
+                  )}
                   <span className="text-[10px] font-mono text-gray-300/80">({itemLote.hora})</span>
                   <button
                     type="button"
