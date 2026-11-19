@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Search, 
   Lock, 
@@ -128,6 +128,7 @@ export const PaseInventarioView: React.FC = () => {
   const [itemsList, setItemsList] = useState<InventoryItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [baseListaEnMemoria, setBaseListaEnMemoria] = useState(false);
 
   // Estados de edición del ítem seleccionado
   const [colA, setColA] = useState(false);
@@ -153,81 +154,95 @@ export const PaseInventarioView: React.FC = () => {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const ubiContainerRef = useRef<HTMLDivElement>(null);
-  const isSyncingRackRef = useRef(false);
+  const allInventoryRef = useRef<InventoryItem[]>([]);
+  const isSyncingRef = useRef(false);
+  const selectedUbicacionRef = useRef('');
 
-  // 1. Cargar lista única de ubicaciones al montar el componente
-  const cargarUbicaciones = async () => {
+  useEffect(() => {
+    selectedUbicacionRef.current = selectedUbicacion;
+  }, [selectedUbicacion]);
+
+  // Sincronización global ultrarrápida en memoria vía CSV cada 2s (elimina esperas de Apps Script al buscar)
+  const syncInventarioEnMemoria = useCallback(async () => {
+    if (isSyncingRef.current || saving || document.hidden) return;
+    isSyncingRef.current = true;
+
     try {
-      const data = await queryGAS({ action: 'GET_UBICACIONES' });
-      if (data && data.success && Array.isArray(data.ubicaciones)) {
-        setUbicacionesList(data.ubicaciones);
+      const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      const csvText = await res.text();
+      const allRows = parseCSVExact(csvText);
+
+      const parsedAll: InventoryItem[] = [];
+      const setUbis = new Set<string>();
+
+      for (let i = 3; i < allRows.length; i++) {
+        const cols = allRows[i];
+        if (!cols || cols.length < 3) continue;
+
+        const codigo = String(cols[1] || '').trim();
+        const itemDesc = String(cols[2] || '').trim();
+        if (!codigo && !itemDesc) continue;
+        if (codigo.toUpperCase() === 'COMENTARIO' || itemDesc.toUpperCase() === 'COMENTARIO') continue;
+
+        const rawA = (cols[0] || '').toUpperCase();
+        const rawI = (cols[8] || '').toUpperCase();
+        const isColA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
+        const isColI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
+        const ubi = String(cols[7] || '').trim();
+
+        if (ubi && ubi !== '-' && ubi.toUpperCase() !== 'UBICACION' && ubi.toUpperCase() !== 'LOCATION') {
+          setUbis.add(ubi);
+        }
+
+        parsedAll.push({
+          rowNumber: i + 1,
+          colA_Validado: isColA,
+          colB_Codigo: codigo,
+          colC_Item: itemDesc,
+          colD_NetSuite: parseFloat(cols[3]?.replace(/[^0-9.-]+/g, '')) || 0,
+          colE_Newsoft: parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0,
+          colF_Diferencia: parseFloat(cols[5]?.replace(/[^0-9.-]+/g, '')) || 0,
+          colG_Salida: parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0,
+          colH_Ubicacion: ubi,
+          colI_Candado: isColI,
+          colL_Comentario: String(cols[11] || ''),
+          colN_Nave7: parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0,
+          isLocked: isColA && isColI
+        });
       }
-    } catch (e) {
-      console.warn('Error cargando ubicaciones:', e);
+
+      if (parsedAll.length > 0) {
+        allInventoryRef.current = parsedAll;
+        setBaseListaEnMemoria(true);
+        setUbicacionesList(Array.from(setUbis).sort());
+
+        // Si hay un rack seleccionado, mantener su lista izquierda actualizada en vivo
+        const ubiActiva = selectedUbicacionRef.current.trim().toLowerCase();
+        if (ubiActiva && !saving) {
+          const itemsRack = parsedAll.filter(
+            (it) => it.colH_Ubicacion.trim().toLowerCase() === ubiActiva
+          );
+          if (itemsRack.length > 0) {
+            setItemsList(itemsRack);
+          }
+        }
+      }
+    } catch {
+      // Silencioso en segundo plano
+    } finally {
+      isSyncingRef.current = false;
     }
-  };
+  }, [saving]);
 
   useEffect(() => {
-    cargarUbicaciones();
-  }, []);
+    syncInventarioEnMemoria();
 
-  // 2. Sincronización en tiempo real cada 2 segundos del rack seleccionado vía CSV
-  useEffect(() => {
-    if (!selectedUbicacion) return;
+    const interval = setInterval(() => {
+      syncInventarioEnMemoria();
+    }, 2000);
 
-    const syncRackEnVivo = async () => {
-      if (isSyncingRackRef.current || saving || searching || document.hidden) return;
-      isSyncingRackRef.current = true;
-
-      try {
-        const res = await fetch(CSV_URL, { cache: 'no-store' });
-        const csvText = await res.text();
-        const allRows = parseCSVExact(csvText);
-        const ubiObjetivo = selectedUbicacion.trim().toLowerCase();
-        const actualizados: InventoryItem[] = [];
-
-        for (let i = 3; i < allRows.length; i++) {
-          const cols = allRows[i];
-          if (!cols || cols.length < 3) continue;
-
-          const ubi = String(cols[7] || '').trim().toLowerCase();
-          if (ubi !== ubiObjetivo) continue;
-
-          const rawA = (cols[0] || '').toUpperCase();
-          const rawI = (cols[8] || '').toUpperCase();
-          const isColA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
-          const isColI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
-
-          actualizados.push({
-            rowNumber: i + 1,
-            colA_Validado: isColA,
-            colB_Codigo: String(cols[1] || ''),
-            colC_Item: String(cols[2] || ''),
-            colD_NetSuite: parseFloat(cols[3]?.replace(/[^0-9.-]+/g, '')) || 0,
-            colE_Newsoft: parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0,
-            colF_Diferencia: parseFloat(cols[5]?.replace(/[^0-9.-]+/g, '')) || 0,
-            colG_Salida: parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0,
-            colH_Ubicacion: String(cols[7] || ''),
-            colI_Candado: isColI,
-            colL_Comentario: String(cols[11] || ''),
-            colN_Nave7: parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0,
-            isLocked: isColA && isColI
-          });
-        }
-
-        if (actualizados.length > 0 && !saving && !searching) {
-          setItemsList(actualizados);
-        }
-      } catch {
-        // Silencioso en segundo plano
-      } finally {
-        isSyncingRackRef.current = false;
-      }
-    };
-
-    const interval = setInterval(syncRackEnVivo, 2000);
     const onVisibilityChange = () => {
-      if (!document.hidden) syncRackEnVivo();
+      if (!document.hidden) syncInventarioEnMemoria();
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
@@ -235,7 +250,7 @@ export const PaseInventarioView: React.FC = () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [selectedUbicacion, saving, searching]);
+  }, [syncInventarioEnMemoria]);
 
   // Cerrar dropdown de ubicaciones al hacer clic fuera
   useEffect(() => {
@@ -263,16 +278,78 @@ export const PaseInventarioView: React.FC = () => {
     setIsUnlockedByPin(false);
   };
 
-  // Consulta con COMPORTAMIENTO A (Búsqueda global inteligente)
+  // Búsqueda instantánea en memoria (<1ms) con respaldo automático a Apps Script si aún está cargando la base inicial
   const ejecutarBusqueda = async (queryTerm = searchTerm, ubiTerm = selectedUbicacion) => {
-    setSearching(true);
     setNotification(null);
     setIsUnlockedByPin(false);
 
-    try {
-      const tieneTerminoArticulo = queryTerm.trim() !== '';
+    const busqueda = queryTerm.trim().toLowerCase();
+    const ubiFiltro = ubiTerm.trim().toLowerCase();
+    const tieneTerminoArticulo = busqueda !== '';
 
-      // Si escribe/escanea un código, busca en TODA la nave sin restringir por ubicación previa
+    // 1. VÍA RÁPIDA EN MEMORIA LOCAL (0ms de latencia de red)
+    if (allInventoryRef.current.length > 0) {
+      const base = allInventoryRef.current;
+
+      if (tieneTerminoArticulo) {
+        // Priorizar coincidencia exacta por código antes que coincidencia parcial
+        const exactos = base.filter((it) => it.colB_Codigo.trim().toLowerCase() === busqueda);
+        const encontrados =
+          exactos.length > 0
+            ? exactos
+            : base
+                .filter(
+                  (it) =>
+                    it.colB_Codigo.toLowerCase().includes(busqueda) ||
+                    it.colC_Item.toLowerCase().includes(busqueda)
+                )
+                .slice(0, 200);
+
+        if (encontrados.length === 0) {
+          setItemsList([]);
+          setNotification({ type: 'error', text: 'No se encontraron artículos con ese criterio.' });
+          return;
+        }
+
+        const primerItem = encontrados[0];
+        const ubicacionDetectada = primerItem.colH_Ubicacion;
+
+        if (ubicacionDetectada && ubicacionDetectada !== '-') {
+          setSelectedUbicacion(ubicacionDetectada);
+          setUbicacionInput(ubicacionDetectada);
+          const itemsRack = base.filter(
+            (it) => it.colH_Ubicacion.trim().toLowerCase() === ubicacionDetectada.trim().toLowerCase()
+          );
+          setItemsList(itemsRack.length > 0 ? itemsRack : encontrados);
+        } else {
+          setItemsList(encontrados);
+        }
+
+        seleccionarItemParaEditar(primerItem);
+        return;
+      } else {
+        // Filtro por ubicación (rack)
+        const filtradosUbi = ubiFiltro
+          ? base.filter((it) => it.colH_Ubicacion.trim().toLowerCase() === ubiFiltro)
+          : base.slice(0, 200);
+
+        if (filtradosUbi.length === 0) {
+          setItemsList([]);
+          setNotification({ type: 'error', text: 'No se encontraron artículos en esa ubicación.' });
+          return;
+        }
+
+        setItemsList(filtradosUbi);
+        if (filtradosUbi.length === 1) {
+          seleccionarItemParaEditar(filtradosUbi[0]);
+        }
+        return;
+      }
+    }
+
+    // 2. RESPALDO POR APPS SCRIPT (solo si el usuario busca durante los primeros 1-2s antes de terminar la carga inicial)
+    setSearching(true);
+    try {
       const data = await queryGAS({
         action: 'SEARCH_ITEM',
         query: queryTerm.trim(),
@@ -286,7 +363,6 @@ export const PaseInventarioView: React.FC = () => {
           const primerItem = items[0];
           const ubicacionDetectada = primerItem.colH_Ubicacion;
 
-          // Si el ítem tiene ubicación, sincronizamos el rack y cargamos todos sus artículos
           if (ubicacionDetectada) {
             setSelectedUbicacion(ubicacionDetectada);
             setUbicacionInput(ubicacionDetectada);
@@ -306,7 +382,6 @@ export const PaseInventarioView: React.FC = () => {
             setItemsList(items);
           }
 
-          // Abrir el ítem escaneado directamente en el formulario
           seleccionarItemParaEditar(primerItem);
         } else {
           setItemsList(items);
@@ -416,6 +491,9 @@ export const PaseInventarioView: React.FC = () => {
         setItemsList((prev) =>
           prev.map((it) => (it.rowNumber === selectedItem.rowNumber ? updatedItem : it))
         );
+        allInventoryRef.current = allInventoryRef.current.map((it) =>
+          it.rowNumber === selectedItem.rowNumber ? updatedItem : it
+        );
 
         setNotification({
           type: 'success',
@@ -497,8 +575,11 @@ export const PaseInventarioView: React.FC = () => {
         };
         setSelectedItem(updatedItem);
 
-        // Sincronizar la tarjeta en la lista izquierda
+        // Sincronizar tanto en la lista izquierda como en la caché en memoria
         setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? updatedItem : it));
+        allInventoryRef.current = allInventoryRef.current.map(it =>
+          it.rowNumber === selectedItem.rowNumber ? updatedItem : it
+        );
         setIsUnlockedByPin(false);
       } else {
         setNotification({ type: 'error', text: data?.error || 'No se pudo guardar el registro.' });
@@ -553,7 +634,7 @@ export const PaseInventarioView: React.FC = () => {
               <span>Toma y Pase de Inventario</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                En Vivo (2s)
+                {baseListaEnMemoria ? 'En Vivo (2s) • Caché Rápida' : 'Sincronizando base...'}
               </span>
             </h1>
             <p className="text-[11px] text-gray-400">Captura en Vivo, Ubicaciones & Control de Candado (Nave 6)</p>
