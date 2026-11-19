@@ -349,7 +349,7 @@ export const InventoryDesgloseView: React.FC = () => {
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  // Asignación consistente de un color distinto por cada usuario activo
+  // Asignación consistente de un color distinto por cada usuario activo + conteo en Validados OK
   const parsedLotesActivos = useMemo(() => {
     const userColorMap = new Map<string, UserColorTheme>();
     let colorIdx = 0;
@@ -364,15 +364,34 @@ export const InventoryDesgloseView: React.FC = () => {
       }
 
       const { qty, locationFilter } = parseLoteTarget(itemLote.lote);
+
+      // Contar cuántos artículos en "Validados OK" coinciden con este lote
+      let matchCount = 0;
+      if (qty !== null) {
+        for (const row of items) {
+          if (!row.validado || row.candado || row.enRevision) continue;
+          if (Number(row.newsoft) !== qty) continue;
+
+          if (locationFilter) {
+            const rowUbi = row.ubicacion.trim().toUpperCase();
+            if (rowUbi !== locationFilter && !rowUbi.startsWith(`${locationFilter}-`)) {
+              continue;
+            }
+          }
+          matchCount++;
+        }
+      }
+
       return {
         ...itemLote,
         theme,
         initials: getInitials(itemLote.usuario),
         targetQty: qty,
-        targetLocation: locationFilter
+        targetLocation: locationFilter,
+        matchCount
       };
     });
-  }, [lotesActivos]);
+  }, [lotesActivos, items]);
 
   // Buscar si una fila abierta coincide con el lote activo del operador de la sesión actual
   const getMatchLoteForRow = useCallback(
