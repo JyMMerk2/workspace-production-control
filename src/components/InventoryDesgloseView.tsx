@@ -7,6 +7,8 @@ import {
   Clock, 
   ChevronLeft, 
   ChevronRight, 
+  ChevronUp,
+  ChevronDown,
   Lock, 
   Unlock,
   ExternalLink, 
@@ -275,6 +277,11 @@ export const InventoryDesgloseView: React.FC = () => {
   const [claimingLote, setClaimingLote] = useState<boolean>(false);
   const [releasingLoteId, setReleasingLoteId] = useState<string | null>(null);
 
+  // Navegación rápida entre coincidencias de lotes activos (flechas ▲ / ▼)
+  const [activeMatchIndices, setActiveMatchIndices] = useState<Record<string, number>>({});
+  const [highlightedRowNum, setHighlightedRowNum] = useState<number | null>(null);
+  const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+
   // Estados para edición en línea de Cantidad NetSuite (Col D)
   const [editingNsRow, setEditingNsRow] = useState<number | null>(null);
   const [editingNsValue, setEditingNsValue] = useState<string>('');
@@ -349,7 +356,7 @@ export const InventoryDesgloseView: React.FC = () => {
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  // Asignación consistente de un color distinto por cada usuario activo + conteo en Validados OK
+  // Asignación consistente de un color distinto por cada usuario activo + conteo y filas coincidentes en Validados OK
   const parsedLotesActivos = useMemo(() => {
     const userColorMap = new Map<string, UserColorTheme>();
     let colorIdx = 0;
@@ -365,8 +372,8 @@ export const InventoryDesgloseView: React.FC = () => {
 
       const { qty, locationFilter } = parseLoteTarget(itemLote.lote);
 
-      // Contar cuántos artículos en "Validados OK" coinciden con este lote
-      let matchCount = 0;
+      // Obtener los artículos en "Validados OK" que coinciden con este lote
+      const matchedRows: SheetRowItem[] = [];
       if (qty !== null) {
         for (const row of items) {
           if (!row.validado || row.candado || row.enRevision) continue;
@@ -378,7 +385,7 @@ export const InventoryDesgloseView: React.FC = () => {
               continue;
             }
           }
-          matchCount++;
+          matchedRows.push(row);
         }
       }
 
@@ -388,7 +395,8 @@ export const InventoryDesgloseView: React.FC = () => {
         initials: getInitials(itemLote.usuario),
         targetQty: qty,
         targetLocation: locationFilter,
-        matchCount
+        matchedRows,
+        matchCount: matchedRows.length
       };
     });
   }, [lotesActivos, items]);
@@ -1238,6 +1246,60 @@ export const InventoryDesgloseView: React.FC = () => {
     });
   }, [items, searchTerm, filterStatus]);
 
+  // Saltar al ítem anterior (-1) o siguiente (+1) de un lote activo (incluye cambio de página automático)
+  const handleJumpToMatch = useCallback(
+    (loteId: string, matchedRows: SheetRowItem[], direction: -1 | 1) => {
+      if (matchedRows.length === 0) return;
+
+      const currentIdx = activeMatchIndices[loteId] ?? 0;
+      const nextIdx = (currentIdx + direction + matchedRows.length) % matchedRows.length;
+
+      setActiveMatchIndices((prev) => ({ ...prev, [loteId]: nextIdx }));
+
+      const targetRow = matchedRows[nextIdx];
+      if (!targetRow) return;
+
+      const effectiveFilter =
+        filterStatus !== 'ALL' && filterStatus !== 'OK' ? 'OK' : filterStatus;
+      if (effectiveFilter !== filterStatus) {
+        setFilterStatus(effectiveFilter);
+      }
+
+      const targetList = items.filter((it) => {
+        const matchSearch =
+          it.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          it.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          it.ubicacion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          it.comentario.toLowerCase().includes(searchTerm.toLowerCase());
+
+        if (!matchSearch) return false;
+        if (effectiveFilter === 'OK') return it.validado && !it.candado && !it.enRevision;
+        return true;
+      });
+
+      const targetIndex = targetList.findIndex(
+        (it) => it.rowNumber === targetRow.rowNumber
+      );
+
+      if (targetIndex !== -1) {
+        const targetPage = Math.floor(targetIndex / pageSize) + 1;
+        if (targetPage !== currentPage) {
+          setCurrentPage(targetPage);
+        }
+      }
+
+      setHighlightedRowNum(targetRow.rowNumber);
+
+      setTimeout(() => {
+        const el = rowRefs.current[targetRow.rowNumber];
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 90);
+    },
+    [activeMatchIndices, filterStatus, items, searchTerm, pageSize, currentPage]
+  );
+
   const totalPages = Math.ceil(filteredItems.length / pageSize) || 1;
 
   useEffect(() => {
@@ -1387,12 +1449,16 @@ export const InventoryDesgloseView: React.FC = () => {
           </div>
         </div>
 
-        {/* Lista de Etiquetas de Lotes Activos con Color Único por Usuario */}
+        {/* Lista de Etiquetas de Lotes Activos con Color Único por Usuario y Flechas de Navegación */}
         {parsedLotesActivos.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
             {parsedLotesActivos.map((itemLote) => {
               const isReleasing = releasingLoteId === itemLote.id;
               const { theme } = itemLote;
+              const currentMatchIdx = Math.min(
+                activeMatchIndices[itemLote.id] ?? 0,
+                Math.max(0, itemLote.matchCount - 1)
+              );
 
               return (
                 <div
@@ -1405,9 +1471,33 @@ export const InventoryDesgloseView: React.FC = () => {
                   </span>
                   <span className="font-black text-white">{itemLote.lote}</span>
                   {itemLote.targetQty !== null && (
-                    <span className="px-1.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-[10px] font-mono font-black text-emerald-300">
-                      {itemLote.matchCount} {itemLote.matchCount === 1 ? 'ítem' : 'ítems'}
-                    </span>
+                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-[10px] font-mono font-black text-emerald-300">
+                      <span>
+                        {itemLote.matchCount > 0
+                          ? `${currentMatchIdx + 1}/${itemLote.matchCount} ${itemLote.matchCount === 1 ? 'ítem' : 'ítems'}`
+                          : '0 ítems'}
+                      </span>
+                      {itemLote.matchCount > 0 && (
+                        <div className="inline-flex items-center border-l border-white/15 pl-1 ml-0.5 gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleJumpToMatch(itemLote.id, itemLote.matchedRows, -1)}
+                            title="Ir al ítem anterior de este lote"
+                            className="p-0.5 rounded hover:bg-white/15 text-gray-200 hover:text-white cursor-pointer"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleJumpToMatch(itemLote.id, itemLote.matchedRows, 1)}
+                            title="Ir al siguiente ítem de este lote"
+                            className="p-0.5 rounded hover:bg-white/15 text-gray-200 hover:text-white cursor-pointer"
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                   <span className="text-[10px] font-mono text-gray-300/80">({itemLote.hora})</span>
                   <button
@@ -1591,8 +1681,13 @@ export const InventoryDesgloseView: React.FC = () => {
                 return (
                   <tr
                     key={row.rowNumber}
+                    ref={(el) => { rowRefs.current[row.rowNumber] = el; }}
                     className={`transition-colors ${
-                      row.enRevision ? 'bg-orange-500/5 hover:bg-orange-500/10' : 'hover:bg-white/5'
+                      highlightedRowNum === row.rowNumber
+                        ? 'bg-[#00f2fe]/15 ring-1 ring-[#00f2fe]/50'
+                        : row.enRevision
+                        ? 'bg-orange-500/5 hover:bg-orange-500/10'
+                        : 'hover:bg-white/5'
                     }`}
                   >
                     {/* ESTADO */}
