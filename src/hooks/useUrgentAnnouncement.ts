@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../data/supabaseClient';
 
-export type AnnouncementPriority = 'URGENTE' | 'PRIORIDAD' | 'NO OLVIDAR';
+export type AnnouncementPriority = 'URGENTE' | 'PRIORIDAD' | 'NO OLVIDAR' | 'AVISO';
+export type AnnouncementDisplayMode = 'rotativo' | 'cintillo';
 
 export interface AnnouncementItem {
   id: string;
@@ -13,6 +14,7 @@ export interface AnnouncementItem {
 
 export interface UrgentAnnouncement {
   items: AnnouncementItem[];
+  displayMode: AnnouncementDisplayMode;
   message: string;
   active: boolean;
   priority: AnnouncementPriority;
@@ -20,22 +22,31 @@ export interface UrgentAnnouncement {
   updatedAt: string;
 }
 
-const LOCAL_STORAGE_KEY = 'boombah_urgent_announcement_v3';
+const LOCAL_STORAGE_KEY = 'boombah_urgent_announcement_v4';
 
 function normalizePriority(val: any): AnnouncementPriority {
   const upper = String(val || '').toUpperCase().trim();
   if (upper === 'PRIORIDAD') return 'PRIORIDAD';
   if (upper === 'NO OLVIDAR') return 'NO OLVIDAR';
+  if (upper === 'AVISO') return 'AVISO';
   return 'URGENTE';
 }
 
-function buildStateFromItems(items: AnnouncementItem[]): UrgentAnnouncement {
+function normalizeDisplayMode(val: any): AnnouncementDisplayMode {
+  return val === 'cintillo' ? 'cintillo' : 'rotativo';
+}
+
+function buildStateFromData(
+  items: AnnouncementItem[],
+  displayMode: AnnouncementDisplayMode = 'rotativo'
+): UrgentAnnouncement {
   const validItems = Array.isArray(items)
     ? items.filter((it) => it && String(it.message || '').trim().length > 0)
     : [];
   const first = validItems[0];
   return {
     items: validItems,
+    displayMode: normalizeDisplayMode(displayMode),
     message: first ? first.message : '',
     active: validItems.length > 0,
     priority: first ? first.priority : 'URGENTE',
@@ -44,16 +55,49 @@ function buildStateFromItems(items: AnnouncementItem[]): UrgentAnnouncement {
   };
 }
 
-function parseRowToItems(row: any): AnnouncementItem[] {
-  if (!row || !row.active) return [];
-  const rawMessage = String(row.message || '').trim();
-  if (!rawMessage) return [];
+function parseRowToData(row: any): {
+  items: AnnouncementItem[];
+  displayMode: AnnouncementDisplayMode;
+} {
+  if (!row || !row.active) {
+    return { items: [], displayMode: 'rotativo' };
+  }
 
+  const rawMessage = String(row.message || '').trim();
+  if (!rawMessage) {
+    return { items: [], displayMode: 'rotativo' };
+  }
+
+  // Formato objeto v4: { displayMode: 'rotativo' | 'cintillo', items: [...] }
+  if (rawMessage.startsWith('{')) {
+    try {
+      const parsedObj = JSON.parse(rawMessage);
+      if (parsedObj && Array.isArray(parsedObj.items)) {
+        const items = parsedObj.items
+          .filter((entry: any) => entry && String(entry.message || '').trim())
+          .map((entry: any, idx: number) => ({
+            id: String(entry.id || `item_${idx}_${Date.now()}`),
+            message: String(entry.message).trim(),
+            priority: normalizePriority(entry.priority),
+            updatedBy: String(entry.updatedBy || row.updated_by || 'ADMIN'),
+            updatedAt: String(entry.updatedAt || row.updated_at || new Date().toISOString()),
+          }));
+        return {
+          items,
+          displayMode: normalizeDisplayMode(parsedObj.displayMode),
+        };
+      }
+    } catch {
+      // Continuar con fallback
+    }
+  }
+
+  // Formato arreglo v3: [...]
   if (rawMessage.startsWith('[')) {
     try {
       const parsed = JSON.parse(rawMessage);
       if (Array.isArray(parsed)) {
-        return parsed
+        const items = parsed
           .filter((entry) => entry && String(entry.message || '').trim())
           .map((entry, idx) => ({
             id: String(entry.id || `item_${idx}_${Date.now()}`),
@@ -62,24 +106,29 @@ function parseRowToItems(row: any): AnnouncementItem[] {
             updatedBy: String(entry.updatedBy || row.updated_by || 'ADMIN'),
             updatedAt: String(entry.updatedAt || row.updated_at || new Date().toISOString()),
           }));
+        return { items, displayMode: 'rotativo' };
       }
     } catch {
-      // Si falla el parseo JSON, tratar como texto simple
+      // Continuar con fallback
     }
   }
 
-  return [
-    {
-      id: 'legacy_1',
-      message: rawMessage,
-      priority: normalizePriority(row.priority),
-      updatedBy: String(row.updated_by || 'ADMIN'),
-      updatedAt: String(row.updated_at || new Date().toISOString()),
-    },
-  ];
+  // Formato texto simple v1/v2
+  return {
+    items: [
+      {
+        id: 'legacy_1',
+        message: rawMessage,
+        priority: normalizePriority(row.priority),
+        updatedBy: String(row.updated_by || 'ADMIN'),
+        updatedAt: String(row.updated_at || new Date().toISOString()),
+      },
+    ],
+    displayMode: 'rotativo',
+  };
 }
 
-const DEFAULT_ANNOUNCEMENT: UrgentAnnouncement = buildStateFromItems([]);
+const DEFAULT_ANNOUNCEMENT: UrgentAnnouncement = buildStateFromData([], 'rotativo');
 
 export function useUrgentAnnouncement() {
   const [announcement, setAnnouncement] = useState<UrgentAnnouncement>(() => {
@@ -88,7 +137,7 @@ export function useUrgentAnnouncement() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.items)) {
-          return buildStateFromItems(parsed.items);
+          return buildStateFromData(parsed.items, parsed.displayMode);
         }
       }
     } catch {
@@ -99,16 +148,19 @@ export function useUrgentAnnouncement() {
 
   const [isSaving, setIsSaving] = useState(false);
 
-  const syncLocalAndState = useCallback((nextItems: AnnouncementItem[]) => {
-    const nextState = buildStateFromItems(nextItems);
-    setAnnouncement(nextState);
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextState));
-    } catch {
-      // Ignorar cuota
-    }
-    window.dispatchEvent(new CustomEvent('boombah-urgent-updated', { detail: nextState }));
-  }, []);
+  const syncLocalAndState = useCallback(
+    (nextItems: AnnouncementItem[], nextMode: AnnouncementDisplayMode) => {
+      const nextState = buildStateFromData(nextItems, nextMode);
+      setAnnouncement(nextState);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextState));
+      } catch {
+        // Ignorar cuota
+      }
+      window.dispatchEvent(new CustomEvent('boombah-urgent-updated', { detail: nextState }));
+    },
+    []
+  );
 
   const fetchAnnouncement = useCallback(async () => {
     try {
@@ -120,7 +172,8 @@ export function useUrgentAnnouncement() {
         .maybeSingle();
 
       if (!error && data) {
-        syncLocalAndState(parseRowToItems(data));
+        const parsed = parseRowToData(data);
+        syncLocalAndState(parsed.items, parsed.displayMode);
       }
     } catch {
       // Mantener copia local si no hay conexión
@@ -134,7 +187,7 @@ export function useUrgentAnnouncement() {
     const handleLocalEvent = (e: Event) => {
       const custom = e as CustomEvent<UrgentAnnouncement>;
       if (custom.detail && Array.isArray(custom.detail.items)) {
-        setAnnouncement(buildStateFromItems(custom.detail.items));
+        setAnnouncement(buildStateFromData(custom.detail.items, custom.detail.displayMode));
       }
     };
     window.addEventListener('boombah-urgent-updated', handleLocalEvent);
@@ -156,7 +209,8 @@ export function useUrgentAnnouncement() {
             (payload) => {
               const row = payload.new as any;
               if (row) {
-                syncLocalAndState(parseRowToItems(row));
+                const parsed = parseRowToData(row);
+                syncLocalAndState(parsed.items, parsed.displayMode);
               }
             }
           )
@@ -178,19 +232,28 @@ export function useUrgentAnnouncement() {
     };
   }, [fetchAnnouncement, syncLocalAndState]);
 
-  const persistItems = async (nextItems: AnnouncementItem[], author: string) => {
+  const persistPayload = async (
+    nextItems: AnnouncementItem[],
+    nextMode: AnnouncementDisplayMode,
+    author: string
+  ) => {
     setIsSaving(true);
     const cleanItems = nextItems.filter((it) => it && String(it.message || '').trim().length > 0);
+    const cleanMode = normalizeDisplayMode(nextMode);
     const isActuallyActive = cleanItems.length > 0;
     const nowIso = new Date().toISOString();
 
-    syncLocalAndState(cleanItems);
+    syncLocalAndState(cleanItems, cleanMode);
 
     try {
       if (supabase) {
+        const serialized = isActuallyActive
+          ? JSON.stringify({ displayMode: cleanMode, items: cleanItems })
+          : '';
+
         await supabase.from('boombah_announcements').upsert({
           id: 'global_urgent',
-          message: isActuallyActive ? JSON.stringify(cleanItems) : '',
+          message: serialized,
           active: isActuallyActive,
           priority: cleanItems[0]?.priority || 'URGENTE',
           updated_by: author || 'ADMIN',
@@ -207,7 +270,8 @@ export function useUrgentAnnouncement() {
   const addAnnouncement = async (
     message: string,
     author: string,
-    priority: AnnouncementPriority = 'URGENTE'
+    priority: AnnouncementPriority = 'URGENTE',
+    displayMode?: AnnouncementDisplayMode
   ) => {
     const trimmed = String(message || '').trim();
     if (!trimmed) return;
@@ -221,16 +285,22 @@ export function useUrgentAnnouncement() {
     };
 
     const nextItems = [newItem, ...(announcement.items || [])];
-    await persistItems(nextItems, author);
+    const modeToUse = displayMode ?? announcement.displayMode ?? 'rotativo';
+    await persistPayload(nextItems, modeToUse, author);
+  };
+
+  const setDisplayMode = async (mode: AnnouncementDisplayMode, author: string) => {
+    const cleanMode = normalizeDisplayMode(mode);
+    await persistPayload(announcement.items || [], cleanMode, author);
   };
 
   const removeAnnouncement = async (id: string, author: string) => {
     const nextItems = (announcement.items || []).filter((it) => it.id !== id);
-    await persistItems(nextItems, author);
+    await persistPayload(nextItems, announcement.displayMode || 'rotativo', author);
   };
 
   const clearAllAnnouncements = async (author: string) => {
-    await persistItems([], author);
+    await persistPayload([], announcement.displayMode || 'rotativo', author);
   };
 
   // Mantiene compatibilidad si algún componente antiguo llama saveAnnouncement
@@ -251,6 +321,7 @@ export function useUrgentAnnouncement() {
   return {
     announcement,
     addAnnouncement,
+    setDisplayMode,
     removeAnnouncement,
     clearAllAnnouncements,
     saveAnnouncement,
