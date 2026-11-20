@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { THEME_OPTIONS } from '../data/themesData';
 import { ThemeType } from '../types';
-import { APP_VERSION } from './Sidebar';
+import { useAppVersion } from '../hooks/useAppVersion';
 
 export interface HeaderMetrics {
   totalOrdenesDia?: number;
@@ -66,6 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTheme,
   metrics = {}
 }) => {
+  const appVersion = useAppVersion();
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'neon' | 'corporate'>('neon');
 
@@ -129,7 +130,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Header</span>
           </button>
 
-          {/* Badge Boombah + Versión Visible */}
+          {/* Badge Boombah + Versión Dinámica */}
           <div className="flex items-center gap-2 pl-1">
             <div className="relative flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-[#00f2fe]/20 to-[#ff007f]/20 border border-[#00f2fe]/50 shadow-[0_0_12px_rgba(0,242,254,0.3)]">
               <span className="text-xs font-black italic tracking-tighter text-[#00f2fe]">B</span>
@@ -140,7 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
                   BOOMBAH
                 </span>
                 <span className="text-[9px] font-mono font-black px-1.5 py-0.2 rounded bg-[#00f2fe]/15 text-[#00f2fe] border border-[#00f2fe]/35">
-                  {APP_VERSION}
+                  {appVersion}
                 </span>
               </div>
               <span className="text-[8px] font-bold tracking-wider text-[#8f9ba8] uppercase">
@@ -148,7 +149,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <span className="2xl:hidden text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-[#00f2fe]/15 text-[#00f2fe] border border-[#00f2fe]/35">
-              {APP_VERSION}
+              {appVersion}
             </span>
           </div>
         </div>
