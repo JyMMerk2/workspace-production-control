@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Sparkles, X, History } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, X, History, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface FeatureItem {
   tag: string;
@@ -84,6 +84,11 @@ function classifyCommit(message: string, dateIso?: string): FeatureItem {
 
 export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory }) => {
   const [visible, setVisible] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const resumeTimeoutRef = useRef<number | null>(null);
+
   const [items, setItems] = useState<FeatureItem[]>(() => {
     try {
       const cached = localStorage.getItem('boombah_github_ticker_v2');
@@ -138,10 +143,79 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
     };
   }, []);
 
+  // Avance automático continuo suave + bucle infinito sin cortes
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastTime = performance.now();
+    const speedPxPerSec = 42; // Velocidad cómoda de lectura
+
+    const step = (now: number) => {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      const container = scrollContainerRef.current;
+      const track = trackRef.current;
+
+      if (container && track && !isPaused) {
+        const halfWidth = track.scrollWidth / 2;
+        if (halfWidth > 0) {
+          container.scrollLeft += speedPxPerSec * dt;
+          if (container.scrollLeft >= halfWidth) {
+            container.scrollLeft -= halfWidth;
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(step);
+    };
+
+    animationFrameId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPaused, items]);
+
+  // Limpiar temporizador de reanudación al desmontar
+  useEffect(() => {
+    return () => {
+      if (resumeTimeoutRef.current) {
+        window.clearTimeout(resumeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Desplazamiento manual a discreción del usuario (izquierda o derecha)
+  const handleManualScroll = (direction: 'left' | 'right') => {
+    const container = scrollContainerRef.current;
+    const track = trackRef.current;
+    if (!container || !track) return;
+
+    const halfWidth = track.scrollWidth / 2;
+    const delta = direction === 'right' ? 280 : -280;
+
+    setIsPaused(true);
+    if (resumeTimeoutRef.current) {
+      window.clearTimeout(resumeTimeoutRef.current);
+    }
+
+    // Si retrocede estando cerca del inicio, saltar suavemente a la segunda mitad para bucle continuo
+    if (direction === 'left' && container.scrollLeft + delta < 0 && halfWidth > 0) {
+      container.scrollLeft += halfWidth;
+    }
+
+    container.scrollBy({
+      left: delta,
+      behavior: 'smooth'
+    });
+
+    // Reanudar movimiento automático 3.5 segundos después de que el usuario deje de usar las flechas
+    resumeTimeoutRef.current = window.setTimeout(() => {
+      setIsPaused(false);
+    }, 3500);
+  };
+
   if (!visible) return null;
 
   return (
-    <div className="w-full bg-[#0d111a] border-b border-cyan-500/20 px-3 py-1.5 flex items-center gap-3 overflow-hidden select-none">
+    <div className="w-full bg-[#0d111a] border-b border-cyan-500/20 px-3 py-1.5 flex items-center gap-2 overflow-hidden select-none">
       {/* Insignia fija izquierda (clic abre el Historial de Updates) */}
       <button
         type="button"
@@ -153,28 +227,27 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         <span>Novedades</span>
       </button>
 
-      {/* Carril animado (se pausa al pasar el cursor encima) */}
+      {/* Flecha Izquierda (Retroceder novedades) */}
+      <button
+        type="button"
+        onClick={() => handleManualScroll('left')}
+        title="Retroceder novedades"
+        aria-label="Retroceder novedades"
+        className="p-1 rounded-md bg-white/5 hover:bg-[#00f2fe]/20 text-gray-400 hover:text-[#00f2fe] border border-white/10 hover:border-[#00f2fe]/40 transition-colors cursor-pointer shrink-0"
+      >
+        <ChevronLeft className="w-3.5 h-3.5" />
+      </button>
+
+      {/* Carril con scroll horizontal fluido (pausa al pasar el cursor encima) */}
       <div
+        ref={scrollContainerRef}
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
         onClick={onOpenHistory}
         title="Clic para abrir el Historial de Updates"
-        className="relative flex-1 overflow-hidden group cursor-pointer"
+        className="relative flex-1 overflow-x-hidden cursor-pointer"
       >
-        <style>{`
-          @keyframes boombah-marquee {
-            0% { transform: translateX(0%); }
-            100% { transform: translateX(-50%); }
-          }
-          .animate-boombah-ticker {
-            display: flex;
-            width: max-content;
-            animation: boombah-marquee 45s linear infinite;
-          }
-          .group:hover .animate-boombah-ticker {
-            animation-play-state: paused;
-          }
-        `}</style>
-
-        <div className="animate-boombah-ticker items-center gap-8 text-xs">
+        <div ref={trackRef} className="flex w-max items-center gap-8 text-xs">
           {[...items, ...items].map((item, idx) => (
             <div key={idx} className="inline-flex items-center gap-2 whitespace-nowrap">
               <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${item.color}`}>
@@ -189,6 +262,17 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
           ))}
         </div>
       </div>
+
+      {/* Flecha Derecha (Adelantar novedades) */}
+      <button
+        type="button"
+        onClick={() => handleManualScroll('right')}
+        title="Adelantar novedades"
+        aria-label="Adelantar novedades"
+        className="p-1 rounded-md bg-white/5 hover:bg-[#00f2fe]/20 text-gray-400 hover:text-[#00f2fe] border border-white/10 hover:border-[#00f2fe]/40 transition-colors cursor-pointer shrink-0"
+      >
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
 
       {/* Botón rápido para ver historial completo */}
       {onOpenHistory && (
