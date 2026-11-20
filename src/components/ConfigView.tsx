@@ -11,9 +11,16 @@ import {
   Trash2,
   Flame,
   Pin,
+  Info,
+  Layers,
+  MoveHorizontal,
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
-import { useUrgentAnnouncement, AnnouncementPriority } from '../hooks/useUrgentAnnouncement';
+import {
+  useUrgentAnnouncement,
+  AnnouncementPriority,
+  AnnouncementDisplayMode,
+} from '../hooks/useUrgentAnnouncement';
 
 interface ConfigViewProps {
   authenticatedUser: string;
@@ -53,6 +60,15 @@ const PRIORITY_STYLES: Record<
     textClass: 'text-cyan-100',
     btnActiveClass: 'bg-[#00f2fe] text-[#0b0e14] border-[#00f2fe] shadow-[0_0_12px_rgba(0,242,254,0.45)]',
   },
+  AVISO: {
+    label: 'AVISO',
+    badgeClass: 'bg-emerald-400 text-[#0b0e14]',
+    pillClass:
+      'bg-gradient-to-r from-emerald-600/35 via-emerald-500/25 to-emerald-600/35 border-emerald-400/80 shadow-[0_0_14px_rgba(16,185,129,0.3)]',
+    textClass: 'text-emerald-100',
+    btnActiveClass:
+      'bg-emerald-400 text-[#0b0e14] border-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.45)]',
+  },
 };
 
 export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => {
@@ -71,6 +87,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
   const {
     announcement,
     addAnnouncement,
+    setDisplayMode,
     removeAnnouncement,
     clearAllAnnouncements,
     isSaving,
@@ -81,6 +98,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
   const [urgentFeedback, setUrgentFeedback] = useState<string>('');
 
   const activeItems = announcement?.items || [];
+  const currentDisplayMode: AnnouncementDisplayMode = announcement?.displayMode || 'rotativo';
 
   const handleAddUrgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,10 +107,20 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
     const clean = urgentText.trim();
     if (!clean) return;
 
-    await addAnnouncement(clean, safeUser, urgentPriority);
+    await addAnnouncement(clean, safeUser, urgentPriority, currentDisplayMode);
     setUrgentText('');
     setUrgentFeedback(
       `¡Aviso [${urgentPriority}] agregado! Ya está visible en vivo para todos los usuarios.`
+    );
+  };
+
+  const handleChangeMode = async (mode: AnnouncementDisplayMode) => {
+    setUrgentFeedback('');
+    await setDisplayMode(mode, safeUser);
+    setUrgentFeedback(
+      mode === 'cintillo'
+        ? 'Modo cambiado a Cintillo Deslizante Continuo para todos los usuarios.'
+        : 'Modo cambiado a Tarjeta Rotativa para todos los usuarios.'
     );
   };
 
@@ -237,40 +265,73 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
           </span>
         </div>
 
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Puedes publicar <strong className="text-white">uno o varios avisos a la vez</strong>. Si hay más de uno, rotarán automáticamente en la barra de{' '}
-          <strong className="text-white">Control de Producción</strong> y en el modo{' '}
-          <strong className="text-[#00f2fe]">Pantalla Completa de Google Sheets</strong>.
-        </p>
+        {/* Selector de Estilo de Visualización (Tarjeta Rotativa vs Cintillo Continuo) */}
+        <div className="p-3 rounded-lg bg-[#0d1017] border border-white/10 space-y-2">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8f9ba8]">
+            Estilo de Visualización en Pantalla (Aplica en vivo a todos)
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => handleChangeMode('rotativo')}
+              disabled={isSaving}
+              className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                currentDisplayMode === 'rotativo'
+                  ? 'bg-[#00f2fe] text-[#0b0e14] border-[#00f2fe] shadow-[0_0_12px_rgba(0,242,254,0.4)]'
+                  : 'bg-[#12161f] text-gray-400 border-white/10 hover:text-white hover:border-white/30'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Tarjeta Rotativa (Actual)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleChangeMode('cintillo')}
+              disabled={isSaving}
+              className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                currentDisplayMode === 'cintillo'
+                  ? 'bg-amber-400 text-[#0b0e14] border-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+                  : 'bg-[#12161f] text-gray-400 border-white/10 hover:text-white hover:border-white/30'
+              }`}
+            >
+              <MoveHorizontal className="w-3.5 h-3.5" />
+              <span>Cintillo Deslizante Continuo</span>
+            </button>
+          </div>
+        </div>
 
         <form onSubmit={handleAddUrgent} className="space-y-4">
-          {/* Selector de Estado */}
+          {/* Selector de Estado (4 niveles) */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-2">
               1. Selecciona el Estado / Nivel del Nuevo Aviso
             </label>
-            <div className="grid grid-cols-3 gap-2.5">
-              {(['URGENTE', 'PRIORIDAD', 'NO OLVIDAR'] as AnnouncementPriority[]).map((level) => {
-                const isSelected = urgentPriority === level;
-                const style = PRIORITY_STYLES[level];
-                return (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => setUrgentPriority(level)}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                      isSelected
-                        ? style.btnActiveClass
-                        : 'bg-[#0d1017] text-gray-400 border-white/10 hover:text-white hover:border-white/30'
-                    }`}
-                  >
-                    {level === 'URGENTE' && <AlertTriangle className="w-3.5 h-3.5" />}
-                    {level === 'PRIORIDAD' && <Flame className="w-3.5 h-3.5" />}
-                    {level === 'NO OLVIDAR' && <Pin className="w-3.5 h-3.5" />}
-                    <span>{level}</span>
-                  </button>
-                );
-              })}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {(['URGENTE', 'PRIORIDAD', 'NO OLVIDAR', 'AVISO'] as AnnouncementPriority[]).map(
+                (level) => {
+                  const isSelected = urgentPriority === level;
+                  const style = PRIORITY_STYLES[level];
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setUrgentPriority(level)}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        isSelected
+                          ? style.btnActiveClass
+                          : 'bg-[#0d1017] text-gray-400 border-white/10 hover:text-white hover:border-white/30'
+                      }`}
+                    >
+                      {level === 'URGENTE' && <AlertTriangle className="w-3.5 h-3.5" />}
+                      {level === 'PRIORIDAD' && <Flame className="w-3.5 h-3.5" />}
+                      {level === 'NO OLVIDAR' && <Pin className="w-3.5 h-3.5" />}
+                      {level === 'AVISO' && <Info className="w-3.5 h-3.5" />}
+                      <span>{level}</span>
+                    </button>
+                  );
+                }
+              )}
             </div>
           </div>
 
@@ -303,6 +364,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
                   {urgentPriority === 'URGENTE' && <AlertTriangle className="w-2.5 h-2.5" />}
                   {urgentPriority === 'PRIORIDAD' && <Flame className="w-2.5 h-2.5" />}
                   {urgentPriority === 'NO OLVIDAR' && <Pin className="w-2.5 h-2.5" />}
+                  {urgentPriority === 'AVISO' && <Info className="w-2.5 h-2.5" />}
                   {urgentPriority}
                 </span>
                 <span className={`font-extrabold text-[11.5px] tracking-wide truncate ${currentStyle.textClass}`}>
@@ -367,6 +429,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
                         {item.priority === 'URGENTE' && <AlertTriangle className="w-2.5 h-2.5" />}
                         {item.priority === 'PRIORIDAD' && <Flame className="w-2.5 h-2.5" />}
                         {item.priority === 'NO OLVIDAR' && <Pin className="w-2.5 h-2.5" />}
+                        {item.priority === 'AVISO' && <Info className="w-2.5 h-2.5" />}
                         {item.priority}
                       </span>
                       <span className={`font-bold text-xs truncate ${style.textClass}`}>
