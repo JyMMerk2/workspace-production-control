@@ -9,6 +9,8 @@ import {
   Flame,
   Pin,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { SheetConfig } from '../types';
 import { useUrgentAnnouncement, AnnouncementPriority } from '../hooks/useUrgentAnnouncement';
@@ -19,7 +21,7 @@ interface SheetsViewProps {
   onSelectSubTab: (gid: string, name: string) => void;
 }
 
-const DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY = 'boombah_dismissed_toolbar_announcement_v1';
+const DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY = 'boombah_dismissed_toolbar_announcement_v2';
 
 const PRIORITY_BADGE_CONFIG: Record<
   AnnouncementPriority,
@@ -60,29 +62,38 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
 
   const { announcement } = useUrgentAnnouncement();
   const [isBannerVisible, setIsBannerVisible] = useState<boolean>(true);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
 
-  const hasActiveAnnouncement = Boolean(
-    announcement?.active && String(announcement?.message || '').trim().length > 0
-  );
+  const items = announcement?.items || [];
+  const hasActiveAnnouncement = items.length > 0;
+  const listSignature = items.map((it) => `${it.id}:${it.message}`).join('|');
 
   // Sincronizar visibilidad con el sello de lectura y reabrir si llega un aviso nuevo
   useEffect(() => {
+    setCurrentIndex(0);
     if (hasActiveAnnouncement) {
-      const stamp = `${announcement.updatedAt}::${announcement.priority}::${announcement.message.trim()}`;
       try {
         const dismissedStamp = localStorage.getItem(DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY);
-        setIsBannerVisible(dismissedStamp !== stamp);
+        setIsBannerVisible(dismissedStamp !== listSignature);
       } catch {
         setIsBannerVisible(true);
       }
     }
-  }, [hasActiveAnnouncement, announcement?.updatedAt, announcement?.priority, announcement?.message]);
+  }, [hasActiveAnnouncement, listSignature]);
+
+  // Rotar automáticamente cada 5 segundos en pantalla completa cuando hay más de 1 aviso activo
+  useEffect(() => {
+    if (!isFullscreen || !hasActiveAnnouncement || !isBannerVisible || items.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % items.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [isFullscreen, hasActiveAnnouncement, isBannerVisible, items.length]);
 
   const handleDismissAnnouncement = () => {
     if (hasActiveAnnouncement) {
-      const stamp = `${announcement.updatedAt}::${announcement.priority}::${announcement.message.trim()}`;
       try {
-        localStorage.setItem(DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY, stamp);
+        localStorage.setItem(DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY, listSignature);
       } catch {
         // Ignorar errores de almacenamiento
       }
@@ -101,7 +112,9 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
     setIframeKey((prev) => prev + 1);
   };
 
-  const priorityKey: AnnouncementPriority = announcement?.priority || 'URGENTE';
+  const safeIndex = items.length > 0 ? currentIndex % items.length : 0;
+  const activeItem = items[safeIndex];
+  const priorityKey: AnnouncementPriority = activeItem?.priority || 'URGENTE';
   const badgeConfig = PRIORITY_BADGE_CONFIG[priorityKey] || PRIORITY_BADGE_CONFIG.URGENTE;
 
   return (
@@ -143,8 +156,8 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
           })}
         </div>
 
-        {/* Centro: Aviso Global en Tiempo Real cuando el Google Sheet está en Pantalla Completa */}
-        {isFullscreen && hasActiveAnnouncement && isBannerVisible && (
+        {/* Centro: Avisos Globales en Tiempo Real cuando el Google Sheet está en Pantalla Completa */}
+        {isFullscreen && hasActiveAnnouncement && isBannerVisible && activeItem && (
           <div
             className={`flex-1 min-w-[240px] max-w-2xl mx-auto px-3 py-1 rounded-lg border flex items-center justify-between gap-2 transition-all ${badgeConfig.containerClass}`}
           >
@@ -159,27 +172,53 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
               </span>
 
               <span
-                title={announcement.message}
+                title={activeItem.message}
                 className={`font-extrabold text-xs tracking-wide truncate ${badgeConfig.textClass}`}
               >
-                {announcement.message}
+                {activeItem.message}
               </span>
 
-              {announcement.updatedBy && (
+              {activeItem.updatedBy && (
                 <span className="hidden xl:inline text-[10px] font-mono text-white/75 shrink-0">
-                  ({announcement.updatedBy})
+                  ({activeItem.updatedBy})
                 </span>
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleDismissAnnouncement}
-              title="Cerrar aviso después de leer"
-              className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {items.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length)}
+                    title="Aviso anterior"
+                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] font-mono font-bold text-white/80 px-1">
+                    {safeIndex + 1}/{items.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex((prev) => (prev + 1) % items.length)}
+                    title="Siguiente aviso"
+                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={handleDismissAnnouncement}
+                title="Cerrar aviso después de leer"
+                className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer ml-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
 
