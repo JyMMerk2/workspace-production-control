@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Sparkles, X, History, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface FeatureItem {
@@ -20,26 +20,26 @@ const FALLBACK_NOVEDADES: FeatureItem[] = [
     tag: 'NUEVO',
     text: 'Lotes en Proceso en Vivo: toma tu cantidad o rack y resalta tus ítems con tu color personal.',
     color: 'text-[#00f2fe] border-[#00f2fe]/40 bg-[#00f2fe]/10',
-    date: '19 nov 2026'
+    date: '19 nov 2026',
   },
   {
     tag: 'MEJORA',
     text: 'Flechas de salto rápido (▲ / ▼) en tu etiqueta de lote para navegar directo entre páginas e ítems.',
     color: 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10',
-    date: '19 nov 2026'
+    date: '19 nov 2026',
   },
   {
     tag: 'VELOCIDAD',
     text: 'Búsqueda instantánea (<1ms) en Toma y Pase de Inventario con caché sincronizada cada 2 segundos.',
     color: 'text-amber-300 border-amber-400/40 bg-amber-500/10',
-    date: '19 nov 2026'
+    date: '19 nov 2026',
   },
   {
     tag: 'EXPORTACIÓN',
     text: 'Descarga directa en Excel (.xls) de artículos en Nave 7 y registros Cerrados con candado.',
     color: 'text-purple-300 border-purple-400/40 bg-purple-500/10',
-    date: '18 nov 2026'
-  }
+    date: '18 nov 2026',
+  },
 ];
 
 function classifyCommit(message: string, dateIso?: string): FeatureItem {
@@ -67,7 +67,7 @@ function classifyCommit(message: string, dateIso?: string): FeatureItem {
       formattedDate = d.toLocaleDateString('es-DO', {
         day: '2-digit',
         month: 'short',
-        year: 'numeric'
+        year: 'numeric',
       });
     } catch {
       formattedDate = '';
@@ -78,14 +78,15 @@ function classifyCommit(message: string, dateIso?: string): FeatureItem {
     tag,
     text: firstLine,
     color,
-    date: formattedDate
+    date: formattedDate,
   };
 }
 
 export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory }) => {
   const [visible, setVisible] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const isPausedRef = useRef<boolean>(false);
+  const offsetPxRef = useRef<number>(0);
+  const halfWidthRef = useRef<number>(0);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const resumeTimeoutRef = useRef<number | null>(null);
 
@@ -102,13 +103,26 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
     return FALLBACK_NOVEDADES;
   });
 
+  // Medir el ancho de la mitad del carrusel solo cuando cambian los items o el tamaño de ventana
+  const measureHalfWidth = useCallback(() => {
+    if (trackRef.current) {
+      halfWidthRef.current = trackRef.current.scrollWidth / 2;
+    }
+  }, []);
+
+  useEffect(() => {
+    measureHalfWidth();
+    window.addEventListener('resize', measureHalfWidth);
+    return () => window.removeEventListener('resize', measureHalfWidth);
+  }, [items, measureHalfWidth]);
+
   useEffect(() => {
     let isMounted = true;
 
     const loadLatestCommits = async () => {
       try {
         const res = await fetch(GITHUB_COMMITS_URL, {
-          headers: { Accept: 'application/vnd.github.v3+json' }
+          headers: { Accept: 'application/vnd.github.v3+json' },
         });
         if (!res.ok) return;
 
@@ -122,11 +136,15 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
           );
 
         if (mapped.length > 0 && isMounted) {
-          setItems(mapped);
-          try {
-            localStorage.setItem('boombah_github_ticker_v2', JSON.stringify(mapped));
-          } catch {
-            // Ignorar si localStorage está lleno
+          const nextSerialized = JSON.stringify(mapped);
+          const prevSerialized = localStorage.getItem('boombah_github_ticker_v2');
+          if (nextSerialized !== prevSerialized) {
+            setItems(mapped);
+            try {
+              localStorage.setItem('boombah_github_ticker_v2', nextSerialized);
+            } catch {
+              // Ignorar si localStorage está lleno
+            }
           }
         }
       } catch {
@@ -143,26 +161,29 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
     };
   }, []);
 
-  // Avance automático continuo suave + bucle infinito sin cortes
+  // Animación pura por GPU (transform: translate3d) sin provocar repintados ni parpadeos
   useEffect(() => {
     let animationFrameId: number;
     let lastTime = performance.now();
     const speedPxPerSec = 42;
 
     const step = (now: number) => {
-      const dt = (now - lastTime) / 1000;
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
 
-      const container = scrollContainerRef.current;
       const track = trackRef.current;
+      if (track) {
+        if (halfWidthRef.current <= 0) {
+          halfWidthRef.current = track.scrollWidth / 2;
+        }
 
-      if (container && track && !isPaused) {
-        const halfWidth = track.scrollWidth / 2;
-        if (halfWidth > 0) {
-          container.scrollLeft += speedPxPerSec * dt;
-          if (container.scrollLeft >= halfWidth) {
-            container.scrollLeft -= halfWidth;
+        const halfWidth = halfWidthRef.current;
+        if (!isPausedRef.current && halfWidth > 0) {
+          offsetPxRef.current += speedPxPerSec * dt;
+          if (offsetPxRef.current >= halfWidth) {
+            offsetPxRef.current -= halfWidth;
           }
+          track.style.transform = `translate3d(-${offsetPxRef.current}px, 0, 0)`;
         }
       }
 
@@ -171,7 +192,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
 
     animationFrameId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPaused, items]);
+  }, [items]);
 
   // Limpiar temporizador de reanudación al desmontar
   useEffect(() => {
@@ -182,38 +203,44 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
     };
   }, []);
 
-  // Desplazamiento manual a discreción del usuario (izquierda o derecha)
+  // Desplazamiento manual suave sin reflows
   const handleManualScroll = (direction: 'left' | 'right') => {
-    const container = scrollContainerRef.current;
     const track = trackRef.current;
-    if (!container || !track) return;
+    if (!track) return;
 
-    const halfWidth = track.scrollWidth / 2;
+    const halfWidth = halfWidthRef.current || track.scrollWidth / 2;
     const delta = direction === 'right' ? 280 : -280;
 
-    setIsPaused(true);
+    isPausedRef.current = true;
     if (resumeTimeoutRef.current) {
       window.clearTimeout(resumeTimeoutRef.current);
     }
 
-    if (direction === 'left' && container.scrollLeft + delta < 0 && halfWidth > 0) {
-      container.scrollLeft += halfWidth;
+    if (halfWidth > 0) {
+      let nextOffset = offsetPxRef.current + delta;
+      if (nextOffset < 0) nextOffset += halfWidth;
+      if (nextOffset >= halfWidth) nextOffset -= halfWidth;
+      offsetPxRef.current = nextOffset;
+
+      track.style.transition = 'transform 300ms ease-out';
+      track.style.transform = `translate3d(-${offsetPxRef.current}px, 0, 0)`;
+      window.setTimeout(() => {
+        if (trackRef.current) trackRef.current.style.transition = 'none';
+      }, 310);
     }
 
-    container.scrollBy({
-      left: delta,
-      behavior: 'smooth'
-    });
-
     resumeTimeoutRef.current = window.setTimeout(() => {
-      setIsPaused(false);
-    }, 3500);
+      isPausedRef.current = false;
+    }, 3000);
   };
 
   if (!visible) return null;
 
   return (
-    <div className="w-full bg-[#0d111a] border-b border-cyan-500/20 px-3 py-1.5 flex items-center gap-2 overflow-hidden select-none">
+    <div
+      style={{ contain: 'layout paint' }}
+      className="w-full h-[34px] bg-[#0d111a] border-b border-cyan-500/20 px-3 flex items-center gap-2 overflow-hidden select-none shrink-0"
+    >
       {/* Insignia fija izquierda (clic abre el Historial de Updates) */}
       <button
         type="button"
@@ -225,7 +252,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         <span>Novedades</span>
       </button>
 
-      {/* Flecha Izquierda (Retroceder novedades) */}
+      {/* Flecha Izquierda */}
       <button
         type="button"
         onClick={() => handleManualScroll('left')}
@@ -236,16 +263,23 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         <ChevronLeft className="w-3.5 h-3.5" />
       </button>
 
-      {/* Carril con scroll horizontal fluido (pausa al pasar el cursor encima) */}
+      {/* Carril acelerado por GPU */}
       <div
-        ref={scrollContainerRef}
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
+        onMouseEnter={() => {
+          isPausedRef.current = true;
+        }}
+        onMouseLeave={() => {
+          isPausedRef.current = false;
+        }}
         onClick={onOpenHistory}
         title="Clic para abrir el Historial de Updates"
-        className="relative flex-1 overflow-x-hidden cursor-pointer"
+        className="relative flex-1 overflow-hidden cursor-pointer"
       >
-        <div ref={trackRef} className="flex w-max items-center gap-8 text-xs">
+        <div
+          ref={trackRef}
+          style={{ willChange: 'transform' }}
+          className="flex w-max items-center gap-8 text-xs"
+        >
           {[...items, ...items].map((item, idx) => (
             <div key={idx} className="inline-flex items-center gap-2 whitespace-nowrap">
               <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${item.color}`}>
@@ -261,7 +295,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         </div>
       </div>
 
-      {/* Flecha Derecha (Adelantar novedades) */}
+      {/* Flecha Derecha */}
       <button
         type="button"
         onClick={() => handleManualScroll('right')}
