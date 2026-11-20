@@ -26,6 +26,10 @@ const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Blindar las barras superiores para que NO se re-rendericen ni parpadeen con el polling de 5s
+const MemoizedProductionToolbar = React.memo(ProductionControlToolbar);
+const MemoizedFeaturesTicker = React.memo(FeaturesTicker);
+
 export default function App() {
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(() => {
     return sessionStorage.getItem('authenticated_user') || localStorage.getItem('authenticated_user') || null;
@@ -224,7 +228,7 @@ export default function App() {
     }
   }, [authenticatedUser, refreshDashboard]);
 
-  const handleSelectTab = (tab: TabType, subGid?: string, customTitle?: string) => {
+  const handleSelectTab = useCallback((tab: TabType, subGid?: string, customTitle?: string) => {
     setActiveTab(tab);
     setActiveSubTabGid(subGid);
 
@@ -241,7 +245,11 @@ export default function App() {
     if (window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
-  };
+  }, []);
+
+  const handleOpenUpdatesHistory = useCallback(() => {
+    handleSelectTab('updates-history' as TabType, undefined, 'HISTORIAL DE UPDATES');
+  }, [handleSelectTab]);
 
   const handleLoginSuccess = (username: string, email?: string, picture?: string) => {
     sessionStorage.setItem('authenticated_user', username);
@@ -397,12 +405,8 @@ export default function App() {
 
         {/* Área Principal */}
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto custom-scrollbar pt-16">
-          <ProductionControlToolbar />
-          <FeaturesTicker
-            onOpenHistory={() =>
-              handleSelectTab('updates-history' as TabType, undefined, 'HISTORIAL DE UPDATES')
-            }
-          />
+          <MemoizedProductionToolbar />
+          <MemoizedFeaturesTicker onOpenHistory={handleOpenUpdatesHistory} />
 
           <div className="p-3 md:p-5 w-full max-w-[1920px] mx-auto">
             {/* 1. Dashboard en Vivo */}
