@@ -27,6 +27,8 @@ import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
 import { supabase } from '../data/supabaseClient';
 
+export const APP_VERSION = 'v4.0.0';
+
 interface SidebarProps {
   activeTab: TabType;
   activeSubTabGid?: string;
@@ -142,7 +144,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
-      <div className="flex flex-col py-3 space-y-1">
+      <div className="flex flex-col py-3 space-y-1 flex-1">
         {/* Main Live Dashboard */}
         <button
           onClick={() => onSelectTab('dashboard-live', undefined, 'DASHBOARD EN VIVO')}
@@ -591,6 +593,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>🔒 CERRAR SESIÓN</span>
+        </button>
+      </div>
+
+      {/* Pie de Versión Visible */}
+      <div className="px-4 py-2.5 border-t border-white/10 bg-[#0d1017] flex items-center justify-between text-[10px] font-mono">
+        <span className="text-gray-500 uppercase tracking-wider font-bold">Boombah Workspace</span>
+        <button
+          type="button"
+          onClick={() => onSelectTab('updates-history' as TabType, undefined, 'HISTORIAL DE UPDATES')}
+          title="Ver registro de versiones y cambios"
+          className="px-2 py-0.5 rounded bg-[#00f2fe]/10 hover:bg-[#00f2fe]/20 text-[#00f2fe] border border-[#00f2fe]/30 font-black transition-colors cursor-pointer"
+        >
+          {APP_VERSION}
         </button>
       </div>
     </aside>
