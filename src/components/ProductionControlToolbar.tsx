@@ -24,25 +24,25 @@ const PRIORITY_BADGE_CONFIG: Record<
 > = {
   URGENTE: {
     containerClass:
-      'bg-gradient-to-r from-red-600/30 via-red-500/20 to-red-600/30 border-red-400/80 shadow-[0_0_15px_rgba(239,68,68,0.3)]',
-    badgeClass: 'bg-red-500 text-white animate-pulse',
+      'bg-gradient-to-r from-red-600/30 via-red-500/20 to-red-600/30 border-red-400/80 shadow-[0_0_12px_rgba(239,68,68,0.25)]',
+    badgeClass: 'bg-red-500 text-white',
     textClass: 'text-red-100',
   },
   PRIORIDAD: {
     containerClass:
-      'bg-gradient-to-r from-amber-600/30 via-amber-500/20 to-amber-600/30 border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.28)]',
+      'bg-gradient-to-r from-amber-600/30 via-amber-500/20 to-amber-600/30 border-amber-400/80 shadow-[0_0_12px_rgba(245,158,11,0.25)]',
     badgeClass: 'bg-amber-400 text-black',
     textClass: 'text-amber-100',
   },
   'NO OLVIDAR': {
     containerClass:
-      'bg-gradient-to-r from-cyan-600/30 via-sky-500/20 to-cyan-600/30 border-[#00f2fe]/80 shadow-[0_0_15px_rgba(0,242,254,0.25)]',
+      'bg-gradient-to-r from-cyan-600/30 via-sky-500/20 to-cyan-600/30 border-[#00f2fe]/80 shadow-[0_0_12px_rgba(0,242,254,0.22)]',
     badgeClass: 'bg-[#00f2fe] text-[#0b0e14]',
     textClass: 'text-cyan-100',
   },
   AVISO: {
     containerClass:
-      'bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-600/30 border-emerald-400/80 shadow-[0_0_15px_rgba(16,185,129,0.25)]',
+      'bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-600/30 border-emerald-400/80 shadow-[0_0_12px_rgba(16,185,129,0.22)]',
     badgeClass: 'bg-emerald-400 text-[#0b0e14]',
     textClass: 'text-emerald-100',
   },
@@ -177,7 +177,7 @@ export const ProductionControlToolbar: React.FC = () => {
   const badgeConfig = PRIORITY_BADGE_CONFIG[priorityKey] || PRIORITY_BADGE_CONFIG.URGENTE;
 
   return (
-    <div className="bg-[#0d1017] border-b border-white/10 p-2 flex flex-wrap items-center justify-between gap-3 text-xs font-sans shadow-md">
+    <div className="bg-[#0d1017] border-b border-white/10 px-2.5 py-2 min-h-[48px] flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-md">
       {/* Grupo Izquierdo: Controles de Producción */}
       <div className="flex items-center gap-2 flex-wrap shrink-0">
         <span className="font-extrabold text-[#00f2fe] flex items-center gap-1">
@@ -187,7 +187,7 @@ export const ProductionControlToolbar: React.FC = () => {
         <button
           onClick={handleActualizarDia}
           disabled={loading}
-          className="px-3 py-1.5 bg-[#1d2756] hover:bg-[#00f2fe] hover:text-black text-white font-extrabold rounded-lg transition-all cursor-pointer border border-[#00f2fe]/30"
+          className="px-3 py-1.5 bg-[#1d2756] hover:bg-[#00f2fe] hover:text-black text-white font-extrabold rounded-lg transition-colors cursor-pointer border border-[#00f2fe]/30"
         >
           {loading ? 'Procesando...' : '🔄 Actualizar Órdenes del Día'}
         </button>
@@ -198,7 +198,7 @@ export const ProductionControlToolbar: React.FC = () => {
               wipEngineService.limpiarFilasCompletas('BUSCAR_BP');
             }
           }}
-          className="px-3 py-1.5 bg-[#12161f] border border-white/20 hover:border-[#39ff14] text-gray-200 rounded-lg cursor-pointer"
+          className="px-3 py-1.5 bg-[#12161f] border border-white/20 hover:border-[#39ff14] text-gray-200 rounded-lg transition-colors cursor-pointer"
         >
           🧹 Limpiar Completas BP
         </button>
@@ -209,16 +209,16 @@ export const ProductionControlToolbar: React.FC = () => {
               wipEngineService.limpiarFilasCompletas('BUSCAR_FD');
             }
           }}
-          className="px-3 py-1.5 bg-[#12161f] border border-white/20 hover:border-[#ff007f] text-gray-200 rounded-lg cursor-pointer"
+          className="px-3 py-1.5 bg-[#12161f] border border-white/20 hover:border-[#ff007f] text-gray-200 rounded-lg transition-colors cursor-pointer"
         >
           🧹 Limpiar Completas FD
         </button>
       </div>
 
-      {/* Centro: Tarjeta Rotativa OR Cintillo Deslizante Continuo */}
+      {/* Centro: Tarjeta Rotativa OR Cintillo Deslizante Continuo (altura y ancho estabilizados) */}
       {hasActiveAnnouncement && isBannerVisible && activeItem && (
         displayMode === 'cintillo' ? (
-          <div className="flex-1 min-w-[260px] max-w-3xl mx-auto px-2.5 py-1 rounded-lg bg-[#12161f] border border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.18)] flex items-center gap-2 overflow-hidden">
+          <div className="flex-1 basis-[280px] max-w-3xl h-[32px] px-2.5 rounded-lg bg-[#12161f] border border-amber-400/50 flex items-center gap-2 overflow-hidden">
             <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-400 text-black tracking-wider shrink-0">
               <Megaphone className="w-3 h-3" />
               COMUNICADOS ({items.length})
@@ -267,11 +267,11 @@ export const ProductionControlToolbar: React.FC = () => {
           </div>
         ) : (
           <div
-            className={`flex-1 min-w-[260px] max-w-3xl mx-auto px-3 py-1.5 rounded-lg border flex items-center justify-between gap-2 transition-all ${badgeConfig.containerClass}`}
+            className={`flex-1 basis-[280px] max-w-3xl h-[32px] px-3 rounded-lg border flex items-center justify-between gap-2 transition-colors duration-300 overflow-hidden ${badgeConfig.containerClass}`}
           >
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <span
-                className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider shrink-0 ${badgeConfig.badgeClass}`}
+                className={`inline-flex items-center justify-center gap-1 min-w-[86px] text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider shrink-0 transition-colors duration-300 ${badgeConfig.badgeClass}`}
               >
                 <PriorityIcon priority={priorityKey} />
                 {priorityKey}
@@ -279,7 +279,7 @@ export const ProductionControlToolbar: React.FC = () => {
 
               <span
                 title={activeItem.message}
-                className={`font-extrabold text-xs tracking-wide truncate ${badgeConfig.textClass}`}
+                className={`font-extrabold text-xs tracking-wide truncate transition-colors duration-300 ${badgeConfig.textClass}`}
               >
                 {activeItem.message}
               </span>
@@ -298,18 +298,18 @@ export const ProductionControlToolbar: React.FC = () => {
                     type="button"
                     onClick={() => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length)}
                     title="Aviso anterior"
-                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                  <span className="text-[10px] font-mono font-bold text-white/80 px-1">
+                  <span className="text-[10px] font-mono font-bold text-white/80 px-1 min-w-[26px] text-center">
                     {safeIndex + 1}/{items.length}
                   </span>
                   <button
                     type="button"
                     onClick={() => setCurrentIndex((prev) => (prev + 1) % items.length)}
                     title="Siguiente aviso"
-                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
@@ -333,7 +333,7 @@ export const ProductionControlToolbar: React.FC = () => {
       <div className="shrink-0">
         <button
           onClick={handleBorrarCE}
-          className="px-3 py-1.5 bg-red-950/60 border border-red-500/40 text-red-300 hover:bg-red-900 rounded-lg cursor-pointer font-bold transition-all"
+          className="px-3 py-1.5 bg-red-950/60 border border-red-500/40 text-red-300 hover:bg-red-900 rounded-lg cursor-pointer font-bold transition-colors"
         >
           🗑️ Borrar Contratos Cerrados (CE)
         </button>
