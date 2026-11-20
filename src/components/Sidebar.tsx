@@ -21,6 +21,7 @@ import {
   Boxes,
   Warehouse,
   Edit3,
+  History,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -130,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             : 'text-[#6c7a89] hover:text-[#00f2fe] hover:bg-white/5'
         }`}
       >
-        • {sub.nombre}
+- {sub.nombre}
       </button>
     ));
   };
@@ -555,6 +556,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <BookOpen className="w-3.5 h-3.5" />
           <span>Manual de Producción</span>
+        </button>
+
+        {/* Historial Permanente de Updates */}
+        <button
+          onClick={() => onSelectTab('updates-history' as TabType, undefined, 'HISTORIAL DE UPDATES')}
+          className={`flex items-center gap-3 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
+            activeTab === ('updates-history' as TabType)
+              ? 'text-[#00f2fe] bg-[#00f2fe]/10 border-[#00f2fe] shadow-[inset_0_0_12px_rgba(0,242,254,0.15)]'
+              : 'text-[#8f9ba8] border-transparent hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <History className="w-3.5 h-3.5 text-[#00f2fe]" />
+          <span>Historial de Updates</span>
         </button>
 
         {/* Configuración */}
