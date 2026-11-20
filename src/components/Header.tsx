@@ -14,11 +14,13 @@ import {
   X,
   Check,
   Zap,
-  Briefcase
+  Briefcase,
+  ArrowUpCircle
 } from 'lucide-react';
 import { THEME_OPTIONS } from '../data/themesData';
 import { ThemeType } from '../types';
 import { useAppVersion } from '../hooks/useAppVersion';
+import { useUpdateChecker } from '../hooks/useUpdateChecker';
 
 export interface HeaderMetrics {
   totalOrdenesDia?: number;
@@ -67,6 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
   metrics = {}
 }) => {
   const appVersion = useAppVersion();
+  const { updateAvailable, applyUpdate } = useUpdateChecker();
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'neon' | 'corporate'>('neon');
 
@@ -210,6 +213,19 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Controles de la Derecha (Sincronización, Usuario y Sesión) */}
         <div className="flex items-center gap-2">
+          {/* BOTÓN ESTILO CHROME CUANDO HAY NUEVA ACTUALIZACIÓN LISTA */}
+          {updateAvailable && (
+            <button
+              type="button"
+              onClick={applyUpdate}
+              title="Hay una nueva versión desplegada. Haz clic para aplicar y reiniciar la vista."
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-emerald-400 to-[#00f2fe] text-[#0b0e14] text-xs font-black uppercase tracking-wide shadow-[0_0_16px_rgba(0,242,254,0.65)] hover:brightness-110 transition-all cursor-pointer animate-pulse"
+            >
+              <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Update • Reiniciar</span>
+            </button>
+          )}
+
           {/* BOTÓN SELECTOR DE TEMAS */}
           <button
             onClick={() => setIsThemeModalOpen(true)}
