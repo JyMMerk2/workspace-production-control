@@ -1,21 +1,32 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../data/supabaseClient';
 
+export type AnnouncementPriority = 'URGENTE' | 'PRIORIDAD' | 'NO OLVIDAR';
+
 export interface UrgentAnnouncement {
   message: string;
   active: boolean;
+  priority: AnnouncementPriority;
   updatedBy: string;
   updatedAt: string;
 }
 
-const LOCAL_STORAGE_KEY = 'boombah_urgent_announcement_v1';
+const LOCAL_STORAGE_KEY = 'boombah_urgent_announcement_v2';
 
 const DEFAULT_ANNOUNCEMENT: UrgentAnnouncement = {
   message: '',
   active: false,
+  priority: 'URGENTE',
   updatedBy: '',
   updatedAt: '',
 };
+
+function normalizePriority(val: any): AnnouncementPriority {
+  const upper = String(val || '').toUpperCase().trim();
+  if (upper === 'PRIORIDAD') return 'PRIORIDAD';
+  if (upper === 'NO OLVIDAR') return 'NO OLVIDAR';
+  return 'URGENTE';
+}
 
 export function useUrgentAnnouncement() {
   const [announcement, setAnnouncement] = useState<UrgentAnnouncement>(() => {
@@ -27,6 +38,7 @@ export function useUrgentAnnouncement() {
           return {
             message: String(parsed.message || ''),
             active: Boolean(parsed.active),
+            priority: normalizePriority(parsed.priority),
             updatedBy: String(parsed.updatedBy || ''),
             updatedAt: String(parsed.updatedAt || ''),
           };
@@ -55,7 +67,7 @@ export function useUrgentAnnouncement() {
       if (!supabase) return;
       const { data, error } = await supabase
         .from('boombah_announcements')
-        .select('message, active, updated_by, updated_at')
+        .select('message, active, priority, updated_by, updated_at')
         .eq('id', 'global_urgent')
         .maybeSingle();
 
@@ -64,6 +76,7 @@ export function useUrgentAnnouncement() {
         syncLocalAndState({
           message: msg,
           active: Boolean(data.active && msg.trim()),
+          priority: normalizePriority(data.priority),
           updatedBy: String(data.updated_by || ''),
           updatedAt: String(data.updated_at || new Date().toISOString()),
         });
@@ -106,6 +119,7 @@ export function useUrgentAnnouncement() {
                 syncLocalAndState({
                   message: msg,
                   active: Boolean(row.active && msg.trim()),
+                  priority: normalizePriority(row.priority),
                   updatedBy: String(row.updated_by || ''),
                   updatedAt: String(row.updated_at || new Date().toISOString()),
                 });
@@ -130,15 +144,22 @@ export function useUrgentAnnouncement() {
     };
   }, [fetchAnnouncement, syncLocalAndState]);
 
-  const saveAnnouncement = async (message: string, active: boolean, author: string) => {
+  const saveAnnouncement = async (
+    message: string,
+    active: boolean,
+    author: string,
+    priority: AnnouncementPriority = 'URGENTE'
+  ) => {
     setIsSaving(true);
     const trimmed = String(message || '').trim();
     const isActuallyActive = Boolean(active && trimmed.length > 0);
+    const cleanPriority = normalizePriority(priority);
     const nowIso = new Date().toISOString();
 
     const next: UrgentAnnouncement = {
       message: trimmed,
       active: isActuallyActive,
+      priority: cleanPriority,
       updatedBy: author || 'ADMIN',
       updatedAt: nowIso,
     };
@@ -152,6 +173,7 @@ export function useUrgentAnnouncement() {
           id: 'global_urgent',
           message: trimmed,
           active: isActuallyActive,
+          priority: cleanPriority,
           updated_by: author || 'ADMIN',
           updated_at: nowIso,
         });
