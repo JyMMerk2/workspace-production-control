@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, X } from 'lucide-react';
 
 interface FeatureItem {
   tag: string;
   text: string;
   color: string;
+  date?: string;
 }
 
-const NOVEDADES: FeatureItem[] = [
+const GITHUB_COMMITS_URL =
+  'https://api.github.com/repos/JyMMerk2/workspace-production-control/commits?per_page=6';
+
+const FALLBACK_NOVEDADES: FeatureItem[] = [
   {
     tag: 'NUEVO',
     text: 'Lotes en Proceso en Vivo: toma tu cantidad o rack y resalta tus ítems con tu color personal.',
@@ -30,8 +34,97 @@ const NOVEDADES: FeatureItem[] = [
   }
 ];
 
+function classifyCommit(message: string, dateIso?: string): FeatureItem {
+  const firstLine = message.split('\n')[0].trim();
+  const lower = firstLine.toLowerCase();
+
+  let tag = 'ACTUALIZACIÓN';
+  let color = 'text-[#00f2fe] border-[#00f2fe]/40 bg-[#00f2fe]/10';
+
+  if (lower.startsWith('add') || lower.startsWith('feat') || lower.startsWith('implement')) {
+    tag = 'NUEVO';
+    color = 'text-[#00f2fe] border-[#00f2fe]/40 bg-[#00f2fe]/10';
+  } else if (lower.startsWith('fix') || lower.startsWith('resolve') || lower.startsWith('correg')) {
+    tag = 'CORRECCIÓN';
+    color = 'text-amber-300 border-amber-400/40 bg-amber-500/10';
+  } else if (lower.startsWith('enhance') || lower.startsWith('update') || lower.startsWith('refactor')) {
+    tag = 'MEJORA';
+    color = 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10';
+  }
+
+  let formattedDate = '';
+  if (dateIso) {
+    try {
+      const d = new Date(dateIso);
+      formattedDate = d.toLocaleDateString('es-DO', { day: '2-digit', month: 'short' });
+    } catch {
+      formattedDate = '';
+    }
+  }
+
+  return {
+    tag,
+    text: firstLine,
+    color,
+    date: formattedDate
+  };
+}
+
 export const FeaturesTicker: React.FC = () => {
   const [visible, setVisible] = useState(true);
+  const [items, setItems] = useState<FeatureItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('boombah_github_ticker_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // Ignorar errores de lectura de caché
+    }
+    return FALLBACK_NOVEDADES;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLatestCommits = async () => {
+      try {
+        const res = await fetch(GITHUB_COMMITS_URL, {
+          headers: { Accept: 'application/vnd.github.v3+json' }
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) return;
+
+        const mapped: FeatureItem[] = data
+          .filter((entry: any) => entry?.commit?.message)
+          .map((entry: any) =>
+            classifyCommit(entry.commit.message, entry.commit?.author?.date)
+          );
+
+        if (mapped.length > 0 && isMounted) {
+          setItems(mapped);
+          try {
+            localStorage.setItem('boombah_github_ticker_v1', JSON.stringify(mapped));
+          } catch {
+            // Ignorar si localStorage está lleno
+          }
+        }
+      } catch {
+        // Mantener caché o respaldo silenciosamente
+      }
+    };
+
+    loadLatestCommits();
+    const interval = setInterval(loadLatestCommits, 5 * 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   if (!visible) return null;
 
@@ -53,7 +146,7 @@ export const FeaturesTicker: React.FC = () => {
           .animate-boombah-ticker {
             display: flex;
             width: max-content;
-            animation: boombah-marquee 38s linear infinite;
+            animation: boombah-marquee 42s linear infinite;
           }
           .group:hover .animate-boombah-ticker {
             animation-play-state: paused;
@@ -61,12 +154,15 @@ export const FeaturesTicker: React.FC = () => {
         `}</style>
 
         <div className="animate-boombah-ticker items-center gap-8 text-xs">
-          {[...NOVEDADES, ...NOVEDADES].map((item, idx) => (
+          {[...items, ...items].map((item, idx) => (
             <div key={idx} className="inline-flex items-center gap-2 whitespace-nowrap">
               <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${item.color}`}>
                 {item.tag}
               </span>
               <span className="text-gray-300 font-medium text-[11px]">{item.text}</span>
+              {item.date && (
+                <span className="text-[10px] font-mono text-gray-500">({item.date})</span>
+              )}
               <span className="text-white/15 ml-4">•</span>
             </div>
           ))}
