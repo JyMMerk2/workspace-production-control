@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   AlertTriangle,
   Flame,
@@ -60,9 +60,10 @@ export const ProductionControlToolbar: React.FC = () => {
   const { announcement } = useUrgentAnnouncement();
   const [isBannerVisible, setIsBannerVisible] = useState<boolean>(true);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [isMarqueePaused, setIsMarqueePaused] = useState<boolean>(false);
 
-  const marqueeContainerRef = useRef<HTMLDivElement | null>(null);
+  const isMarqueePausedRef = useRef<boolean>(false);
+  const offsetPxRef = useRef<number>(0);
+  const halfWidthRef = useRef<number>(0);
   const marqueeTrackRef = useRef<HTMLDivElement | null>(null);
 
   const items = announcement?.items || [];
@@ -70,9 +71,16 @@ export const ProductionControlToolbar: React.FC = () => {
   const hasActiveAnnouncement = items.length > 0;
   const listSignature = items.map((it) => `${it.id}:${it.message}`).join('|');
 
+  const measureMarqueeHalfWidth = useCallback(() => {
+    if (marqueeTrackRef.current) {
+      halfWidthRef.current = marqueeTrackRef.current.scrollWidth / 2;
+    }
+  }, []);
+
   // Reabrir automáticamente el aviso si llega uno nuevo o cambia la lista
   useEffect(() => {
     setCurrentIndex(0);
+    offsetPxRef.current = 0;
     if (hasActiveAnnouncement) {
       try {
         const dismissedStamp = localStorage.getItem(DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY);
@@ -84,6 +92,14 @@ export const ProductionControlToolbar: React.FC = () => {
       }
     }
   }, [hasActiveAnnouncement, listSignature]);
+
+  useEffect(() => {
+    if (displayMode === 'cintillo') {
+      measureMarqueeHalfWidth();
+      window.addEventListener('resize', measureMarqueeHalfWidth);
+      return () => window.removeEventListener('resize', measureMarqueeHalfWidth);
+    }
+  }, [displayMode, items, isBannerVisible, measureMarqueeHalfWidth]);
 
   // Rotar automáticamente cada 5 segundos cuando hay más de 1 aviso activo en modo 'rotativo'
   useEffect(() => {
@@ -101,7 +117,7 @@ export const ProductionControlToolbar: React.FC = () => {
     return () => clearInterval(timer);
   }, [displayMode, hasActiveAnnouncement, isBannerVisible, items.length]);
 
-  // Desplazamiento continuo suave en modo 'cintillo'
+  // Desplazamiento GPU puro (translate3d) en modo 'cintillo' sin reflows ni parpadeos
   useEffect(() => {
     if (displayMode !== 'cintillo' || !hasActiveAnnouncement || !isBannerVisible) return;
 
@@ -110,19 +126,22 @@ export const ProductionControlToolbar: React.FC = () => {
     const speedPxPerSec = 45;
 
     const step = (now: number) => {
-      const dt = (now - lastTime) / 1000;
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
 
-      const container = marqueeContainerRef.current;
       const track = marqueeTrackRef.current;
+      if (track) {
+        if (halfWidthRef.current <= 0) {
+          halfWidthRef.current = track.scrollWidth / 2;
+        }
 
-      if (container && track && !isMarqueePaused) {
-        const halfWidth = track.scrollWidth / 2;
-        if (halfWidth > 0) {
-          container.scrollLeft += speedPxPerSec * dt;
-          if (container.scrollLeft >= halfWidth) {
-            container.scrollLeft -= halfWidth;
+        const halfWidth = halfWidthRef.current;
+        if (!isMarqueePausedRef.current && halfWidth > 0) {
+          offsetPxRef.current += speedPxPerSec * dt;
+          if (offsetPxRef.current >= halfWidth) {
+            offsetPxRef.current -= halfWidth;
           }
+          track.style.transform = `translate3d(-${offsetPxRef.current}px, 0, 0)`;
         }
       }
 
@@ -131,7 +150,7 @@ export const ProductionControlToolbar: React.FC = () => {
 
     animId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animId);
-  }, [displayMode, hasActiveAnnouncement, isBannerVisible, isMarqueePaused, items]);
+  }, [displayMode, hasActiveAnnouncement, isBannerVisible, items]);
 
   const handleDismissAnnouncement = () => {
     if (hasActiveAnnouncement) {
@@ -177,7 +196,10 @@ export const ProductionControlToolbar: React.FC = () => {
   const badgeConfig = PRIORITY_BADGE_CONFIG[priorityKey] || PRIORITY_BADGE_CONFIG.URGENTE;
 
   return (
-    <div className="bg-[#0d1017] border-b border-white/10 px-2.5 py-2 min-h-[48px] flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-md">
+    <div
+      style={{ contain: 'layout paint' }}
+      className="bg-[#0d1017] border-b border-white/10 px-2.5 py-2 min-h-[48px] flex flex-wrap items-center justify-between gap-2.5 text-xs font-sans shadow-md shrink-0"
+    >
       {/* Grupo Izquierdo: Controles de Producción */}
       <div className="flex items-center gap-2 flex-wrap shrink-0">
         <span className="font-extrabold text-[#00f2fe] flex items-center gap-1">
@@ -225,12 +247,19 @@ export const ProductionControlToolbar: React.FC = () => {
             </span>
 
             <div
-              ref={marqueeContainerRef}
-              onMouseEnter={() => setIsMarqueePaused(true)}
-              onMouseLeave={() => setIsMarqueePaused(false)}
-              className="relative flex-1 overflow-x-hidden select-none"
+              onMouseEnter={() => {
+                isMarqueePausedRef.current = true;
+              }}
+              onMouseLeave={() => {
+                isMarqueePausedRef.current = false;
+              }}
+              className="relative flex-1 overflow-hidden select-none"
             >
-              <div ref={marqueeTrackRef} className="flex w-max items-center gap-6">
+              <div
+                ref={marqueeTrackRef}
+                style={{ willChange: 'transform' }}
+                className="flex w-max items-center gap-6"
+              >
                 {[...items, ...items].map((it, idx) => {
                   const cfg = PRIORITY_BADGE_CONFIG[it.priority] || PRIORITY_BADGE_CONFIG.URGENTE;
                   return (
