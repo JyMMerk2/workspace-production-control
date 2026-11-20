@@ -1,6 +1,17 @@
-import React, { useState } from 'react';
-import { Settings, Lock, CheckCircle2, AlertCircle, Server } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Settings,
+  Lock,
+  CheckCircle2,
+  AlertCircle,
+  Server,
+  Megaphone,
+  AlertTriangle,
+  Send,
+  Trash2,
+} from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { useUrgentAnnouncement } from '../hooks/useUrgentAnnouncement';
 
 interface ConfigViewProps {
   authenticatedUser: string;
@@ -20,6 +31,42 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
     text: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Estado del Comunicado Urgente Global en Cintillo
+  const { announcement, saveAnnouncement, isSaving } = useUrgentAnnouncement();
+  const [urgentText, setUrgentText] = useState(announcement.message || '');
+  const [urgentActive, setUrgentActive] = useState(announcement.active || false);
+  const [urgentFeedback, setUrgentFeedback] = useState<string>('');
+
+  useEffect(() => {
+    setUrgentText(announcement.message || '');
+    setUrgentActive(announcement.active || false);
+  }, [announcement.message, announcement.active]);
+
+  const handlePublishUrgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUrgentFeedback('');
+
+    const clean = urgentText.trim();
+    if (!clean) {
+      await saveAnnouncement('', false, authenticatedUser);
+      setUrgentActive(false);
+      setUrgentFeedback('Aviso retirado del cintillo.');
+      return;
+    }
+
+    await saveAnnouncement(clean, true, authenticatedUser);
+    setUrgentActive(true);
+    setUrgentFeedback('¡Aviso urgente publicado! Se mostrará resaltado y reabrirá el cintillo a todos los usuarios.');
+  };
+
+  const handleClearUrgent = async () => {
+    setUrgentFeedback('');
+    setUrgentText('');
+    setUrgentActive(false);
+    await saveAnnouncement('', false, authenticatedUser);
+    setUrgentFeedback('Aviso urgente desactivado.');
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +178,97 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
           <Settings className="w-5 h-5" />
           <span>CONFIGURACIÓN DE CUENTA Y SISTEMA</span>
         </div>
+      </div>
+
+      {/* SECCIÓN DEDICADA: COMUNICADO URGENTE / AVISO IMPORTANTE EN CINTILLO */}
+      <div className="bg-[#12161f] border border-amber-500/40 rounded-xl p-6 shadow-[0_0_25px_rgba(245,158,11,0.12)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-amber-400">
+            <Megaphone className="w-4 h-4" />
+            <span>📢 Comunicado Urgente / Aviso Importante en Cintillo</span>
+          </div>
+
+          <span
+            className={`text-[10px] font-mono font-black uppercase px-2.5 py-0.5 rounded-full border ${
+              urgentActive && urgentText.trim()
+                ? 'bg-amber-500/20 text-amber-300 border-amber-400/60'
+                : 'bg-white/5 text-gray-400 border-white/10'
+            }`}
+          >
+            {urgentActive && urgentText.trim() ? '● Activo en Pantalla' : '○ Inactivo'}
+          </span>
+        </div>
+
+        <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+          Escribe aquí cualquier mensaje urgente o instrucción crítica para el equipo. Al publicarlo,{' '}
+          <strong className="text-amber-300">reabrirá automáticamente el cintillo superior</strong> a todos los usuarios (incluso si lo tenían cerrado) y aparecerá resaltado con prioridad máxima.
+        </p>
+
+        <form onSubmit={handlePublishUrgent} className="space-y-4">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1.5">
+              Mensaje del Comunicado Urgente
+            </label>
+            <textarea
+              rows={2}
+              value={urgentText}
+              onChange={(e) => setUrgentText(e.target.value)}
+              placeholder="Ej: ATENCIÓN: Priorizar cierre de órdenes del contenedor antes de las 3:00 PM..."
+              className="w-full px-3.5 py-2.5 bg-[#0d1017] border border-amber-500/30 rounded-lg text-white text-xs font-medium focus:outline-none focus:border-amber-400 placeholder:text-gray-600"
+            />
+          </div>
+
+          {/* Vista previa en vivo de cómo se verá en el cintillo */}
+          {urgentText.trim() && (
+            <div className="p-2.5 rounded-lg bg-[#0d1017] border border-white/10">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                Vista previa en cintillo:
+              </div>
+              <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-full bg-gradient-to-r from-red-600/30 via-amber-500/25 to-red-600/30 border border-amber-400/70 shadow-[0_0_12px_rgba(245,158,11,0.25)] max-w-full overflow-hidden">
+                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400 text-black tracking-wider shrink-0">
+                  <AlertTriangle className="w-2.5 h-2.5" />
+                  AVISO IMPORTANTE
+                </span>
+                <span className="text-amber-100 font-extrabold text-[11.5px] tracking-wide truncate">
+                  {urgentText.trim()}
+                </span>
+                <span className="text-[10px] font-mono font-bold text-amber-300/90 shrink-0">
+                  (Por: {authenticatedUser})
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 text-[#0b0e14] text-xs font-black uppercase tracking-wider hover:brightness-110 transition-all cursor-pointer shadow-[0_0_14px_rgba(245,158,11,0.35)] disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isSaving ? 'Publicando...' : 'Publicar Aviso Urgente'}</span>
+            </button>
+
+            {(urgentActive || urgentText.trim()) && (
+              <button
+                type="button"
+                onClick={handleClearUrgent}
+                disabled={isSaving}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-red-500/15 text-gray-300 hover:text-red-300 border border-white/10 hover:border-red-500/40 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Quitar Aviso</span>
+              </button>
+            )}
+          </div>
+
+          {urgentFeedback && (
+            <div className="p-3 rounded-lg text-xs font-bold flex items-center gap-2 bg-amber-500/10 border border-amber-400/35 text-amber-300">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{urgentFeedback}</span>
+            </div>
+          )}
+        </form>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
