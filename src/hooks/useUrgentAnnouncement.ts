@@ -55,6 +55,28 @@ function buildStateFromData(
   };
 }
 
+function loadInitialAnnouncement(): UrgentAnnouncement {
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && Array.isArray(parsed.items)) {
+        return buildStateFromData(parsed.items, parsed.displayMode);
+      }
+    }
+  } catch {
+    // Ignorar errores de lectura o caché corrupta
+  }
+  return buildStateFromData([], 'rotativo');
+}
+
+// Caché compartida en memoria para evitar parpadeos al cambiar de pestaña o vista
+let sharedAnnouncementCache: UrgentAnnouncement = loadInitialAnnouncement();
+let lastSyncedSignature = JSON.stringify({
+  displayMode: sharedAnnouncementCache.displayMode,
+  items: sharedAnnouncementCache.items,
+});
+
 function parseRowToData(row: any): {
   items: AnnouncementItem[];
   displayMode: AnnouncementDisplayMode;
@@ -76,11 +98,11 @@ function parseRowToData(row: any): {
         const items = parsedObj.items
           .filter((entry: any) => entry && String(entry.message || '').trim())
           .map((entry: any, idx: number) => ({
-            id: String(entry.id || `item_${idx}_${Date.now()}`),
+            id: String(entry.id || `item_${idx}`),
             message: String(entry.message).trim(),
             priority: normalizePriority(entry.priority),
             updatedBy: String(entry.updatedBy || row.updated_by || 'ADMIN'),
-            updatedAt: String(entry.updatedAt || row.updated_at || new Date().toISOString()),
+            updatedAt: String(entry.updatedAt || row.updated_at || ''),
           }));
         return {
           items,
@@ -100,11 +122,11 @@ function parseRowToData(row: any): {
         const items = parsed
           .filter((entry) => entry && String(entry.message || '').trim())
           .map((entry, idx) => ({
-            id: String(entry.id || `item_${idx}_${Date.now()}`),
+            id: String(entry.id || `item_${idx}`),
             message: String(entry.message).trim(),
             priority: normalizePriority(entry.priority),
             updatedBy: String(entry.updatedBy || row.updated_by || 'ADMIN'),
-            updatedAt: String(entry.updatedAt || row.updated_at || new Date().toISOString()),
+            updatedAt: String(entry.updatedAt || row.updated_at || ''),
           }));
         return { items, displayMode: 'rotativo' };
       }
@@ -121,37 +143,37 @@ function parseRowToData(row: any): {
         message: rawMessage,
         priority: normalizePriority(row.priority),
         updatedBy: String(row.updated_by || 'ADMIN'),
-        updatedAt: String(row.updated_at || new Date().toISOString()),
+        updatedAt: String(row.updated_at || ''),
       },
     ],
     displayMode: 'rotativo',
   };
 }
 
-const DEFAULT_ANNOUNCEMENT: UrgentAnnouncement = buildStateFromData([], 'rotativo');
-
 export function useUrgentAnnouncement() {
-  const [announcement, setAnnouncement] = useState<UrgentAnnouncement>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && Array.isArray(parsed.items)) {
-          return buildStateFromData(parsed.items, parsed.displayMode);
-        }
-      }
-    } catch {
-      // Ignorar errores de lectura o caché corrupta
-    }
-    return DEFAULT_ANNOUNCEMENT;
-  });
+  const [announcement, setAnnouncement] = useState<UrgentAnnouncement>(
+    () => sharedAnnouncementCache
+  );
 
   const [isSaving, setIsSaving] = useState(false);
 
   const syncLocalAndState = useCallback(
     (nextItems: AnnouncementItem[], nextMode: AnnouncementDisplayMode) => {
       const nextState = buildStateFromData(nextItems, nextMode);
+      const nextSignature = JSON.stringify({
+        displayMode: nextState.displayMode,
+        items: nextState.items,
+      });
+
+      // Evitar re-renders o eventos si los datos no han cambiado realmente
+      if (nextSignature === lastSyncedSignature) {
+        return;
+      }
+
+      lastSyncedSignature = nextSignature;
+      sharedAnnouncementCache = nextState;
       setAnnouncement(nextState);
+
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nextState));
       } catch {
@@ -187,7 +209,7 @@ export function useUrgentAnnouncement() {
     const handleLocalEvent = (e: Event) => {
       const custom = e as CustomEvent<UrgentAnnouncement>;
       if (custom.detail && Array.isArray(custom.detail.items)) {
-        setAnnouncement(buildStateFromData(custom.detail.items, custom.detail.displayMode));
+        setAnnouncement(custom.detail);
       }
     };
     window.addEventListener('boombah-urgent-updated', handleLocalEvent);
@@ -220,8 +242,8 @@ export function useUrgentAnnouncement() {
       // Ignorar si realtime no está habilitado en la tabla
     }
 
-    // Respaldo de polling cada 15 segundos
-    const poll = setInterval(fetchAnnouncement, 15000);
+    // Respaldo de polling cada 20 segundos
+    const poll = setInterval(fetchAnnouncement, 20000);
 
     return () => {
       window.removeEventListener('boombah-urgent-updated', handleLocalEvent);
