@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Settings,
   Lock,
@@ -7,7 +7,7 @@ import {
   Server,
   Megaphone,
   AlertTriangle,
-  Send,
+  Plus,
   Trash2,
   Flame,
   Pin,
@@ -67,46 +67,45 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Estado del Comunicado Global en Barra de Control de Producción
-  const { announcement, saveAnnouncement, isSaving } = useUrgentAnnouncement();
-  const [urgentText, setUrgentText] = useState<string>(announcement?.message ?? '');
-  const [urgentPriority, setUrgentPriority] = useState<AnnouncementPriority>(
-    announcement?.priority ?? 'URGENTE'
-  );
-  const [urgentActive, setUrgentActive] = useState<boolean>(Boolean(announcement?.active));
+  // Gestión de múltiples avisos globales
+  const {
+    announcement,
+    addAnnouncement,
+    removeAnnouncement,
+    clearAllAnnouncements,
+    isSaving,
+  } = useUrgentAnnouncement();
+
+  const [urgentText, setUrgentText] = useState<string>('');
+  const [urgentPriority, setUrgentPriority] = useState<AnnouncementPriority>('URGENTE');
   const [urgentFeedback, setUrgentFeedback] = useState<string>('');
 
-  useEffect(() => {
-    setUrgentText(announcement?.message ?? '');
-    setUrgentPriority(announcement?.priority ?? 'URGENTE');
-    setUrgentActive(Boolean(announcement?.active));
-  }, [announcement?.message, announcement?.priority, announcement?.active]);
+  const activeItems = announcement?.items || [];
 
-  const handlePublishUrgent = async (e: React.FormEvent) => {
+  const handleAddUrgent = async (e: React.FormEvent) => {
     e.preventDefault();
     setUrgentFeedback('');
 
     const clean = urgentText.trim();
-    if (!clean) {
-      await saveAnnouncement('', false, safeUser, urgentPriority);
-      setUrgentActive(false);
-      setUrgentFeedback('Aviso retirado de la barra de Control de Producción.');
-      return;
-    }
+    if (!clean) return;
 
-    await saveAnnouncement(clean, true, safeUser, urgentPriority);
-    setUrgentActive(true);
+    await addAnnouncement(clean, safeUser, urgentPriority);
+    setUrgentText('');
     setUrgentFeedback(
-      `¡Aviso [${urgentPriority}] publicado! Ya aparece en la barra de Control de Producción para todos los usuarios.`
+      `¡Aviso [${urgentPriority}] agregado! Ya está visible en vivo para todos los usuarios.`
     );
   };
 
-  const handleClearUrgent = async () => {
+  const handleRemoveOne = async (id: string) => {
     setUrgentFeedback('');
-    setUrgentText('');
-    setUrgentActive(false);
-    await saveAnnouncement('', false, safeUser, urgentPriority);
-    setUrgentFeedback('Aviso desactivado.');
+    await removeAnnouncement(id, safeUser);
+    setUrgentFeedback('Aviso eliminado.');
+  };
+
+  const handleClearAll = async () => {
+    setUrgentFeedback('');
+    await clearAllAnnouncements(safeUser);
+    setUrgentFeedback('Todos los avisos han sido retirados.');
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -130,14 +129,12 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
 
     setIsSubmitting(true);
 
-    // Validar credenciales maestras locales
     const isLocalMaster =
       (safeUser.toLowerCase() === 'jmercado' && oldPass === 'jymmerk2') ||
       (safeUser.toLowerCase() === 'admin' && oldPass === 'adminjymmerk2') ||
       (safeUser.toLowerCase() === 'supervisor' && oldPass === 'boombah2026');
 
     try {
-      // Buscar el usuario en Supabase
       const { data, error: selectError } = await supabase
         .from('app_users')
         .select('*')
@@ -150,14 +147,12 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
       }
 
       if (data && data.length > 0) {
-        // Usuario existente en Supabase: validar contraseña actual
         if (data[0].password !== oldPass) {
           setIsSubmitting(false);
           setStatusMsg({ type: 'error', text: 'La contraseña actual ingresada es incorrecta.' });
           return;
         }
 
-        // Actualizar contraseña del registro en Supabase
         const { error: updateError } = await supabase
           .from('app_users')
           .update({ password: newPass })
@@ -169,14 +164,12 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
           return;
         }
       } else {
-        // Si no está en Supabase, verificar contra lista maestra
         if (!isLocalMaster) {
           setIsSubmitting(false);
           setStatusMsg({ type: 'error', text: 'La contraseña actual ingresada es incorrecta.' });
           return;
         }
 
-        // Crear/sincronizar el usuario maestro en Supabase con la nueva clave
         const { error: insertError } = await supabase
           .from('app_users')
           .insert([
@@ -223,37 +216,38 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
         </div>
       </div>
 
-      {/* SECCIÓN DEDICADA: AVISO GLOBAL EN BARRA DE CONTROL DE PRODUCCIÓN */}
-      <div className="bg-[#12161f] border border-amber-500/40 rounded-xl p-6 shadow-[0_0_25px_rgba(245,158,11,0.12)]">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+      {/* SECCIÓN DEDICADA: AVISOS GLOBALES EN BARRA DE CONTROL DE PRODUCCIÓN */}
+      <div className="bg-[#12161f] border border-amber-500/40 rounded-xl p-6 shadow-[0_0_25px_rgba(245,158,11,0.12)] space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-amber-400">
             <Megaphone className="w-4 h-4" />
-            <span>📢 Aviso Global en Barra de Control de Producción</span>
+            <span>📢 Avisos Globales en Barra de Control de Producción</span>
           </div>
 
           <span
             className={`text-[10px] font-mono font-black uppercase px-2.5 py-0.5 rounded-full border ${
-              urgentActive && urgentText.trim()
+              activeItems.length > 0
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/60'
                 : 'bg-white/5 text-gray-400 border-white/10'
             }`}
           >
-            {urgentActive && urgentText.trim() ? `● Activo (${urgentPriority})` : '○ Inactivo'}
+            {activeItems.length > 0
+              ? `● ${activeItems.length} ${activeItems.length === 1 ? 'Aviso Activo' : 'Avisos Activos'}`
+              : '○ Sin Avisos Activos'}
           </span>
         </div>
 
-        <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-          El mensaje publicado aparecerá directamente en la barra de{' '}
-          <strong className="text-white">Control de Producción</strong> (entre{' '}
-          <span className="text-[#00f2fe]">Limpiar Completas FD</span> y{' '}
-          <span className="text-red-400">Borrar Contratos Cerrados</span>), sin mezclarse con las novedades técnicas.
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Puedes publicar <strong className="text-white">uno o varios avisos a la vez</strong>. Si hay más de uno, rotarán automáticamente en la barra de{' '}
+          <strong className="text-white">Control de Producción</strong> y en el modo{' '}
+          <strong className="text-[#00f2fe]">Pantalla Completa de Google Sheets</strong>.
         </p>
 
-        <form onSubmit={handlePublishUrgent} className="space-y-4">
-          {/* Selector de Estado antes de publicar */}
+        <form onSubmit={handleAddUrgent} className="space-y-4">
+          {/* Selector de Estado */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-2">
-              1. Selecciona el Estado / Nivel del Aviso
+              1. Selecciona el Estado / Nivel del Nuevo Aviso
             </label>
             <div className="grid grid-cols-3 gap-2.5">
               {(['URGENTE', 'PRIORIDAD', 'NO OLVIDAR'] as AnnouncementPriority[]).map((level) => {
@@ -294,11 +288,11 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
             />
           </div>
 
-          {/* Vista previa en vivo */}
+          {/* Vista previa */}
           {urgentText.trim() && (
             <div className="p-2.5 rounded-lg bg-[#0d1017] border border-white/10">
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
-                Vista previa en barra de producción:
+                Vista previa:
               </div>
               <div
                 className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border max-w-full overflow-hidden ${currentStyle.pillClass}`}
@@ -324,22 +318,22 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={isSaving}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 text-[#0b0e14] text-xs font-black uppercase tracking-wider hover:brightness-110 transition-all cursor-pointer shadow-[0_0_14px_rgba(245,158,11,0.35)] disabled:opacity-50"
+              disabled={isSaving || !urgentText.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 text-[#0b0e14] text-xs font-black uppercase tracking-wider hover:brightness-110 transition-all cursor-pointer shadow-[0_0_14px_rgba(245,158,11,0.35)] disabled:opacity-40"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>{isSaving ? 'Publicando...' : `Publicar como ${urgentPriority}`}</span>
+              <Plus className="w-4 h-4" />
+              <span>{isSaving ? 'Publicando...' : `Agregar Aviso (${urgentPriority})`}</span>
             </button>
 
-            {(urgentActive || urgentText.trim()) && (
+            {activeItems.length > 0 && (
               <button
                 type="button"
-                onClick={handleClearUrgent}
+                onClick={handleClearAll}
                 disabled={isSaving}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-white/5 hover:bg-red-500/15 text-gray-300 hover:text-red-300 border border-white/10 hover:border-red-500/40 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Quitar Aviso</span>
+                <span>Quitar Todos ({activeItems.length})</span>
               </button>
             )}
           </div>
@@ -351,6 +345,53 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
             </div>
           )}
         </form>
+
+        {/* Lista de Avisos Publicados Actualmente */}
+        {activeItems.length > 0 && (
+          <div className="pt-4 border-t border-white/10 space-y-2.5">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Avisos activos en pantalla ({activeItems.length}):
+            </div>
+            <div className="space-y-2">
+              {activeItems.map((item) => {
+                const style = PRIORITY_STYLES[item.priority] || PRIORITY_STYLES.URGENTE;
+                return (
+                  <div
+                    key={item.id}
+                    className={`px-3 py-2 rounded-lg border flex items-center justify-between gap-3 ${style.pillClass}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider shrink-0 ${style.badgeClass}`}
+                      >
+                        {item.priority === 'URGENTE' && <AlertTriangle className="w-2.5 h-2.5" />}
+                        {item.priority === 'PRIORIDAD' && <Flame className="w-2.5 h-2.5" />}
+                        {item.priority === 'NO OLVIDAR' && <Pin className="w-2.5 h-2.5" />}
+                        {item.priority}
+                      </span>
+                      <span className={`font-bold text-xs truncate ${style.textClass}`}>
+                        {item.message}
+                      </span>
+                      <span className="text-[10px] font-mono text-white/65 shrink-0">
+                        ({item.updatedBy})
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveOne(item.id)}
+                      disabled={isSaving}
+                      title="Eliminar este aviso"
+                      className="p-1 rounded bg-black/25 hover:bg-red-500/40 text-white/75 hover:text-white transition-colors cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
