@@ -17,6 +17,7 @@ import { InventoryDesgloseView } from './components/InventoryDesgloseView';
 import { PaseInventarioView } from './views/PaseInventarioView';
 import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { FeaturesTicker } from './components/FeaturesTicker';
+import { UpdatesHistoryView } from './components/UpdatesHistoryView';
 import { AuthModal } from './components/AuthModal';
 import { SHEETS_CONFIG } from './data/sheetsConfig';
 import { INITIAL_FALLBACK_DASHBOARD, fetchLiveDashboardData } from './data/dashboardService';
@@ -397,7 +398,11 @@ export default function App() {
         {/* Área Principal */}
         <main className="flex-1 min-w-0 flex flex-col overflow-y-auto custom-scrollbar pt-16">
           <ProductionControlToolbar />
-          <FeaturesTicker />
+          <FeaturesTicker
+            onOpenHistory={() =>
+              handleSelectTab('updates-history' as TabType, undefined, 'HISTORIAL DE UPDATES')
+            }
+          />
 
           <div className="p-3 md:p-5 w-full max-w-[1920px] mx-auto">
             {/* 1. Dashboard en Vivo */}
@@ -459,6 +464,9 @@ export default function App() {
             {activeTab === 'configuracion' && (
               <ConfigView authenticatedUser={authenticatedUser} />
             )}
+
+            {/* 12. Historial Permanente de Updates */}
+            {(activeTab as string) === 'updates-history' && <UpdatesHistoryView />}
           </div>
         </main>
       </div>
