@@ -26,8 +26,7 @@ import {
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
 import { supabase } from '../data/supabaseClient';
-
-export const APP_VERSION = 'v4.0.0';
+import { useAppVersion } from '../hooks/useAppVersion';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -58,6 +57,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   onLogout,
 }) => {
+  const appVersion = useAppVersion();
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'wip': activeTab === 'wip',
     'seguimiento-ordenes': activeTab === ('seguimiento-ordenes' as TabType),
@@ -605,7 +606,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           title="Ver registro de versiones y cambios"
           className="px-2 py-0.5 rounded bg-[#00f2fe]/10 hover:bg-[#00f2fe]/20 text-[#00f2fe] border border-[#00f2fe]/30 font-black transition-colors cursor-pointer"
         >
-          {APP_VERSION}
+          {appVersion}
         </button>
       </div>
     </aside>
