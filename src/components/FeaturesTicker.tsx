@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, X, History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, X, History, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { useUrgentAnnouncement } from '../hooks/useUrgentAnnouncement';
 
 export interface FeatureItem {
   tag: string;
   text: string;
   color: string;
   date?: string;
+  isUrgent?: boolean;
 }
 
 interface FeaturesTickerProps {
@@ -14,6 +16,8 @@ interface FeaturesTickerProps {
 
 const GITHUB_COMMITS_URL =
   'https://api.github.com/repos/JyMMerk2/workspace-production-control/commits?per_page=8';
+
+const DISMISSED_URGENT_KEY = 'boombah_dismissed_urgent_stamp';
 
 const FALLBACK_NOVEDADES: FeatureItem[] = [
   {
@@ -83,6 +87,7 @@ function classifyCommit(message: string, dateIso?: string): FeatureItem {
 }
 
 export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory }) => {
+  const { announcement } = useUrgentAnnouncement();
   const [visible, setVisible] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +106,25 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
     }
     return FALLBACK_NOVEDADES;
   });
+
+  // Si se publica o modifica un comunicado urgente activo y el usuario tenía cerrado el cintillo,
+  // volver a abrirlo automáticamente para asegurar que lo vea.
+  useEffect(() => {
+    if (announcement.active && announcement.message.trim()) {
+      const stamp = `${announcement.updatedAt}::${announcement.message.trim()}`;
+      try {
+        const dismissedStamp = localStorage.getItem(DISMISSED_URGENT_KEY);
+        if (dismissedStamp !== stamp) {
+          setVisible(true);
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollLeft = 0;
+          }
+        }
+      } catch {
+        setVisible(true);
+      }
+    }
+  }, [announcement]);
 
   useEffect(() => {
     let isMounted = true;
@@ -171,7 +195,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
 
     animationFrameId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPaused, items]);
+  }, [isPaused, items, announcement]);
 
   // Limpiar temporizador de reanudación al desmontar
   useEffect(() => {
@@ -212,19 +236,65 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
     }, 3500);
   };
 
+  // Cerrar el cintillo (y recordar que este comunicado ya fue leído hasta que haya uno nuevo)
+  const handleCloseTicker = () => {
+    if (announcement.active && announcement.message.trim()) {
+      const stamp = `${announcement.updatedAt}::${announcement.message.trim()}`;
+      try {
+        localStorage.setItem(DISMISSED_URGENT_KEY, stamp);
+      } catch {
+        // Ignorar
+      }
+    }
+    setVisible(false);
+  };
+
   if (!visible) return null;
 
+  const hasUrgent = Boolean(announcement.active && announcement.message.trim());
+
+  const urgentItem: FeatureItem | null = hasUrgent
+    ? {
+        tag: 'AVISO IMPORTANTE',
+        text: announcement.message.trim(),
+        color: 'text-amber-950 border-amber-300 bg-amber-400',
+        date: announcement.updatedBy ? `Por: ${announcement.updatedBy}` : undefined,
+        isUrgent: true,
+      }
+    : null;
+
+  const combinedItems = urgentItem ? [urgentItem, ...items] : items;
+
   return (
-    <div className="w-full bg-[#0d111a] border-b border-cyan-500/20 px-3 py-1.5 flex items-center gap-2 overflow-hidden select-none">
+    <div
+      className={`w-full border-b px-3 py-1.5 flex items-center gap-2 overflow-hidden select-none transition-colors ${
+        hasUrgent
+          ? 'bg-gradient-to-r from-[#240d12] via-[#1a1114] to-[#0d111a] border-amber-500/50 shadow-[0_2px_16px_rgba(245,158,11,0.18)]'
+          : 'bg-[#0d111a] border-cyan-500/20'
+      }`}
+    >
       {/* Insignia fija izquierda (clic abre el Historial de Updates) */}
       <button
         type="button"
         onClick={onOpenHistory}
         title="Ver historial completo de actualizaciones"
-        className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/35 text-[#00f2fe] text-[10px] font-black uppercase tracking-wider shrink-0 transition-colors cursor-pointer"
+        className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider shrink-0 transition-colors cursor-pointer ${
+          hasUrgent
+            ? 'bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/60 text-amber-300 animate-pulse'
+            : 'bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/35 text-[#00f2fe]'
+        }`}
       >
-        <Sparkles className="w-3 h-3" />
-        <span>Novedades</span>
+        {hasUrgent ? (
+          <>
+            <AlertTriangle className="w-3 h-3 text-amber-400" />
+            <span>Urgente</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-3 h-3" />
+            <span>Novedades</span>
+          </>
+        )}
       </button>
 
       {/* Flecha Izquierda (Retroceder novedades) */}
@@ -248,18 +318,38 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         className="relative flex-1 overflow-x-hidden cursor-pointer"
       >
         <div ref={trackRef} className="flex w-max items-center gap-8 text-xs">
-          {[...items, ...items].map((item, idx) => (
-            <div key={idx} className="inline-flex items-center gap-2 whitespace-nowrap">
-              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${item.color}`}>
-                {item.tag}
-              </span>
-              <span className="text-gray-300 font-medium text-[11px]">{item.text}</span>
-              {item.date && (
-                <span className="text-[10px] font-mono text-gray-400">({item.date})</span>
-              )}
-              <span className="text-white/15 ml-4">•</span>
-            </div>
-          ))}
+          {[...combinedItems, ...combinedItems].map((item, idx) =>
+            item.isUrgent ? (
+              <div
+                key={idx}
+                className="inline-flex items-center gap-2.5 whitespace-nowrap px-3 py-0.5 rounded-full bg-gradient-to-r from-red-600/30 via-amber-500/25 to-red-600/30 border border-amber-400/70 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
+              >
+                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400 text-black tracking-wider">
+                  <AlertTriangle className="w-2.5 h-2.5" />
+                  {item.tag}
+                </span>
+                <span className="text-amber-100 font-extrabold text-[11.5px] tracking-wide">
+                  {item.text}
+                </span>
+                {item.date && (
+                  <span className="text-[10px] font-mono font-bold text-amber-300/90">
+                    ({item.date})
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div key={idx} className="inline-flex items-center gap-2 whitespace-nowrap">
+                <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${item.color}`}>
+                  {item.tag}
+                </span>
+                <span className="text-gray-300 font-medium text-[11px]">{item.text}</span>
+                {item.date && (
+                  <span className="text-[10px] font-mono text-gray-400">({item.date})</span>
+                )}
+                <span className="text-white/15 ml-4">•</span>
+              </div>
+            )
+          )}
         </div>
       </div>
 
@@ -286,11 +376,11 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         </button>
       )}
 
-      {/* Botón discreto para cerrar */}
+      {/* Botón discreto para cerrar después de leerlo */}
       <button
         type="button"
-        onClick={() => setVisible(false)}
-        title="Ocultar cintillo de novedades"
+        onClick={handleCloseTicker}
+        title="Ocultar cintillo después de leer"
         className="p-1 rounded-md text-gray-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
       >
         <X className="w-3.5 h-3.5" />
