@@ -1,9 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Flame, Pin, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  AlertTriangle,
+  Flame,
+  Pin,
+  Info,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Megaphone,
+} from 'lucide-react';
 import { wipEngineService } from '../services/wipEngineService';
 import { useUrgentAnnouncement, AnnouncementPriority } from '../hooks/useUrgentAnnouncement';
 
-const DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY = 'boombah_dismissed_toolbar_announcement_v2';
+const DISMISSED_TOOLBAR_ANNOUNCEMENT_KEY = 'boombah_dismissed_toolbar_announcement_v3';
 
 const PRIORITY_BADGE_CONFIG: Record<
   AnnouncementPriority,
@@ -31,6 +40,19 @@ const PRIORITY_BADGE_CONFIG: Record<
     badgeClass: 'bg-[#00f2fe] text-[#0b0e14]',
     textClass: 'text-cyan-100',
   },
+  AVISO: {
+    containerClass:
+      'bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-600/30 border-emerald-400/80 shadow-[0_0_15px_rgba(16,185,129,0.25)]',
+    badgeClass: 'bg-emerald-400 text-[#0b0e14]',
+    textClass: 'text-emerald-100',
+  },
+};
+
+const PriorityIcon: React.FC<{ priority: AnnouncementPriority }> = ({ priority }) => {
+  if (priority === 'URGENTE') return <AlertTriangle className="w-3 h-3" />;
+  if (priority === 'PRIORIDAD') return <Flame className="w-3 h-3" />;
+  if (priority === 'NO OLVIDAR') return <Pin className="w-3 h-3" />;
+  return <Info className="w-3 h-3" />;
 };
 
 export const ProductionControlToolbar: React.FC = () => {
@@ -38,8 +60,13 @@ export const ProductionControlToolbar: React.FC = () => {
   const { announcement } = useUrgentAnnouncement();
   const [isBannerVisible, setIsBannerVisible] = useState<boolean>(true);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [isMarqueePaused, setIsMarqueePaused] = useState<boolean>(false);
+
+  const marqueeContainerRef = useRef<HTMLDivElement | null>(null);
+  const marqueeTrackRef = useRef<HTMLDivElement | null>(null);
 
   const items = announcement?.items || [];
+  const displayMode = announcement?.displayMode || 'rotativo';
   const hasActiveAnnouncement = items.length > 0;
   const listSignature = items.map((it) => `${it.id}:${it.message}`).join('|');
 
@@ -58,14 +85,53 @@ export const ProductionControlToolbar: React.FC = () => {
     }
   }, [hasActiveAnnouncement, listSignature]);
 
-  // Rotar automáticamente cada 5 segundos cuando hay más de 1 aviso activo
+  // Rotar automáticamente cada 5 segundos cuando hay más de 1 aviso activo en modo 'rotativo'
   useEffect(() => {
-    if (!hasActiveAnnouncement || !isBannerVisible || items.length <= 1) return;
+    if (
+      displayMode !== 'rotativo' ||
+      !hasActiveAnnouncement ||
+      !isBannerVisible ||
+      items.length <= 1
+    ) {
+      return;
+    }
     const timer = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % items.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, [hasActiveAnnouncement, isBannerVisible, items.length]);
+  }, [displayMode, hasActiveAnnouncement, isBannerVisible, items.length]);
+
+  // Desplazamiento continuo suave en modo 'cintillo'
+  useEffect(() => {
+    if (displayMode !== 'cintillo' || !hasActiveAnnouncement || !isBannerVisible) return;
+
+    let animId: number;
+    let lastTime = performance.now();
+    const speedPxPerSec = 45;
+
+    const step = (now: number) => {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      const container = marqueeContainerRef.current;
+      const track = marqueeTrackRef.current;
+
+      if (container && track && !isMarqueePaused) {
+        const halfWidth = track.scrollWidth / 2;
+        if (halfWidth > 0) {
+          container.scrollLeft += speedPxPerSec * dt;
+          if (container.scrollLeft >= halfWidth) {
+            container.scrollLeft -= halfWidth;
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(step);
+    };
+
+    animId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animId);
+  }, [displayMode, hasActiveAnnouncement, isBannerVisible, isMarqueePaused, items]);
 
   const handleDismissAnnouncement = () => {
     if (hasActiveAnnouncement) {
@@ -149,70 +215,118 @@ export const ProductionControlToolbar: React.FC = () => {
         </button>
       </div>
 
-      {/* Centro: Espacio dedicado para uno o múltiples Avisos en Tiempo Real */}
+      {/* Centro: Tarjeta Rotativa OR Cintillo Deslizante Continuo */}
       {hasActiveAnnouncement && isBannerVisible && activeItem && (
-        <div
-          className={`flex-1 min-w-[260px] max-w-3xl mx-auto px-3 py-1.5 rounded-lg border flex items-center justify-between gap-2 transition-all ${badgeConfig.containerClass}`}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <span
-              className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider shrink-0 ${badgeConfig.badgeClass}`}
-            >
-              {priorityKey === 'URGENTE' && <AlertTriangle className="w-3 h-3" />}
-              {priorityKey === 'PRIORIDAD' && <Flame className="w-3 h-3" />}
-              {priorityKey === 'NO OLVIDAR' && <Pin className="w-3 h-3" />}
-              {priorityKey}
+        displayMode === 'cintillo' ? (
+          <div className="flex-1 min-w-[260px] max-w-3xl mx-auto px-2.5 py-1 rounded-lg bg-[#12161f] border border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.18)] flex items-center gap-2 overflow-hidden">
+            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-400 text-black tracking-wider shrink-0">
+              <Megaphone className="w-3 h-3" />
+              COMUNICADOS ({items.length})
             </span>
 
-            <span
-              title={activeItem.message}
-              className={`font-extrabold text-xs tracking-wide truncate ${badgeConfig.textClass}`}
+            <div
+              ref={marqueeContainerRef}
+              onMouseEnter={() => setIsMarqueePaused(true)}
+              onMouseLeave={() => setIsMarqueePaused(false)}
+              className="relative flex-1 overflow-x-hidden select-none"
             >
-              {activeItem.message}
-            </span>
-
-            {activeItem.updatedBy && (
-              <span className="hidden xl:inline text-[10px] font-mono text-white/75 shrink-0">
-                ({activeItem.updatedBy})
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            {items.length > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length)}
-                  title="Aviso anterior"
-                  className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-[10px] font-mono font-bold text-white/80 px-1">
-                  {safeIndex + 1}/{items.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentIndex((prev) => (prev + 1) % items.length)}
-                  title="Siguiente aviso"
-                  className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
+              <div ref={marqueeTrackRef} className="flex w-max items-center gap-6">
+                {[...items, ...items].map((it, idx) => {
+                  const cfg = PRIORITY_BADGE_CONFIG[it.priority] || PRIORITY_BADGE_CONFIG.URGENTE;
+                  return (
+                    <div key={`${it.id}_${idx}`} className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${cfg.badgeClass}`}
+                      >
+                        <PriorityIcon priority={it.priority} />
+                        {it.priority}
+                      </span>
+                      <span className={`font-extrabold text-xs tracking-wide ${cfg.textClass}`}>
+                        {it.message}
+                      </span>
+                      {it.updatedBy && (
+                        <span className="text-[10px] font-mono text-white/65">
+                          ({it.updatedBy})
+                        </span>
+                      )}
+                      <span className="text-white/20 ml-2">•</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             <button
               type="button"
               onClick={handleDismissAnnouncement}
-              title="Cerrar aviso después de leer"
-              className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer ml-1"
+              title="Cerrar cintillo después de leer"
+              className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
+        ) : (
+          <div
+            className={`flex-1 min-w-[260px] max-w-3xl mx-auto px-3 py-1.5 rounded-lg border flex items-center justify-between gap-2 transition-all ${badgeConfig.containerClass}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider shrink-0 ${badgeConfig.badgeClass}`}
+              >
+                <PriorityIcon priority={priorityKey} />
+                {priorityKey}
+              </span>
+
+              <span
+                title={activeItem.message}
+                className={`font-extrabold text-xs tracking-wide truncate ${badgeConfig.textClass}`}
+              >
+                {activeItem.message}
+              </span>
+
+              {activeItem.updatedBy && (
+                <span className="hidden xl:inline text-[10px] font-mono text-white/75 shrink-0">
+                  ({activeItem.updatedBy})
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {items.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length)}
+                    title="Aviso anterior"
+                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] font-mono font-bold text-white/80 px-1">
+                    {safeIndex + 1}/{items.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex((prev) => (prev + 1) % items.length)}
+                    title="Siguiente aviso"
+                    className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={handleDismissAnnouncement}
+                title="Cerrar aviso después de leer"
+                className="p-0.5 rounded text-white/70 hover:text-white hover:bg-white/15 transition-colors cursor-pointer ml-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )
       )}
 
       {/* Grupo Derecho: Borrar Contratos Cerrados */}
