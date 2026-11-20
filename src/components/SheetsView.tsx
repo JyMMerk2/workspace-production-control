@@ -35,25 +35,25 @@ const PRIORITY_BADGE_CONFIG: Record<
 > = {
   URGENTE: {
     containerClass:
-      'bg-gradient-to-r from-red-600/30 via-red-500/20 to-red-600/30 border-red-400/80 shadow-[0_0_15px_rgba(239,68,68,0.3)]',
-    badgeClass: 'bg-red-500 text-white animate-pulse',
+      'bg-gradient-to-r from-red-600/30 via-red-500/20 to-red-600/30 border-red-400/80 shadow-[0_0_12px_rgba(239,68,68,0.25)]',
+    badgeClass: 'bg-red-500 text-white',
     textClass: 'text-red-100',
   },
   PRIORIDAD: {
     containerClass:
-      'bg-gradient-to-r from-amber-600/30 via-amber-500/20 to-amber-600/30 border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.28)]',
+      'bg-gradient-to-r from-amber-600/30 via-amber-500/20 to-amber-600/30 border-amber-400/80 shadow-[0_0_12px_rgba(245,158,11,0.25)]',
     badgeClass: 'bg-amber-400 text-black',
     textClass: 'text-amber-100',
   },
   'NO OLVIDAR': {
     containerClass:
-      'bg-gradient-to-r from-cyan-600/30 via-sky-500/20 to-cyan-600/30 border-[#00f2fe]/80 shadow-[0_0_15px_rgba(0,242,254,0.25)]',
+      'bg-gradient-to-r from-cyan-600/30 via-sky-500/20 to-cyan-600/30 border-[#00f2fe]/80 shadow-[0_0_12px_rgba(0,242,254,0.22)]',
     badgeClass: 'bg-[#00f2fe] text-[#0b0e14]',
     textClass: 'text-cyan-100',
   },
   AVISO: {
     containerClass:
-      'bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-600/30 border-emerald-400/80 shadow-[0_0_15px_rgba(16,185,129,0.25)]',
+      'bg-gradient-to-r from-emerald-600/30 via-emerald-500/20 to-emerald-600/30 border-emerald-400/80 shadow-[0_0_12px_rgba(16,185,129,0.22)]',
     badgeClass: 'bg-emerald-400 text-[#0b0e14]',
     textClass: 'text-emerald-100',
   },
@@ -191,14 +191,14 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
       Garantiza que la vista ocupe toda la pantalla pero inicie justo debajo del Header (top-16)
     */
     <div
-      className={`space-y-3 flex flex-col transition-all duration-300 ${
+      className={`space-y-3 flex flex-col ${
         isFullscreen
           ? 'fixed inset-x-0 bottom-0 top-16 z-30 bg-[#0b0e14] p-3'
           : 'h-[calc(100vh-110px)] relative'
       }`}
     >
       {/* Subtab Pill Navigation Bar */}
-      <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl p-2.5 shadow-md flex flex-wrap items-center justify-between gap-3 shrink-0 no-print">
+      <div className="bg-[#12161f] border border-[#00f2fe]/20 rounded-xl px-2.5 py-2 min-h-[48px] shadow-md flex flex-wrap items-center justify-between gap-2.5 shrink-0 no-print">
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <span className="text-xs font-bold text-[#00f2fe] uppercase tracking-wider flex items-center gap-1.5 mr-2">
             <FileSpreadsheet className="w-4 h-4" />
@@ -211,7 +211,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
               <button
                 key={sub.gid}
                 onClick={() => onSelectSubTab(sub.gid, sub.nombre)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                   isSelected
                     ? 'bg-[#00f2fe] text-[#0b0e14] shadow-[0_0_10px_rgba(0,242,254,0.5)]'
                     : 'bg-[#0d1017] text-[#8f9ba8] hover:text-white hover:bg-white/5 border border-white/5'
@@ -226,7 +226,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
         {/* Centro: Avisos Globales cuando el Google Sheet está en Pantalla Completa */}
         {isFullscreen && hasActiveAnnouncement && isBannerVisible && activeItem && (
           displayMode === 'cintillo' ? (
-            <div className="flex-1 min-w-[240px] max-w-2xl mx-auto px-2.5 py-1 rounded-lg bg-[#0d1017] border border-amber-400/50 shadow-[0_0_15px_rgba(245,158,11,0.18)] flex items-center gap-2 overflow-hidden">
+            <div className="flex-1 basis-[260px] max-w-2xl h-[32px] px-2.5 rounded-lg bg-[#0d1017] border border-amber-400/50 flex items-center gap-2 overflow-hidden">
               <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-400 text-black tracking-wider shrink-0">
                 <Megaphone className="w-3 h-3" />
                 COMUNICADOS ({items.length})
@@ -275,11 +275,11 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
             </div>
           ) : (
             <div
-              className={`flex-1 min-w-[240px] max-w-2xl mx-auto px-3 py-1 rounded-lg border flex items-center justify-between gap-2 transition-all ${badgeConfig.containerClass}`}
+              className={`flex-1 basis-[260px] max-w-2xl h-[32px] px-3 rounded-lg border flex items-center justify-between gap-2 transition-colors duration-300 overflow-hidden ${badgeConfig.containerClass}`}
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 <span
-                  className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider shrink-0 ${badgeConfig.badgeClass}`}
+                  className={`inline-flex items-center justify-center gap-1 min-w-[86px] text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wider shrink-0 transition-colors duration-300 ${badgeConfig.badgeClass}`}
                 >
                   <PriorityIcon priority={priorityKey} />
                   {priorityKey}
@@ -287,7 +287,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
 
                 <span
                   title={activeItem.message}
-                  className={`font-extrabold text-xs tracking-wide truncate ${badgeConfig.textClass}`}
+                  className={`font-extrabold text-xs tracking-wide truncate transition-colors duration-300 ${badgeConfig.textClass}`}
                 >
                   {activeItem.message}
                 </span>
@@ -306,18 +306,18 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
                       type="button"
                       onClick={() => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length)}
                       title="Aviso anterior"
-                      className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                      className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-[10px] font-mono font-bold text-white/80 px-1">
+                    <span className="text-[10px] font-mono font-bold text-white/80 px-1 min-w-[26px] text-center">
                       {safeIndex + 1}/{items.length}
                     </span>
                     <button
                       type="button"
                       onClick={() => setCurrentIndex((prev) => (prev + 1) % items.length)}
                       title="Siguiente aviso"
-                      className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 cursor-pointer"
+                      className="p-0.5 rounded text-white/75 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
                     >
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -341,7 +341,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleRefreshIframe}
-            className="p-1.5 rounded-lg bg-[#0d1017] border border-white/10 text-[#8f9ba8] hover:text-[#00f2fe] hover:border-[#00f2fe]/40 transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[#0d1017] border border-white/10 text-[#8f9ba8] hover:text-[#00f2fe] hover:border-[#00f2fe]/40 transition-colors cursor-pointer"
             title="Recargar hoja"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-[#00f2fe]' : ''}`} />
@@ -351,7 +351,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
             href={directUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00f2fe]/10 border border-[#00f2fe]/40 text-[#00f2fe] text-xs font-bold hover:bg-[#00f2fe] hover:text-[#0b0e14] transition-colors cursor-pointer"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Abrir en Google Sheets</span>
@@ -359,7 +359,7 @@ export const SheetsView: React.FC<SheetsViewProps> = ({
 
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1.5 rounded-lg bg-[#0d1017] border border-white/10 text-[#8f9ba8] hover:text-white transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[#0d1017] border border-white/10 text-[#8f9ba8] hover:text-white transition-colors cursor-pointer"
             title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
