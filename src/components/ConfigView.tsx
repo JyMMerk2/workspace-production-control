@@ -9,20 +9,55 @@ import {
   AlertTriangle,
   Send,
   Trash2,
+  Flame,
+  Pin,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { useUrgentAnnouncement } from '../hooks/useUrgentAnnouncement';
+import { supabase } from '../data/supabaseClient';
+import { useUrgentAnnouncement, AnnouncementPriority } from '../hooks/useUrgentAnnouncement';
 
 interface ConfigViewProps {
   authenticatedUser: string;
 }
 
-const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const PRIORITY_STYLES: Record<
+  AnnouncementPriority,
+  {
+    label: string;
+    badgeClass: string;
+    pillClass: string;
+    textClass: string;
+    btnActiveClass: string;
+  }
+> = {
+  URGENTE: {
+    label: 'URGENTE',
+    badgeClass: 'bg-red-500 text-white',
+    pillClass:
+      'bg-gradient-to-r from-red-600/35 via-red-500/25 to-red-600/35 border-red-400/80 shadow-[0_0_14px_rgba(239,68,68,0.35)]',
+    textClass: 'text-red-100',
+    btnActiveClass: 'bg-red-500 text-white border-red-400 shadow-[0_0_12px_rgba(239,68,68,0.45)]',
+  },
+  PRIORIDAD: {
+    label: 'PRIORIDAD',
+    badgeClass: 'bg-amber-400 text-black',
+    pillClass:
+      'bg-gradient-to-r from-amber-600/35 via-amber-500/25 to-amber-600/35 border-amber-400/80 shadow-[0_0_14px_rgba(245,158,11,0.35)]',
+    textClass: 'text-amber-100',
+    btnActiveClass: 'bg-amber-400 text-black border-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.45)]',
+  },
+  'NO OLVIDAR': {
+    label: 'NO OLVIDAR',
+    badgeClass: 'bg-[#00f2fe] text-[#0b0e14]',
+    pillClass:
+      'bg-gradient-to-r from-cyan-600/35 via-sky-500/25 to-cyan-600/35 border-[#00f2fe]/80 shadow-[0_0_14px_rgba(0,242,254,0.3)]',
+    textClass: 'text-cyan-100',
+    btnActiveClass: 'bg-[#00f2fe] text-[#0b0e14] border-[#00f2fe] shadow-[0_0_12px_rgba(0,242,254,0.45)]',
+  },
+};
 
 export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => {
+  const safeUser = authenticatedUser || 'ADMIN';
+
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
@@ -32,16 +67,20 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Estado del Comunicado Urgente Global en Cintillo
+  // Estado del Comunicado Global en Barra de Control de Producción
   const { announcement, saveAnnouncement, isSaving } = useUrgentAnnouncement();
-  const [urgentText, setUrgentText] = useState(announcement.message || '');
-  const [urgentActive, setUrgentActive] = useState(announcement.active || false);
+  const [urgentText, setUrgentText] = useState<string>(announcement?.message ?? '');
+  const [urgentPriority, setUrgentPriority] = useState<AnnouncementPriority>(
+    announcement?.priority ?? 'URGENTE'
+  );
+  const [urgentActive, setUrgentActive] = useState<boolean>(Boolean(announcement?.active));
   const [urgentFeedback, setUrgentFeedback] = useState<string>('');
 
   useEffect(() => {
-    setUrgentText(announcement.message || '');
-    setUrgentActive(announcement.active || false);
-  }, [announcement.message, announcement.active]);
+    setUrgentText(announcement?.message ?? '');
+    setUrgentPriority(announcement?.priority ?? 'URGENTE');
+    setUrgentActive(Boolean(announcement?.active));
+  }, [announcement?.message, announcement?.priority, announcement?.active]);
 
   const handlePublishUrgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,23 +88,25 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
 
     const clean = urgentText.trim();
     if (!clean) {
-      await saveAnnouncement('', false, authenticatedUser);
+      await saveAnnouncement('', false, safeUser, urgentPriority);
       setUrgentActive(false);
-      setUrgentFeedback('Aviso retirado del cintillo.');
+      setUrgentFeedback('Aviso retirado de la barra de Control de Producción.');
       return;
     }
 
-    await saveAnnouncement(clean, true, authenticatedUser);
+    await saveAnnouncement(clean, true, safeUser, urgentPriority);
     setUrgentActive(true);
-    setUrgentFeedback('¡Aviso urgente publicado! Se mostrará resaltado y reabrirá el cintillo a todos los usuarios.');
+    setUrgentFeedback(
+      `¡Aviso [${urgentPriority}] publicado! Ya aparece en la barra de Control de Producción para todos los usuarios.`
+    );
   };
 
   const handleClearUrgent = async () => {
     setUrgentFeedback('');
     setUrgentText('');
     setUrgentActive(false);
-    await saveAnnouncement('', false, authenticatedUser);
-    setUrgentFeedback('Aviso urgente desactivado.');
+    await saveAnnouncement('', false, safeUser, urgentPriority);
+    setUrgentFeedback('Aviso desactivado.');
   };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -91,16 +132,16 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
 
     // Validar credenciales maestras locales
     const isLocalMaster =
-      (authenticatedUser.toLowerCase() === 'jmercado' && oldPass === 'jymmerk2') ||
-      (authenticatedUser.toLowerCase() === 'admin' && oldPass === 'adminjymmerk2') ||
-      (authenticatedUser.toLowerCase() === 'supervisor' && oldPass === 'boombah2026');
+      (safeUser.toLowerCase() === 'jmercado' && oldPass === 'jymmerk2') ||
+      (safeUser.toLowerCase() === 'admin' && oldPass === 'adminjymmerk2') ||
+      (safeUser.toLowerCase() === 'supervisor' && oldPass === 'boombah2026');
 
     try {
       // Buscar el usuario en Supabase
       const { data, error: selectError } = await supabase
         .from('app_users')
         .select('*')
-        .ilike('username', authenticatedUser);
+        .ilike('username', safeUser);
 
       if (selectError) {
         setIsSubmitting(false);
@@ -140,7 +181,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
           .from('app_users')
           .insert([
             {
-              username: authenticatedUser,
+              username: safeUser,
               password: newPass,
               status: 'APROBADO',
             },
@@ -161,7 +202,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
       setOldPass('');
       setNewPass('');
       setConfirmPass('');
-    } catch (err) {
+    } catch {
       setIsSubmitting(false);
       setStatusMsg({
         type: 'error',
@@ -169,6 +210,8 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
       });
     }
   };
+
+  const currentStyle = PRIORITY_STYLES[urgentPriority];
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -180,60 +223,99 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
         </div>
       </div>
 
-      {/* SECCIÓN DEDICADA: COMUNICADO URGENTE / AVISO IMPORTANTE EN CINTILLO */}
+      {/* SECCIÓN DEDICADA: AVISO GLOBAL EN BARRA DE CONTROL DE PRODUCCIÓN */}
       <div className="bg-[#12161f] border border-amber-500/40 rounded-xl p-6 shadow-[0_0_25px_rgba(245,158,11,0.12)]">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-amber-400">
             <Megaphone className="w-4 h-4" />
-            <span>📢 Comunicado Urgente / Aviso Importante en Cintillo</span>
+            <span>📢 Aviso Global en Barra de Control de Producción</span>
           </div>
 
           <span
             className={`text-[10px] font-mono font-black uppercase px-2.5 py-0.5 rounded-full border ${
               urgentActive && urgentText.trim()
-                ? 'bg-amber-500/20 text-amber-300 border-amber-400/60'
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/60'
                 : 'bg-white/5 text-gray-400 border-white/10'
             }`}
           >
-            {urgentActive && urgentText.trim() ? '● Activo en Pantalla' : '○ Inactivo'}
+            {urgentActive && urgentText.trim() ? `● Activo (${urgentPriority})` : '○ Inactivo'}
           </span>
         </div>
 
         <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-          Escribe aquí cualquier mensaje urgente o instrucción crítica para el equipo. Al publicarlo,{' '}
-          <strong className="text-amber-300">reabrirá automáticamente el cintillo superior</strong> a todos los usuarios (incluso si lo tenían cerrado) y aparecerá resaltado con prioridad máxima.
+          El mensaje publicado aparecerá directamente en la barra de{' '}
+          <strong className="text-white">Control de Producción</strong> (entre{' '}
+          <span className="text-[#00f2fe]">Limpiar Completas FD</span> y{' '}
+          <span className="text-red-400">Borrar Contratos Cerrados</span>), sin mezclarse con las novedades técnicas.
         </p>
 
         <form onSubmit={handlePublishUrgent} className="space-y-4">
+          {/* Selector de Estado antes de publicar */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-2">
+              1. Selecciona el Estado / Nivel del Aviso
+            </label>
+            <div className="grid grid-cols-3 gap-2.5">
+              {(['URGENTE', 'PRIORIDAD', 'NO OLVIDAR'] as AnnouncementPriority[]).map((level) => {
+                const isSelected = urgentPriority === level;
+                const style = PRIORITY_STYLES[level];
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setUrgentPriority(level)}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                      isSelected
+                        ? style.btnActiveClass
+                        : 'bg-[#0d1017] text-gray-400 border-white/10 hover:text-white hover:border-white/30'
+                    }`}
+                  >
+                    {level === 'URGENTE' && <AlertTriangle className="w-3.5 h-3.5" />}
+                    {level === 'PRIORIDAD' && <Flame className="w-3.5 h-3.5" />}
+                    {level === 'NO OLVIDAR' && <Pin className="w-3.5 h-3.5" />}
+                    <span>{level}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Campo de texto del aviso */}
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-[#8f9ba8] mb-1.5">
-              Mensaje del Comunicado Urgente
+              2. Escribe el Mensaje para el Equipo
             </label>
             <textarea
               rows={2}
               value={urgentText}
               onChange={(e) => setUrgentText(e.target.value)}
-              placeholder="Ej: ATENCIÓN: Priorizar cierre de órdenes del contenedor antes de las 3:00 PM..."
-              className="w-full px-3.5 py-2.5 bg-[#0d1017] border border-amber-500/30 rounded-lg text-white text-xs font-medium focus:outline-none focus:border-amber-400 placeholder:text-gray-600"
+              placeholder="Ej: Priorizar cierre de órdenes del contenedor antes de las 3:00 PM..."
+              className="w-full px-3.5 py-2.5 bg-[#0d1017] border border-white/15 rounded-lg text-white text-xs font-medium focus:outline-none focus:border-[#00f2fe] placeholder:text-gray-600"
             />
           </div>
 
-          {/* Vista previa en vivo de cómo se verá en el cintillo */}
+          {/* Vista previa en vivo */}
           {urgentText.trim() && (
             <div className="p-2.5 rounded-lg bg-[#0d1017] border border-white/10">
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
-                Vista previa en cintillo:
+                Vista previa en barra de producción:
               </div>
-              <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-full bg-gradient-to-r from-red-600/30 via-amber-500/25 to-red-600/30 border border-amber-400/70 shadow-[0_0_12px_rgba(245,158,11,0.25)] max-w-full overflow-hidden">
-                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400 text-black tracking-wider shrink-0">
-                  <AlertTriangle className="w-2.5 h-2.5" />
-                  AVISO IMPORTANTE
+              <div
+                className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg border max-w-full overflow-hidden ${currentStyle.pillClass}`}
+              >
+                <span
+                  className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider shrink-0 ${currentStyle.badgeClass}`}
+                >
+                  {urgentPriority === 'URGENTE' && <AlertTriangle className="w-2.5 h-2.5" />}
+                  {urgentPriority === 'PRIORIDAD' && <Flame className="w-2.5 h-2.5" />}
+                  {urgentPriority === 'NO OLVIDAR' && <Pin className="w-2.5 h-2.5" />}
+                  {urgentPriority}
                 </span>
-                <span className="text-amber-100 font-extrabold text-[11.5px] tracking-wide truncate">
+                <span className={`font-extrabold text-[11.5px] tracking-wide truncate ${currentStyle.textClass}`}>
                   {urgentText.trim()}
                 </span>
-                <span className="text-[10px] font-mono font-bold text-amber-300/90 shrink-0">
-                  (Por: {authenticatedUser})
+                <span className="text-[10px] font-mono text-white/70 shrink-0">
+                  ({safeUser})
                 </span>
               </div>
             </div>
@@ -246,7 +328,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 text-[#0b0e14] text-xs font-black uppercase tracking-wider hover:brightness-110 transition-all cursor-pointer shadow-[0_0_14px_rgba(245,158,11,0.35)] disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{isSaving ? 'Publicando...' : 'Publicar Aviso Urgente'}</span>
+              <span>{isSaving ? 'Publicando...' : `Publicar como ${urgentPriority}`}</span>
             </button>
 
             {(urgentActive || urgentText.trim()) && (
@@ -263,7 +345,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
           </div>
 
           {urgentFeedback && (
-            <div className="p-3 rounded-lg text-xs font-bold flex items-center gap-2 bg-amber-500/10 border border-amber-400/35 text-amber-300">
+            <div className="p-3 rounded-lg text-xs font-bold flex items-center gap-2 bg-emerald-500/10 border border-emerald-400/35 text-emerald-300">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{urgentFeedback}</span>
             </div>
@@ -357,7 +439,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ authenticatedUser }) => 
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between p-2.5 bg-[#0d1017] rounded-lg border border-white/5">
                 <span className="text-gray-400 font-bold">Usuario Activo:</span>
-                <span className="text-[#00f2fe] font-mono font-bold">{authenticatedUser}</span>
+                <span className="text-[#00f2fe] font-mono font-bold">{safeUser}</span>
               </div>
 
               <div className="flex items-center justify-between p-2.5 bg-[#0d1017] rounded-lg border border-white/5">
