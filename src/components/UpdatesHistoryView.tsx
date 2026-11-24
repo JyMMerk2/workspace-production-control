@@ -252,22 +252,26 @@ function mergePermanentUpdates(existing: UpdateEntry[], incoming: UpdateEntry[])
 // Convierte enlaces de Google Drive / Google Vids / YouTube en URL embebible
 function resolveEmbedMedia(rawUrl: string, explicitType?: 'image' | 'video') {
   const url = rawUrl.trim();
-  const isGoogleDriveOrVids =
-    url.includes('docs.google.com/videos') || url.includes('drive.google.com/file');
 
-  if (isGoogleDriveOrVids) {
-    const previewUrl = url.replace(/\/(play|view|edit)(\?.*)?$/, '/preview');
-    return { kind: 'iframe' as const, src: previewUrl };
+  // Extraer el ID de archivo de Google Vids (docs.google.com/videos/d/ID/...) o Google Drive (drive.google.com/file/d/ID/...)
+  const googleIdMatch = url.match(
+    /(?:docs\.google\.com\/videos\/d\/|drive\.google\.com\/file\/d\/)([a-zA-Z0-9_-]+)/
+  );
+
+  if (googleIdMatch && googleIdMatch[1]) {
+    const fileId = googleIdMatch[1];
+    return {
+      kind: 'iframe' as const,
+      src: `https://drive.google.com/file/d/${fileId}/preview`,
+      originalUrl: url,
+    };
   }
 
-  if (
-    explicitType === 'video' ||
-    /\.(mp4|webm|ogg)(\?.*)?$/i.test(url)
-  ) {
-    return { kind: 'video' as const, src: url };
+  if (explicitType === 'video' || /\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) {
+    return { kind: 'video' as const, src: url, originalUrl: url };
   }
 
-  return { kind: 'image' as const, src: url };
+  return { kind: 'image' as const, src: url, originalUrl: url };
 }
 
 // Mockups interactivos fieles a la UI real de Boombah Workspace
@@ -922,13 +926,24 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
             <div className="w-full h-[310px] md:h-[360px] rounded-2xl bg-[#0d1017] border border-white/10 p-3 shadow-2xl overflow-hidden flex items-center justify-center">
               {resolvedMedia ? (
                 resolvedMedia.kind === 'iframe' ? (
-                  <iframe
-                    src={resolvedMedia.src}
-                    className="w-full h-full rounded-xl border-0 bg-black"
-                    allow="autoplay; fullscreen"
-                    allowFullScreen
-                    title={currentShowcase.title}
-                  />
+                  <div className="relative w-full h-full">
+                    <iframe
+                      src={resolvedMedia.src}
+                      className="w-full h-full rounded-xl border-0 bg-black"
+                      allow="autoplay; fullscreen"
+                      allowFullScreen
+                      title={currentShowcase.title}
+                    />
+                    <a
+                      href={resolvedMedia.originalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir video en pestaña completa"
+                      className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-black/75 hover:bg-[#00f2fe] text-white hover:text-[#0b0e14] border border-white/20 text-[10px] font-black uppercase tracking-wider transition-colors"
+                    >
+                      Abrir video ↗
+                    </a>
+                  </div>
                 ) : resolvedMedia.kind === 'video' ? (
                   <video
                     src={resolvedMedia.src}
