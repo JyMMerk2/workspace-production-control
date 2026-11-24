@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   BarChart3,
   Users,
@@ -58,6 +58,8 @@ const CSV_URL =
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
 const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
 const KNOWN_OPERATORS_CACHE_KEY = 'nave6_known_operators_v1';
+const LOTES_CACHE_KEY = 'nave6_lotes_activos_cache_v1';
+const BROADCAST_CHANNEL_NAME = 'nave6_realtime_sync_channel';
 
 // Inicio oficial de la temporada de inventario: 13 de noviembre de 2026
 const SEASON_START_TIMESTAMP = new Date('2026-11-13T00:00:00').getTime();
@@ -164,7 +166,18 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     return [];
   });
 
-  const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>([]);
+  const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOTES_CACHE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // Ignorar
+    }
+    return [];
+  });
 
   const [sheetStats, setSheetStats] = useState<SheetSummaryStats>({
     totalItems: 0,
@@ -180,6 +193,12 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('ALL');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const itemInfoByRowRef = useRef<
+    Map<number, { codigo: string; item: string; ubicacion: string; cantidad: number }>
+  >(new Map());
+  const isFastSyncingRef = useRef(false);
+  const isSheetSyncingRef = useRef(false);
 
   const persistKnownOperators = useCallback(async (operatorsList: string[]) => {
     const uniqueSorted = Array.from(
@@ -209,141 +228,108 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     }
   }, []);
 
-  const loadAllKpiData = useCallback(
-    async (silent = false) => {
-      if (!silent) setLoading(true);
+  // SINCRONIZACIÓN RÁPIDA EN VIVO (Lotes activos + Bitácora Supabase + Caché local) -> < 1s
+  const syncRealtimeActivityAndLotes = useCallback(async () => {
+    if (isFastSyncingRef.current) return;
+    isFastSyncingRef.current = true;
 
+    try {
+      const discoveredOperators = new Set<string>(knownOperators);
+      if (authenticatedUser) {
+        discoveredOperators.add(normalizeOperatorName(authenticatedUser));
+      }
+
+      // Leer caché local instantánea primero
+      let localLotes: LoteActivo[] = [];
       try {
-        const discoveredOperators = new Set<string>(knownOperators);
-        if (authenticatedUser) {
-          discoveredOperators.add(normalizeOperatorName(authenticatedUser));
-        }
-
-        // 1. Consultar lotes activos en vivo en Apps Script (equipo trabajando ahora mismo)
-        try {
-          const lotesRes = await fetchGAS({ action: 'GET_LOTES' });
-          if (lotesRes && lotesRes.success && Array.isArray(lotesRes.lotes)) {
-            setLotesActivos(lotesRes.lotes);
-            for (const l of lotesRes.lotes) {
+        const cachedLotes = localStorage.getItem(LOTES_CACHE_KEY);
+        if (cachedLotes) {
+          const parsed = JSON.parse(cachedLotes);
+          if (Array.isArray(parsed)) {
+            localLotes = parsed;
+            setLotesActivos(parsed);
+            parsed.forEach((l) => {
               if (l?.usuario) discoveredOperators.add(normalizeOperatorName(l.usuario));
-            }
+            });
           }
-        } catch {
-          // Silencioso
         }
+      } catch {
+        // Ignorar
+      }
 
-        // 2. Leer totales reales actuales desde PROGRESO (Google Sheets CSV)
-        const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
-        const csvText = await res.text();
-        const allRows = parseCSVExact(csvText);
+      // Consultar en paralelo Apps Script (lotes en vivo) + Supabase (eventos y operadores)
+      const [lotesRes, supabaseRes] = await Promise.all([
+        fetchGAS({ action: 'GET_LOTES' }).catch(() => null),
+        supabase
+          ? Promise.all([
+              supabase
+                .from('boombah_announcements')
+                .select('message')
+                .eq('id', 'global_nave6_season_activity')
+                .maybeSingle(),
+              supabase
+                .from('boombah_announcements')
+                .select('message')
+                .eq('id', 'global_nave6_digitado_meta')
+                .maybeSingle(),
+              supabase
+                .from('boombah_announcements')
+                .select('message')
+                .eq('id', 'global_nave6_season_operators')
+                .maybeSingle(),
+            ]).catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
-        let totalItems = 0;
-        let validados = 0;
-        let cerrados = 0;
-        let digitados = 0;
-        let pendientes = 0;
-        let unidadesTotales = 0;
-
-        const itemInfoByRow = new Map<
-          number,
-          { codigo: string; item: string; ubicacion: string; cantidad: number }
-        >();
-
-        for (let i = 3; i < allRows.length; i++) {
-          const cols = allRows[i];
-          if (!cols || cols.length < 3) continue;
-
-          const codigo = String(cols[1] || '').trim();
-          const itemDesc = String(cols[2] || '').trim();
-          if (!codigo && !itemDesc) continue;
-          if (codigo.toUpperCase() === 'COMENTARIO' || itemDesc.toUpperCase() === 'COMENTARIO') continue;
-
-          const rawA = (cols[0] || '').toUpperCase();
-          const rawI = (cols[8] || '').toUpperCase();
-          const rawO = (cols[14] || '').toUpperCase();
-
-          const isColA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
-          const isColI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
-          const isColO = rawO === 'TRUE' || rawO === 'VERDADERO' || rawO === 'OK' || rawO === '1';
-
-          const almacenE = parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0;
-          const salidaG = parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0;
-          const nave7N = parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0;
-          const newsoftK = parseFloat(cols[10]?.replace(/[^0-9.-]+/g, ''));
-          const finalNewsoft = !isNaN(newsoftK) ? newsoftK : almacenE - salidaG + nave7N;
-
-          totalItems++;
-          unidadesTotales += finalNewsoft;
-          if (isColA) validados++;
-          if (isColA && isColI) cerrados++;
-          if (isColO) digitados++;
-          if (!isColA && !isColI) pendientes++;
-
-          itemInfoByRow.set(i + 1, {
-            codigo,
-            item: itemDesc,
-            ubicacion: String(cols[7] || '-').trim(),
-            cantidad: finalNewsoft,
-          });
-        }
-
-        setSheetStats({
-          totalItems,
-          validados,
-          cerrados,
-          digitados,
-          pendientes,
-          unidadesTotales,
-        });
-
-        // 3. Leer bitácora de actividad de usuarios y operadores permanentes desde Supabase
-        const mergedMap = new Map<string, Nave6ActivityEvent>();
-
-        let localEvents: Nave6ActivityEvent[] = [];
+      if (lotesRes && lotesRes.success && Array.isArray(lotesRes.lotes)) {
+        setLotesActivos(lotesRes.lotes);
         try {
-          const saved = localStorage.getItem(ACTIVITY_LOG_CACHE_KEY);
-          if (saved) localEvents = JSON.parse(saved);
+          localStorage.setItem(LOTES_CACHE_KEY, JSON.stringify(lotesRes.lotes));
         } catch {
           // Ignorar
         }
-        for (const ev of localEvents) {
-          if (ev && ev.id && (ev.timestamp || 0) >= SEASON_START_TIMESTAMP) {
-            mergedMap.set(ev.id, ev);
-            discoveredOperators.add(normalizeOperatorName(ev.usuario));
+        for (const l of lotesRes.lotes) {
+          if (l?.usuario) discoveredOperators.add(normalizeOperatorName(l.usuario));
+        }
+      } else if (localLotes.length > 0) {
+        setLotesActivos(localLotes);
+      }
+
+      const mergedMap = new Map<string, Nave6ActivityEvent>();
+
+      try {
+        const saved = localStorage.getItem(ACTIVITY_LOG_CACHE_KEY);
+        if (saved) {
+          const localEvents = JSON.parse(saved);
+          if (Array.isArray(localEvents)) {
+            for (const ev of localEvents) {
+              if (ev && ev.id && (ev.timestamp || 0) >= SEASON_START_TIMESTAMP) {
+                mergedMap.set(ev.id, ev);
+                discoveredOperators.add(normalizeOperatorName(ev.usuario));
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignorar
+      }
+
+      if (supabaseRes) {
+        const [{ data }, { data: digData }, { data: opsData }] = supabaseRes;
+
+        if (opsData?.message) {
+          try {
+            const parsedOps = JSON.parse(opsData.message);
+            if (Array.isArray(parsedOps)) {
+              parsedOps.forEach((op) => discoveredOperators.add(normalizeOperatorName(op)));
+            }
+          } catch {
+            // Ignorar
           }
         }
 
-        if (supabase) {
-          const [{ data }, { data: digData }, { data: opsData }] = await Promise.all([
-            supabase
-              .from('boombah_announcements')
-              .select('message')
-              .eq('id', 'global_nave6_season_activity')
-              .maybeSingle(),
-            supabase
-              .from('boombah_announcements')
-              .select('message')
-              .eq('id', 'global_nave6_digitado_meta')
-              .maybeSingle(),
-            supabase
-              .from('boombah_announcements')
-              .select('message')
-              .eq('id', 'global_nave6_season_operators')
-              .maybeSingle(),
-          ]);
-
-          if (opsData?.message) {
-            try {
-              const parsedOps = JSON.parse(opsData.message);
-              if (Array.isArray(parsedOps)) {
-                parsedOps.forEach((op) => discoveredOperators.add(normalizeOperatorName(op)));
-              }
-            } catch {
-              // Ignorar
-            }
-          }
-
-          if (data?.message) {
+        if (data?.message) {
+          try {
             const parsed = JSON.parse(data.message);
             if (Array.isArray(parsed)) {
               for (const ev of parsed) {
@@ -353,9 +339,13 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 }
               }
             }
+          } catch {
+            // Ignorar
           }
+        }
 
-          if (digData?.message) {
+        if (digData?.message) {
+          try {
             const parsedDig = JSON.parse(digData.message);
             if (parsedDig && typeof parsedDig === 'object') {
               Object.entries(parsedDig).forEach(([key, meta]: [string, any]) => {
@@ -372,7 +362,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 );
                 if (!alreadyHas) {
                   const rowNum = parseInt(key.split('_')[0], 10);
-                  const rowInfo = itemInfoByRow.get(rowNum);
+                  const rowInfo = itemInfoByRowRef.current.get(rowNum);
                   mergedMap.set(synId, {
                     id: synId,
                     usuario: opNorm,
@@ -387,74 +377,231 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 }
               });
             }
-          }
-        } else {
-          try {
-            const savedDig = localStorage.getItem(DIGITADO_META_CACHE_KEY);
-            if (savedDig) {
-              const parsedDig = JSON.parse(savedDig);
-              Object.entries(parsedDig).forEach(([key, meta]: [string, any]) => {
-                if (!meta || (meta.timestamp || 0) < SEASON_START_TIMESTAMP) return;
-                const opNorm = normalizeOperatorName(meta.usuario || 'OPERADOR');
-                discoveredOperators.add(opNorm);
-
-                const synId = `dig_${key}_${meta.timestamp}`;
-                const rowNum = parseInt(key.split('_')[0], 10);
-                const rowInfo = itemInfoByRow.get(rowNum);
-                mergedMap.set(synId, {
-                  id: synId,
-                  usuario: opNorm,
-                  accion: 'DIGITADO',
-                  codigo: rowInfo?.codigo || key.split('_').slice(1).join('_'),
-                  item: rowInfo?.item || 'Artículo Inventario Nave 6',
-                  ubicacion: rowInfo?.ubicacion || '-',
-                  cantidad: rowInfo?.cantidad || 0,
-                  fecha: meta.fechaHora || 'Temporada Nov 2026',
-                  timestamp: meta.timestamp || Date.now(),
-                });
-              });
-            }
           } catch {
             // Ignorar
           }
         }
-
-        const sortedEvents = Array.from(mergedMap.values()).sort(
-          (a, b) => (b.timestamp || 0) - (a.timestamp || 0)
-        );
-        setEvents(sortedEvents);
+      } else {
         try {
-          localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(sortedEvents));
+          const savedDig = localStorage.getItem(DIGITADO_META_CACHE_KEY);
+          if (savedDig) {
+            const parsedDig = JSON.parse(savedDig);
+            Object.entries(parsedDig).forEach(([key, meta]: [string, any]) => {
+              if (!meta || (meta.timestamp || 0) < SEASON_START_TIMESTAMP) return;
+              const opNorm = normalizeOperatorName(meta.usuario || 'OPERADOR');
+              discoveredOperators.add(opNorm);
+
+              const synId = `dig_${key}_${meta.timestamp}`;
+              const rowNum = parseInt(key.split('_')[0], 10);
+              const rowInfo = itemInfoByRowRef.current.get(rowNum);
+              mergedMap.set(synId, {
+                id: synId,
+                usuario: opNorm,
+                accion: 'DIGITADO',
+                codigo: rowInfo?.codigo || key.split('_').slice(1).join('_'),
+                item: rowInfo?.item || 'Artículo Inventario Nave 6',
+                ubicacion: rowInfo?.ubicacion || '-',
+                cantidad: rowInfo?.cantidad || 0,
+                fecha: meta.fechaHora || 'Temporada Nov 2026',
+                timestamp: meta.timestamp || Date.now(),
+              });
+            });
+          }
         } catch {
           // Ignorar
         }
-
-        if (discoveredOperators.size > knownOperators.length) {
-          persistKnownOperators(Array.from(discoveredOperators));
-        }
-      } catch {
-        // Conservar datos previos
-      } finally {
-        if (!silent) setLoading(false);
       }
+
+      const sortedEvents = Array.from(mergedMap.values()).sort(
+        (a, b) => (b.timestamp || 0) - (a.timestamp || 0)
+      );
+      setEvents(sortedEvents);
+      try {
+        localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(sortedEvents));
+      } catch {
+        // Ignorar
+      }
+
+      if (discoveredOperators.size > knownOperators.length) {
+        persistKnownOperators(Array.from(discoveredOperators));
+      }
+    } finally {
+      isFastSyncingRef.current = false;
+    }
+  }, [authenticatedUser, knownOperators, persistKnownOperators]);
+
+  // SINCRONIZACIÓN DE TOTALES GLOBALES DESDE GOOGLE SHEETS CSV (37,630 filas)
+  const syncSheetSummaryStats = useCallback(async (silent = false) => {
+    if (isSheetSyncingRef.current) return;
+    isSheetSyncingRef.current = true;
+    if (!silent) setLoading(true);
+
+    try {
+      const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      const csvText = await res.text();
+      const allRows = parseCSVExact(csvText);
+
+      let totalItems = 0;
+      let validados = 0;
+      let cerrados = 0;
+      let digitados = 0;
+      let pendientes = 0;
+      let unidadesTotales = 0;
+
+      const nextMap = new Map<
+        number,
+        { codigo: string; item: string; ubicacion: string; cantidad: number }
+      >();
+
+      for (let i = 3; i < allRows.length; i++) {
+        const cols = allRows[i];
+        if (!cols || cols.length < 3) continue;
+
+        const codigo = String(cols[1] || '').trim();
+        const itemDesc = String(cols[2] || '').trim();
+        if (!codigo && !itemDesc) continue;
+        if (codigo.toUpperCase() === 'COMENTARIO' || itemDesc.toUpperCase() === 'COMENTARIO') continue;
+
+        const rawA = (cols[0] || '').toUpperCase();
+        const rawI = (cols[8] || '').toUpperCase();
+        const rawO = (cols[14] || '').toUpperCase();
+
+        const isColA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
+        const isColI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
+        const isColO = rawO === 'TRUE' || rawO === 'VERDADERO' || rawO === 'OK' || rawO === '1';
+
+        const almacenE = parseFloat(cols[4]?.replace(/[^0-9.-]+/g, '')) || 0;
+        const salidaG = parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0;
+        const nave7N = parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0;
+        const newsoftK = parseFloat(cols[10]?.replace(/[^0-9.-]+/g, ''));
+        const finalNewsoft = !isNaN(newsoftK) ? newsoftK : almacenE - salidaG + nave7N;
+
+        totalItems++;
+        unidadesTotales += finalNewsoft;
+        if (isColA) validados++;
+        if (isColA && isColI) cerrados++;
+        if (isColO) digitados++;
+        if (!isColA && !isColI) pendientes++;
+
+        nextMap.set(i + 1, {
+          codigo,
+          item: itemDesc,
+          ubicacion: String(cols[7] || '-').trim(),
+          cantidad: finalNewsoft,
+        });
+      }
+
+      itemInfoByRowRef.current = nextMap;
+      setSheetStats({
+        totalItems,
+        validados,
+        cerrados,
+        digitados,
+        pendientes,
+        unidadesTotales,
+      });
+    } catch {
+      // Conservar datos previos
+    } finally {
+      isSheetSyncingRef.current = false;
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  const loadAllKpiData = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      await Promise.all([syncRealtimeActivityAndLotes(), syncSheetSummaryStats(true)]);
+      if (!silent) setLoading(false);
     },
-    [authenticatedUser, knownOperators, persistKnownOperators]
+    [syncRealtimeActivityAndLotes, syncSheetSummaryStats]
   );
 
+  // Efecto de sincronización instantánea (<100ms entre pestañas y 1.2s con servidor)
   useEffect(() => {
     loadAllKpiData(false);
-    const interval = setInterval(() => {
-      if (!document.hidden) loadAllKpiData(true);
-    }, 2000);
-    const onFocus = () => loadAllKpiData(true);
+
+    // 1. Canal instantáneo entre pestañas/ventanas del mismo navegador (0ms de latencia)
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc.onmessage = (msg) => {
+        if (msg?.data?.type === 'LOTES_UPDATED' && Array.isArray(msg.data.lotes)) {
+          setLotesActivos(msg.data.lotes);
+        }
+        if (msg?.data?.type === 'ACTIVITY_UPDATED' && msg.data.event) {
+          const ev: Nave6ActivityEvent = msg.data.event;
+          setEvents((prev) => {
+            if (prev.some((p) => p.id === ev.id)) return prev;
+            return [ev, ...prev];
+          });
+        }
+        syncRealtimeActivityAndLotes();
+      };
+    } catch {
+      // Navegador sin BroadcastChannel
+    }
+
+    // 2. Escuchar cambios de localStorage desde otras ventanas al instante
+    const onStorage = (e: StorageEvent) => {
+      if (
+        e.key === ACTIVITY_LOG_CACHE_KEY ||
+        e.key === LOTES_CACHE_KEY ||
+        e.key === DIGITADO_META_CACHE_KEY
+      ) {
+        syncRealtimeActivityAndLotes();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+
+    // 3. Suscripción en tiempo real a Supabase (push inmediato cuando cualquier compañero actúa)
+    const realtimeChannel = supabase
+      ? supabase
+          .channel('nave6-kpi-realtime')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'boombah_announcements',
+            },
+            (payload: any) => {
+              const rowId = payload?.new?.id;
+              if (
+                rowId === 'global_nave6_season_activity' ||
+                rowId === 'global_nave6_digitado_meta' ||
+                rowId === 'global_nave6_season_operators'
+              ) {
+                syncRealtimeActivityAndLotes();
+              }
+            }
+          )
+          .subscribe()
+      : null;
+
+    // 4. Polling ultra rápido (1.2s) para lotes activos y acciones, y 12s para el CSV pesado
+    const fastInterval = setInterval(() => {
+      syncRealtimeActivityAndLotes();
+    }, 1200);
+
+    const sheetInterval = setInterval(() => {
+      if (!document.hidden) syncSheetSummaryStats(true);
+    }, 12000);
+
+    const onFocus = () => syncRealtimeActivityAndLotes();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
+
     return () => {
-      clearInterval(interval);
+      clearInterval(fastInterval);
+      clearInterval(sheetInterval);
+      window.removeEventListener('storage', onStorage);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      if (bc) bc.close();
+      if (realtimeChannel && supabase) supabase.removeChannel(realtimeChannel);
     };
-  }, [loadAllKpiData]);
+  }, [loadAllKpiData, syncRealtimeActivityAndLotes, syncSheetSummaryStats]);
 
   // Filtrar eventos por rango de fecha (Temporada completa 13 Nov, Hoy, Ayer, Esta Semana)
   const eventsByDateRange = useMemo(() => {
@@ -649,6 +796,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
               <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-400/40">
                 <Calendar className="w-3 h-3" />
                 Temporada desde 13 Nov 2026
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                Tiempo Real
               </span>
             </h1>
             <p className="text-xs text-gray-400">
