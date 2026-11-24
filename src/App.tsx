@@ -15,6 +15,7 @@ import { WipStocksVendidasView } from './components/WipStocksVendidasView';
 import { InventoryDashboard } from './components/InventoryDashboard';
 import { InventoryDesgloseView } from './components/InventoryDesgloseView';
 import { PaseInventarioView } from './views/PaseInventarioView';
+import { InventarioKpiUsuariosView } from './views/InventarioKpiUsuariosView';
 import ProductionControlToolbar from './components/ProductionControlToolbar';
 import { FeaturesTicker } from './components/FeaturesTicker';
 import { UpdatesHistoryView } from './components/UpdatesHistoryView';
@@ -446,10 +447,17 @@ export default function App() {
             )}
 
             {/* 8. Módulo Inventario: Desglose Operativo Completo */}
-            {activeTab === 'inventario-desglose' && <InventoryDesgloseView />}
+            {activeTab === 'inventario-desglose' && (
+              <InventoryDesgloseView authenticatedUser={authenticatedUser} />
+            )}
 
-            {/* 8.1. Módulo Inventario: Pase de Inventario (Nueva Pestaña de Conteo) */}
-            {activeTab === 'inventario-pase' && <PaseInventarioView />}
+            {/* 8.1. Módulo Inventario: Pase de Inventario */}
+            {(activeTab as string) === 'inventario-pase' && <PaseInventarioView />}
+
+            {/* 8.2. Módulo Inventario: KPI por Usuario (Temporada 13 Nov 2026) */}
+            {(activeTab as string) === 'inventario-kpi' && (
+              <InventarioKpiUsuariosView authenticatedUser={authenticatedUser} />
+            )}
 
             {/* 9. Sheets Embebidos */}
             {isSheetTab && currentSheetConfig && (
