@@ -27,6 +27,14 @@ export interface Nave6ActivityEvent {
   timestamp: number;
 }
 
+interface LoteActivo {
+  id: string;
+  usuario: string;
+  lote: string;
+  hora: string;
+  timestamp: number;
+}
+
 interface SheetSummaryStats {
   totalItems: number;
   validados: number;
@@ -40,6 +48,8 @@ interface InventarioKpiUsuariosViewProps {
   authenticatedUser?: string | null;
 }
 
+const APPS_SCRIPT_URL =
+  'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const CSV_URL =
   'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
@@ -47,6 +57,36 @@ const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
 
 // Inicio oficial de la temporada de inventario: 13 de noviembre de 2026
 const SEASON_START_TIMESTAMP = new Date('2026-11-13T00:00:00').getTime();
+
+async function fetchGAS(params: Record<string, string>): Promise<any> {
+  const query = new URLSearchParams(params).toString();
+  const url = `${APPS_SCRIPT_URL}?${query}`;
+
+  try {
+    const res = await fetch(url);
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback a JSONP
+  }
+
+  return new Promise((resolve, reject) => {
+    const cb = 'gas_kpi_cb_' + Math.round(100000 * Math.random());
+    (window as any)[cb] = (data: any) => {
+      delete (window as any)[cb];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      resolve(data);
+    };
+
+    const script = document.createElement('script');
+    script.src = `${url}&callback=${cb}`;
+    script.onerror = () => {
+      delete (window as any)[cb];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('No se pudo conectar con Google Apps Script.'));
+    };
+    document.body.appendChild(script);
+  });
+}
 
 function parseCSVExact(text: string): string[][] {
   const rows: string[][] = [];
@@ -99,6 +139,8 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     return [];
   });
 
+  const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>([]);
+
   const [sheetStats, setSheetStats] = useState<SheetSummaryStats>({
     totalItems: 0,
     validados: 0,
@@ -117,7 +159,16 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     if (!silent) setLoading(true);
 
     try {
-      // 1. Leer totales reales actuales desde PROGRESO (Google Sheets CSV)
+      // 1. Consultar lotes activos en vivo en Apps Script (equipo trabajando ahora mismo)
+      fetchGAS({ action: 'GET_LOTES' })
+        .then((lotesRes) => {
+          if (lotesRes && lotesRes.success && Array.isArray(lotesRes.lotes)) {
+            setLotesActivos(lotesRes.lotes);
+          }
+        })
+        .catch(() => {});
+
+      // 2. Leer totales reales actuales desde PROGRESO (Google Sheets CSV)
       const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
       const csvText = await res.text();
       const allRows = parseCSVExact(csvText);
@@ -181,7 +232,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         unidadesTotales,
       });
 
-      // 2. Leer bitácora de actividad de usuarios desde Supabase
+      // 3. Leer bitácora de actividad de usuarios desde Supabase
       const mergedMap = new Map<string, Nave6ActivityEvent>();
 
       let localEvents: Nave6ActivityEvent[] = [];
@@ -299,11 +350,11 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
 
   useEffect(() => {
     loadAllKpiData(false);
-    const interval = setInterval(() => loadAllKpiData(true), 10000);
+    const interval = setInterval(() => loadAllKpiData(true), 8000);
     return () => clearInterval(interval);
   }, [loadAllKpiData]);
 
-  // Agrupar KPI por cada usuario (qué y qué cantidad hizo cada quien)
+  // Agrupar KPI por cada usuario (combina bitácora de acciones + lotes activos en vivo)
   const userSummaries = useMemo(() => {
     const map = new Map<
       string,
@@ -319,11 +370,12 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         codigosUnicos: Set<string>;
         ultimaActividad: string;
         ultimoTimestamp: number;
+        lotesEnVivo: string[];
       }
     >();
 
-    for (const ev of events) {
-      const user = (ev.usuario || 'OPERADOR').trim().toUpperCase();
+    const ensureUser = (rawName: string) => {
+      const user = (rawName || 'OPERADOR').trim().toUpperCase();
       if (!map.has(user)) {
         map.set(user, {
           usuario: user,
@@ -335,12 +387,16 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           alertasSlack: 0,
           unidadesProcesadas: 0,
           codigosUnicos: new Set<string>(),
-          ultimaActividad: ev.fecha,
-          ultimoTimestamp: ev.timestamp || 0,
+          ultimaActividad: 'Activo ahora',
+          ultimoTimestamp: 0,
+          lotesEnVivo: [],
         });
       }
+      return map.get(user)!;
+    };
 
-      const stat = map.get(user)!;
+    for (const ev of events) {
+      const stat = ensureUser(ev.usuario);
       stat.totalAcciones++;
       if (ev.codigo) stat.codigosUnicos.add(ev.codigo);
       stat.unidadesProcesadas += Number(ev.cantidad) || 0;
@@ -357,8 +413,23 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
     }
 
-    return Array.from(map.values()).sort((a, b) => b.totalAcciones - a.totalAcciones);
-  }, [events]);
+    for (const lote of lotesActivos) {
+      if (!lote || !lote.usuario) continue;
+      const stat = ensureUser(lote.usuario);
+      if (lote.lote && !stat.lotesEnVivo.includes(lote.lote)) {
+        stat.lotesEnVivo.push(lote.lote);
+      }
+      if ((lote.timestamp || 0) > stat.ultimoTimestamp) {
+        stat.ultimoTimestamp = lote.timestamp || 0;
+        stat.ultimaActividad = `Lote activo (${lote.hora})`;
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (b.totalAcciones !== a.totalAcciones) return b.totalAcciones - a.totalAcciones;
+      return b.lotesEnVivo.length - a.lotesEnVivo.length;
+    });
+  }, [events, lotesActivos]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
@@ -504,7 +575,11 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           <div className="text-2xl font-black text-purple-300 mt-1">
             {userSummaries.length}
           </div>
-          <div className="text-[10px] text-purple-300/70 mt-0.5">Con registros desde 13 Nov</div>
+          <div className="text-[10px] text-purple-300/70 mt-0.5">
+            {lotesActivos.length > 0
+              ? `${lotesActivos.length} lote(s) en vivo ahora`
+              : 'Con registros desde 13 Nov'}
+          </div>
         </div>
       </div>
 
@@ -547,14 +622,22 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-black text-xs flex items-center justify-center">
-                        {idx === 0 ? <Award className="w-3.5 h-3.5" /> : idx + 1}
+                        {idx === 0 && u.totalAcciones > 0 ? <Award className="w-3.5 h-3.5" /> : idx + 1}
                       </span>
                       <div>
-                        <div className="text-xs font-black text-white uppercase">
-                          {u.usuario}
+                        <div className="text-xs font-black text-white uppercase flex items-center gap-1.5">
+                          <span>{u.usuario}</span>
+                          {u.lotesEnVivo.length > 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/40 text-[9px] font-mono text-emerald-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                              EN VIVO
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-gray-400">
-                          Última acción: {u.ultimaActividad}
+                          {u.lotesEnVivo.length > 0
+                            ? `Trabajando lote: ${u.lotesEnVivo.join(', ')}`
+                            : `Última acción: ${u.ultimaActividad}`}
                         </div>
                       </div>
                     </div>
