@@ -23,11 +23,13 @@ import {
   Users,
   Plus
 } from 'lucide-react';
+import { supabase } from '../data/supabaseClient';
 
 interface SheetRowItem {
   rowNumber: number;
   validado: boolean;
   candado: boolean;
+  digitado: boolean;
   enRevision: boolean;
   codigo: string;
   item: string;
@@ -39,6 +41,28 @@ interface SheetRowItem {
   dif: string | number;
   ubicacion: string;
   comentario: string;
+}
+
+interface DigitadoMeta {
+  usuario: string;
+  fechaHora: string;
+  timestamp: number;
+}
+
+export interface Nave6ActivityEvent {
+  id: string;
+  usuario: string;
+  accion: 'VALIDADO' | 'CERRADO' | 'DIGITADO' | 'EDICION' | 'SLACK';
+  codigo: string;
+  item: string;
+  ubicacion: string;
+  cantidad: number;
+  fecha: string;
+  timestamp: number;
+}
+
+interface InventoryDesgloseViewProps {
+  authenticatedUser?: string | null;
 }
 
 interface LoteActivo {
@@ -183,6 +207,8 @@ function parseLoteTarget(loteText: string): { qty: number | null; locationFilter
 const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const MASTER_PIN = '030621';
+const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
+const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
 
 // Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
 function limpiarEtiquetaRevision(comentario: string): string {
@@ -256,26 +282,48 @@ async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
   });
 }
 
-export const InventoryDesgloseView: React.FC = () => {
+export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
+  authenticatedUser,
+}) => {
   const [items, setItems] = useState<SheetRowItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastSync, setLastSync] = useState<string>('');
   const [updatingRow, setUpdatingRow] = useState<number | null>(null);
+  const [updatingDigitadoRow, setUpdatingDigitadoRow] = useState<number | null>(null);
   const [sendingSlackRow, setSendingSlackRow] = useState<number | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Metadatos en vivo de quién y a qué hora marcó cada fila como Digitado (Col O)
+  const [digitadoMetaMap, setDigitadoMetaMap] = useState<Record<string, DigitadoMeta>>(() => {
+    try {
+      const saved = localStorage.getItem(DIGITADO_META_CACHE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // Ignorar
+    }
+    return {};
+  });
 
   // Control Colaborativo de Lotes Activos en Tiempo Real
   const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>([]);
   const [operadorNombre, setOperadorNombre] = useState<string>(() => {
     try {
-      return localStorage.getItem('nave6_operador_lote') || '';
+      return authenticatedUser || localStorage.getItem('nave6_operador_lote') || '';
     } catch {
-      return '';
+      return authenticatedUser || '';
     }
   });
   const [loteInput, setLoteInput] = useState<string>('');
   const [claimingLote, setClaimingLote] = useState<boolean>(false);
   const [releasingLoteId, setReleasingLoteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (authenticatedUser && !operadorNombre) {
+      setOperadorNombre(authenticatedUser);
+    }
+  }, [authenticatedUser, operadorNombre]);
+
+  const activeUserLabel = (authenticatedUser || operadorNombre || 'OPERADOR').trim().toUpperCase();
 
   // Navegación rápida entre coincidencias de lotes activos (flechas ▲ / ▼)
   const [activeMatchIndices, setActiveMatchIndices] = useState<Record<string, number>>({});
@@ -336,6 +384,7 @@ export const InventoryDesgloseView: React.FC = () => {
       editingUbicacionRow !== null ||
       editingCommentRow !== null ||
       updatingRow !== null ||
+      updatingDigitadoRow !== null ||
       sendingSlackRow !== null ||
       unlockTargetRow !== null
     );
@@ -347,6 +396,7 @@ export const InventoryDesgloseView: React.FC = () => {
     editingUbicacionRow,
     editingCommentRow,
     updatingRow,
+    updatingDigitadoRow,
     sendingSlackRow,
     unlockTargetRow
   ]);
@@ -355,6 +405,200 @@ export const InventoryDesgloseView: React.FC = () => {
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/edit?gid=1178501683#gid=1178501683';
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
+
+  // Registrar evento de actividad del operador para los KPI de temporada (desde 13 nov 2026)
+  const recordOperatorActivity = useCallback(
+    async (
+      accion: Nave6ActivityEvent['accion'],
+      row: SheetRowItem,
+      cantidadOverride?: number
+    ) => {
+      const nuevoEvento: Nave6ActivityEvent = {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        usuario: activeUserLabel,
+        accion,
+        codigo: row.codigo,
+        item: row.item,
+        ubicacion: row.ubicacion,
+        cantidad: cantidadOverride !== undefined ? cantidadOverride : Number(row.newsoft) || 0,
+        fecha: new Date().toLocaleString('es-DO', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        timestamp: Date.now(),
+      };
+
+      let listaActual: Nave6ActivityEvent[] = [];
+      try {
+        const saved = localStorage.getItem(ACTIVITY_LOG_CACHE_KEY);
+        if (saved) listaActual = JSON.parse(saved);
+      } catch {
+        // Ignorar
+      }
+
+      const actualizada = [nuevoEvento, ...listaActual].slice(0, 3000);
+      try {
+        localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(actualizada));
+      } catch {
+        // Ignorar
+      }
+
+      try {
+        if (supabase) {
+          const { data } = await supabase
+            .from('boombah_announcements')
+            .select('message')
+            .eq('id', 'global_nave6_season_activity')
+            .maybeSingle();
+
+          let remota: Nave6ActivityEvent[] = [];
+          if (data?.message) {
+            const parsed = JSON.parse(data.message);
+            if (Array.isArray(parsed)) remota = parsed;
+          }
+
+          const merged = [nuevoEvento, ...remota].slice(0, 3000);
+          await supabase.from('boombah_announcements').upsert({
+            id: 'global_nave6_season_activity',
+            message: JSON.stringify(merged),
+            active: true,
+            priority: 'AVISO',
+            updated_by: activeUserLabel,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // Continuar silenciosamente
+      }
+    },
+    [activeUserLabel]
+  );
+
+  // Cargar y sincronizar metadatos de Digitado (quién y cuándo lo marcó) vía Supabase
+  const loadDigitadoMeta = useCallback(async () => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('boombah_announcements')
+        .select('message')
+        .eq('id', 'global_nave6_digitado_meta')
+        .maybeSingle();
+
+      if (!error && data?.message) {
+        const parsed = JSON.parse(data.message);
+        if (parsed && typeof parsed === 'object') {
+          setDigitadoMetaMap(parsed);
+          localStorage.setItem(DIGITADO_META_CACHE_KEY, JSON.stringify(parsed));
+        }
+      }
+    } catch {
+      // Mantener caché local
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDigitadoMeta();
+    const interval = setInterval(loadDigitadoMeta, 8000);
+    return () => clearInterval(interval);
+  }, [loadDigitadoMeta]);
+
+  const persistDigitadoMeta = async (nextMap: Record<string, DigitadoMeta>) => {
+    setDigitadoMetaMap(nextMap);
+    try {
+      localStorage.setItem(DIGITADO_META_CACHE_KEY, JSON.stringify(nextMap));
+    } catch {
+      // Ignorar
+    }
+    try {
+      if (supabase) {
+        await supabase.from('boombah_announcements').upsert({
+          id: 'global_nave6_digitado_meta',
+          message: JSON.stringify(nextMap),
+          active: true,
+          priority: 'AVISO',
+          updated_by: activeUserLabel,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Silencioso
+    }
+  };
+
+  // Marcar / Desmarcar Columna O (DIGITADO NEWSOFT) sin afectar ninguna lógica actual
+  const handleToggleDigitado = async (row: SheetRowItem) => {
+    const nuevoEstado = !row.digitado;
+    const fechaHora = new Date().toLocaleString('es-DO', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    setUpdatingDigitadoRow(row.rowNumber);
+    setNotification(null);
+
+    // Actualización optimista inmediata en la tabla
+    setItems((prev) =>
+      prev.map((it) =>
+        it.rowNumber === row.rowNumber ? { ...it, digitado: nuevoEstado } : it
+      )
+    );
+
+    const nextMetaMap = { ...digitadoMetaMap };
+    const metaKey = `${row.rowNumber}_${row.codigo}`;
+    if (nuevoEstado) {
+      nextMetaMap[metaKey] = {
+        usuario: activeUserLabel,
+        fechaHora,
+        timestamp: Date.now(),
+      };
+    } else {
+      delete nextMetaMap[metaKey];
+    }
+    persistDigitadoMeta(nextMetaMap);
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'TOGGLE_DIGITADO',
+        payload: JSON.stringify({
+          rowNumber: row.rowNumber,
+          codigo: row.codigo,
+          digitado: nuevoEstado,
+          usuario: activeUserLabel,
+        }),
+      });
+
+      if (res && res.success) {
+        if (nuevoEstado) {
+          recordOperatorActivity('DIGITADO', row);
+        }
+      } else {
+        // Revertir si hubo error en Sheets
+        setItems((prev) =>
+          prev.map((it) =>
+            it.rowNumber === row.rowNumber ? { ...it, digitado: !nuevoEstado } : it
+          )
+        );
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudo actualizar Digitado (Col O) en Google Sheets.',
+        });
+      }
+    } catch (err: any) {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.rowNumber === row.rowNumber ? { ...it, digitado: !nuevoEstado } : it
+        )
+      );
+      setNotification({ type: 'error', text: 'Error de conexión: ' + err.message });
+    } finally {
+      setUpdatingDigitadoRow(null);
+    }
+  };
 
   // Asignación consistente de un color distinto por cada usuario activo + conteo y filas coincidentes en Validados OK
   const parsedLotesActivos = useMemo(() => {
@@ -541,6 +785,10 @@ export const InventoryDesgloseView: React.FC = () => {
         const rawCandado = (cols[8] || '').toUpperCase();
         const isLocked = rawCandado === 'TRUE' || rawCandado === 'VERDADERO' || rawCandado === 'OK' || rawCandado === '1';
 
+        // Columna O (Índice 14): Digitado Newsoft (TRUE / FALSE independiente)
+        const rawDigitado = (cols[14] || '').toUpperCase();
+        const isDigitado = rawDigitado === 'TRUE' || rawDigitado === 'VERDADERO' || rawDigitado === 'OK' || rawDigitado === '1';
+
         const codigo = cols[1] || '';
         const itemName = cols[2] || '';
         if (!itemName && !codigo) continue;
@@ -568,6 +816,7 @@ export const InventoryDesgloseView: React.FC = () => {
           rowNumber: i + 1, // Fila real exacta en Google Sheets (1-based)
           validado: isValid,
           candado: isLocked,
+          digitado: isDigitado,
           enRevision,
           codigo,
           item: itemName,
@@ -664,6 +913,8 @@ export const InventoryDesgloseView: React.FC = () => {
           )
         );
 
+        recordOperatorActivity('SLACK', row);
+
         setNotification({
           type: 'success',
           text: res.message || `Alerta del ítem ${row.codigo} enviada a Slack y movida a Revisión.`
@@ -699,6 +950,7 @@ export const InventoryDesgloseView: React.FC = () => {
     const headers = [
       'Fila Sheet',
       'Estado',
+      'Digitado Newsoft (Col O)',
       'Código Componente',
       'Item NT/NS Descripción',
       'Cantidad NetSuite',
@@ -738,6 +990,7 @@ export const InventoryDesgloseView: React.FC = () => {
         return `<Row>
           <Cell><Data ss:Type="Number">${row.rowNumber}</Data></Cell>
           <Cell><Data ss:Type="String">${escapeXML(estadoTexto)}</Data></Cell>
+          <Cell><Data ss:Type="String">${row.digitado ? 'SÍ' : 'NO'}</Data></Cell>
           <Cell><Data ss:Type="String">${escapeXML(row.codigo)}</Data></Cell>
           <Cell><Data ss:Type="String">${escapeXML(row.item)}</Data></Cell>
           <Cell><Data ss:Type="Number">${Number(row.ns) || 0}</Data></Cell>
@@ -863,6 +1116,7 @@ export const InventoryDesgloseView: React.FC = () => {
               : it
           )
         );
+        recordOperatorActivity('EDICION', row, nuevoNs);
         setNotification({
           type: 'success',
           text: `Cantidad NetSuite del ítem ${row.codigo} actualizada a ${nuevoNs}.`
@@ -910,6 +1164,7 @@ export const InventoryDesgloseView: React.FC = () => {
               : it
           )
         );
+        recordOperatorActivity('EDICION', row, nuevoAlmacen);
         setNotification({
           type: 'success',
           text: `Cantidad Inventario (Col E) del ítem ${row.codigo} actualizada a ${nuevoAlmacen}.`
@@ -957,6 +1212,7 @@ export const InventoryDesgloseView: React.FC = () => {
               : it
           )
         );
+        recordOperatorActivity('EDICION', row, nuevaSalida);
         setNotification({
           type: 'success',
           text: `Salida del ítem ${row.codigo} actualizada a ${nuevaSalida}.`
@@ -1004,6 +1260,7 @@ export const InventoryDesgloseView: React.FC = () => {
               : it
           )
         );
+        recordOperatorActivity('EDICION', row, nuevaNave7);
         setNotification({
           type: 'success',
           text: `Cantidad Nave 7 del ítem ${row.codigo} actualizada a ${nuevaNave7}.`
@@ -1049,6 +1306,7 @@ export const InventoryDesgloseView: React.FC = () => {
               : it
           )
         );
+        recordOperatorActivity('EDICION', { ...row, ubicacion: nuevaUbicacion });
         setNotification({
           type: 'success',
           text: `Ubicación del ítem ${row.codigo} actualizada a ${nuevaUbicacion}.`
@@ -1174,6 +1432,9 @@ export const InventoryDesgloseView: React.FC = () => {
               : it
           )
         );
+        if (nuevoEstadoCandado) {
+          recordOperatorActivity('CERRADO', row);
+        }
         setNotification({
           type: 'success',
           text: nuevoEstadoCandado
@@ -1651,6 +1912,7 @@ export const InventoryDesgloseView: React.FC = () => {
             <thead className="sticky top-0 bg-[#0d1017] z-10 shadow-sm">
               <tr className="border-b border-white/10 text-gray-400 font-bold uppercase text-[10px]">
                 <th className="py-3 px-3">Estado</th>
+                <th className="py-3 px-3 text-center">Digitado (Col O)</th>
                 <th className="py-3 px-3 text-center">Candado (Col I)</th>
                 <th className="py-3 px-3">Código Componente</th>
                 <th className="py-3 px-3">Item NT/NS Descripción</th>
@@ -1669,6 +1931,7 @@ export const InventoryDesgloseView: React.FC = () => {
               {paginatedItems.map((row) => {
                 const isDifCero = tieneDiferenciaCero(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
+                const isDigitadoUpdating = updatingDigitadoRow === row.rowNumber;
                 const isSendingSlack = sendingSlackRow === row.rowNumber;
                 const isEditingNs = editingNsRow === row.rowNumber;
                 const isEditingAlmacen = editingAlmacenRow === row.rowNumber;
@@ -1677,6 +1940,7 @@ export const InventoryDesgloseView: React.FC = () => {
                 const isEditingUbicacion = editingUbicacionRow === row.rowNumber;
                 const isEditingComment = editingCommentRow === row.rowNumber;
                 const matchedLote = getMatchLoteForRow(row);
+                const digitadoMeta = digitadoMetaMap[`${row.rowNumber}_${row.codigo}`];
 
                 return (
                   <tr
@@ -1709,6 +1973,48 @@ export const InventoryDesgloseView: React.FC = () => {
                           <Clock className="w-3 h-3" /> Pendiente
                         </span>
                       )}
+                    </td>
+
+                    {/* CASILLA DIGITADO (COL O - INDEPENDIENTE, CUALQUIER USUARIO PUEDE MARCARLA) */}
+                    <td className="py-2.5 px-3 text-center">
+                      <div className="inline-flex flex-col items-center justify-center">
+                        <button
+                          type="button"
+                          disabled={isDigitadoUpdating}
+                          onClick={() => handleToggleDigitado(row)}
+                          title={
+                            row.digitado
+                              ? digitadoMeta
+                                ? `Digitado por ${digitadoMeta.usuario} • ${digitadoMeta.fechaHora} (Clic para desmarcar)`
+                                : 'Digitado en Newsoft (Clic para desmarcar)'
+                              : 'Marcar como Digitado en Newsoft (Col O)'
+                          }
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${
+                            isDigitadoUpdating
+                              ? 'bg-white/10 border-white/20 text-gray-400 cursor-wait'
+                              : row.digitado
+                              ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/30'
+                              : 'bg-white/5 border-white/15 text-gray-400 hover:border-cyan-400/50 hover:text-cyan-200'
+                          }`}
+                        >
+                          {isDigitadoUpdating ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#00f2fe]" />
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={row.digitado}
+                              readOnly
+                              className="w-3.5 h-3.5 accent-[#00f2fe] pointer-events-none rounded"
+                            />
+                          )}
+                          <span>{row.digitado ? 'Digitado' : 'Marcar'}</span>
+                        </button>
+                        {row.digitado && digitadoMeta && (
+                          <span className="text-[9px] font-mono text-cyan-300/80 mt-0.5 max-w-[125px] truncate">
+                            {getInitials(digitadoMeta.usuario)} • {digitadoMeta.fechaHora}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* CASILLA / BOTÓN DE CANDADO (COL I) */}
