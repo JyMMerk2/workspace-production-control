@@ -249,15 +249,27 @@ function mergePermanentUpdates(existing: UpdateEntry[], incoming: UpdateEntry[])
   return [...featured, ...commits];
 }
 
-// Convierte enlaces de Google Drive / Google Vids / YouTube en URL embebible
+// Convierte enlaces de YouTube, Google Drive / Google Vids o archivos directos en URL embebible
 function resolveEmbedMedia(rawUrl: string, explicitType?: 'image' | 'video') {
   const url = rawUrl.trim();
 
-  // Extraer el ID de archivo de Google Vids (docs.google.com/videos/d/ID/...) o Google Drive (drive.google.com/file/d/ID/...)
+  // 1. Soporte para YouTube (watch, youtu.be, shorts, embed)
+  const ytMatch = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  if (ytMatch && ytMatch[1]) {
+    const videoId = ytMatch[1];
+    return {
+      kind: 'iframe' as const,
+      src: `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&rel=0`,
+      originalUrl: url,
+    };
+  }
+
+  // 2. Soporte para Google Vids / Google Drive
   const googleIdMatch = url.match(
     /(?:docs\.google\.com\/videos\/d\/|drive\.google\.com\/file\/d\/)([a-zA-Z0-9_-]+)/
   );
-
   if (googleIdMatch && googleIdMatch[1]) {
     const fileId = googleIdMatch[1];
     return {
@@ -267,10 +279,12 @@ function resolveEmbedMedia(rawUrl: string, explicitType?: 'image' | 'video') {
     };
   }
 
+  // 3. Videos directos (.mp4, .webm, .ogg)
   if (explicitType === 'video' || /\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) {
     return { kind: 'video' as const, src: url, originalUrl: url };
   }
 
+  // 4. Imágenes o GIFs
   return { kind: 'image' as const, src: url, originalUrl: url };
 }
 
@@ -879,7 +893,7 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
                     }`}
                   >
                     <Video className="w-3.5 h-3.5" />
-                    <span>Video / Google Vids</span>
+                    <span>Video / YouTube</span>
                   </button>
                 </div>
 
@@ -887,7 +901,7 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
                   type="url"
                   value={draftUrl}
                   onChange={(e) => setDraftUrl(e.target.value)}
-                  placeholder="Pega aquí la URL de la imagen, GIF o video de Google Drive / Vids..."
+                  placeholder="Pega aquí la URL de YouTube, imagen, GIF o video..."
                   className="w-full px-3 py-2 rounded-lg bg-[#12161f] border border-white/15 text-xs text-white focus:outline-none focus:border-[#00f2fe]"
                 />
 
@@ -930,7 +944,7 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
                     <iframe
                       src={resolvedMedia.src}
                       className="w-full h-full rounded-xl border-0 bg-black"
-                      allow="autoplay; fullscreen"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                       allowFullScreen
                       title={currentShowcase.title}
                     />
