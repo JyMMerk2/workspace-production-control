@@ -209,6 +209,18 @@ const APPS_SCRIPT_URL =
 const MASTER_PIN = '030621';
 const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
+const LOTES_CACHE_KEY = 'nave6_lotes_activos_cache_v1';
+const BROADCAST_CHANNEL_NAME = 'nave6_realtime_sync_channel';
+
+function broadcastSyncMessage(payload: Record<string, any>) {
+  try {
+    const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+    bc.postMessage(payload);
+    bc.close();
+  } catch {
+    // Ignorar si el navegador no soporta BroadcastChannel
+  }
+}
 
 // Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
 function limpiarEtiquetaRevision(comentario: string): string {
@@ -305,7 +317,18 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   });
 
   // Control Colaborativo de Lotes Activos en Tiempo Real
-  const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>([]);
+  const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOTES_CACHE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // Ignorar
+    }
+    return [];
+  });
   const [operadorNombre, setOperadorNombre] = useState<string>(() => {
     try {
       return authenticatedUser || localStorage.getItem('nave6_operador_lote') || '';
@@ -445,6 +468,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       } catch {
         // Ignorar
       }
+
+      // Notificar al instante (0ms) a la ventana de KPI por Usuario
+      broadcastSyncMessage({ type: 'ACTIVITY_UPDATED', event: nuevoEvento });
 
       try {
         if (supabase) {
@@ -680,6 +706,17 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     [parsedLotesActivos, operadorNombre]
   );
 
+  // Sincronizar lotes en caché local y emitir al instante a otras pestañas
+  const syncLotesToLocalAndBroadcast = useCallback((nextLotes: LoteActivo[]) => {
+    setLotesActivos(nextLotes);
+    try {
+      localStorage.setItem(LOTES_CACHE_KEY, JSON.stringify(nextLotes));
+    } catch {
+      // Ignorar
+    }
+    broadcastSyncMessage({ type: 'LOTES_UPDATED', lotes: nextLotes });
+  }, []);
+
   // Consultar lotes activos de los compañeros en tiempo real
   const fetchLotesActivos = useCallback(async () => {
     if (isFetchingLotesRef.current || claimingLote || releasingLoteId !== null) return;
@@ -687,14 +724,14 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     try {
       const res = await updateSheetRowGAS({ action: 'GET_LOTES' });
       if (res && res.success && Array.isArray(res.lotes)) {
-        setLotesActivos(res.lotes);
+        syncLotesToLocalAndBroadcast(res.lotes);
       }
     } catch {
       // Silencioso en segundo plano
     } finally {
       isFetchingLotesRef.current = false;
     }
-  }, [claimingLote, releasingLoteId]);
+  }, [claimingLote, releasingLoteId, syncLotesToLocalAndBroadcast]);
 
   // Registrar un nuevo lote/grupo tomado por el operador
   const handleClaimLote = async () => {
@@ -726,7 +763,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       });
 
       if (res && res.success && Array.isArray(res.lotes)) {
-        setLotesActivos(res.lotes);
+        syncLotesToLocalAndBroadcast(res.lotes);
         setLoteInput('');
       } else {
         setNotification({
@@ -750,7 +787,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         id
       });
       if (res && res.success && Array.isArray(res.lotes)) {
-        setLotesActivos(res.lotes);
+        syncLotesToLocalAndBroadcast(res.lotes);
       }
     } catch {
       // Silencioso
