@@ -48,6 +48,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard-live');
   const [activeSubTabGid, setActiveSubTabGid] = useState<string | undefined>(undefined);
   const [currentTabTitle, setCurrentTabTitle] = useState<string>('DASHBOARD EN VIVO');
+  const [selectedUpdateTitle, setSelectedUpdateTitle] = useState<string | null>(null);
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [headerVisible, setHeaderVisible] = useState<boolean>(true);
@@ -247,8 +248,9 @@ export default function App() {
     }
   }, []);
 
-  const handleOpenUpdatesHistory = useCallback(() => {
-    handleSelectTab('updates-history' as TabType, undefined, 'HISTORIAL DE UPDATES');
+  const handleOpenUpdatesHistory = useCallback((selectedTitle?: string) => {
+    setSelectedUpdateTitle(selectedTitle || null);
+    handleSelectTab('updates-history' as TabType, undefined, 'NOVEDADES E HISTORIAL');
   }, [handleSelectTab]);
 
   const handleLoginSuccess = (username: string, email?: string, picture?: string) => {
@@ -470,7 +472,13 @@ export default function App() {
             )}
 
             {/* 12. Historial Permanente de Updates */}
-            {(activeTab as string) === 'updates-history' && <UpdatesHistoryView />}
+            {(activeTab as string) === 'updates-history' && (
+              <UpdatesHistoryView
+                authenticatedUser={authenticatedUser}
+                initialSelectedTitle={selectedUpdateTitle}
+                onNavigateTab={handleSelectTab}
+              />
+            )}
           </div>
         </main>
       </div>
