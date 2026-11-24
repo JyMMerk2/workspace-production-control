@@ -9,7 +9,7 @@ export interface FeatureItem {
 }
 
 interface FeaturesTickerProps {
-  onOpenHistory?: () => void;
+  onOpenHistory?: (selectedTitle?: string) => void;
 }
 
 const GITHUB_COMMITS_URL =
@@ -18,25 +18,25 @@ const GITHUB_COMMITS_URL =
 const FALLBACK_NOVEDADES: FeatureItem[] = [
   {
     tag: 'NUEVO',
-    text: 'Lotes en Proceso en Vivo: toma tu cantidad o rack y resalta tus ítems con tu color personal.',
+    text: 'Lotes en Proceso en Vivo con color personal y flechas ▲ / ▼',
     color: 'text-[#00f2fe] border-[#00f2fe]/40 bg-[#00f2fe]/10',
-    date: '19 nov 2026',
+    date: '20 nov 2026',
+  },
+  {
+    tag: 'NUEVO',
+    text: 'Avisos Globales en Tiempo Real y modo Cintillo Deslizante',
+    color: 'text-amber-300 border-amber-400/40 bg-amber-500/10',
+    date: '23 nov 2026',
   },
   {
     tag: 'MEJORA',
-    text: 'Flechas de salto rápido (▲ / ▼) en tu etiqueta de lote para navegar directo entre páginas e ítems.',
+    text: 'Búsqueda instantánea (<1ms) en Toma y Pase de Inventario',
     color: 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10',
     date: '19 nov 2026',
   },
   {
-    tag: 'VELOCIDAD',
-    text: 'Búsqueda instantánea (<1ms) en Toma y Pase de Inventario con caché sincronizada cada 2 segundos.',
-    color: 'text-amber-300 border-amber-400/40 bg-amber-500/10',
-    date: '19 nov 2026',
-  },
-  {
-    tag: 'EXPORTACIÓN',
-    text: 'Descarga directa en Excel (.xls) de artículos en Nave 7 y registros Cerrados con candado.',
+    tag: 'NUEVO',
+    text: 'Exportación nativa a Excel (.xls) de Nave 7 y Cerrados con Candado',
     color: 'text-purple-300 border-purple-400/40 bg-purple-500/10',
     date: '18 nov 2026',
   },
@@ -92,7 +92,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
 
   const [items, setItems] = useState<FeatureItem[]>(() => {
     try {
-      const cached = localStorage.getItem('boombah_github_ticker_v2');
+      const cached = localStorage.getItem('boombah_github_ticker_v3');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -129,19 +129,20 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         const data = await res.json();
         if (!Array.isArray(data) || data.length === 0) return;
 
-        const mapped: FeatureItem[] = data
+        const mappedCommits: FeatureItem[] = data
           .filter((entry: any) => entry?.commit?.message)
           .map((entry: any) =>
             classifyCommit(entry.commit.message, entry.commit?.author?.date)
           );
 
-        if (mapped.length > 0 && isMounted) {
-          const nextSerialized = JSON.stringify(mapped);
-          const prevSerialized = localStorage.getItem('boombah_github_ticker_v2');
+        if (mappedCommits.length > 0 && isMounted) {
+          const combined = [...FALLBACK_NOVEDADES, ...mappedCommits];
+          const nextSerialized = JSON.stringify(combined);
+          const prevSerialized = localStorage.getItem('boombah_github_ticker_v3');
           if (nextSerialized !== prevSerialized) {
-            setItems(mapped);
+            setItems(combined);
             try {
-              localStorage.setItem('boombah_github_ticker_v2', nextSerialized);
+              localStorage.setItem('boombah_github_ticker_v3', nextSerialized);
             } catch {
               // Ignorar si localStorage está lleno
             }
@@ -241,11 +242,11 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
       style={{ contain: 'layout paint' }}
       className="w-full h-[34px] bg-[#0d111a] border-b border-cyan-500/20 px-3 flex items-center gap-2 overflow-hidden select-none shrink-0"
     >
-      {/* Insignia fija izquierda (clic abre el Historial de Updates) */}
+      {/* Insignia fija izquierda (clic abre el escaparate de Novedades) */}
       <button
         type="button"
-        onClick={onOpenHistory}
-        title="Ver historial completo de actualizaciones"
+        onClick={() => onOpenHistory?.()}
+        title="Explorar Novedades y Guías Interactivas"
         className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/35 text-[#00f2fe] text-[10px] font-black uppercase tracking-wider shrink-0 transition-colors cursor-pointer"
       >
         <Sparkles className="w-3 h-3" />
@@ -263,7 +264,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         <ChevronLeft className="w-3.5 h-3.5" />
       </button>
 
-      {/* Carril acelerado por GPU */}
+      {/* Carril acelerado por GPU: clic en un ítem abre directamente esa novedad */}
       <div
         onMouseEnter={() => {
           isPausedRef.current = true;
@@ -271,9 +272,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
         onMouseLeave={() => {
           isPausedRef.current = false;
         }}
-        onClick={onOpenHistory}
-        title="Clic para abrir el Historial de Updates"
-        className="relative flex-1 overflow-hidden cursor-pointer"
+        className="relative flex-1 overflow-hidden"
       >
         <div
           ref={trackRef}
@@ -281,7 +280,13 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
           className="flex w-max items-center gap-8 text-xs"
         >
           {[...items, ...items].map((item, idx) => (
-            <div key={idx} className="inline-flex items-center gap-2 whitespace-nowrap">
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onOpenHistory?.(item.text)}
+              title="Clic para ver explicación y ejemplo visual"
+              className="inline-flex items-center gap-2 whitespace-nowrap hover:brightness-125 cursor-pointer"
+            >
               <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${item.color}`}>
                 {item.tag}
               </span>
@@ -290,7 +295,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
                 <span className="text-[10px] font-mono text-gray-400">({item.date})</span>
               )}
               <span className="text-white/15 ml-4">•</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -310,7 +315,7 @@ export const FeaturesTicker: React.FC<FeaturesTickerProps> = ({ onOpenHistory })
       {onOpenHistory && (
         <button
           type="button"
-          onClick={onOpenHistory}
+          onClick={() => onOpenHistory()}
           className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-[10px] font-bold transition-colors cursor-pointer shrink-0"
         >
           <History className="w-3 h-3 text-[#00f2fe]" />
