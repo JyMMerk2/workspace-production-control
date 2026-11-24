@@ -1378,6 +1378,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   };
 
   // Acción directa para activar o desactivar el candado (Col I) en Google Sheets
+  // Al cerrar el candado (Col I = TRUE) marca automáticamente DIGITADO (Col O = TRUE)
   const toggleCandadoFila = async (row: SheetRowItem, nuevoEstadoCandado: boolean, conPinAutorizado = false) => {
     if (nuevoEstadoCandado && !tieneDiferenciaCero(row)) {
       setNotification({
@@ -1409,6 +1410,12 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       forceUnlock: conPinAutorizado
     };
 
+    // Marcar automáticamente Col O (DIGITADO NEWSOFT = TRUE) al cerrar el candado
+    if (nuevoEstadoCandado) {
+      payload.colO = true;
+      payload.usuario = activeUserLabel;
+    }
+
     if (nuevoEstadoCandado && comentarioFinal !== row.comentario) {
       payload.colL = comentarioFinal;
     }
@@ -1420,25 +1427,42 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       });
 
       if (res && res.success) {
+        const fechaHora = new Date().toLocaleString('es-DO', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
         setItems(prev =>
           prev.map(it =>
             it.rowNumber === row.rowNumber
               ? {
                   ...it,
                   candado: nuevoEstadoCandado,
+                  digitado: nuevoEstadoCandado ? true : it.digitado,
                   comentario: comentarioFinal,
                   enRevision: nuevoEstadoCandado ? false : it.enRevision
                 }
               : it
           )
         );
+
         if (nuevoEstadoCandado) {
+          const nextMetaMap = { ...digitadoMetaMap };
+          nextMetaMap[`${row.rowNumber}_${row.codigo}`] = {
+            usuario: activeUserLabel,
+            fechaHora,
+            timestamp: Date.now(),
+          };
+          persistDigitadoMeta(nextMetaMap);
           recordOperatorActivity('CERRADO', row);
         }
+
         setNotification({
           type: 'success',
           text: nuevoEstadoCandado
-            ? `Ítem ${row.codigo} cerrado con candado exitosamente.`
+            ? `Ítem ${row.codigo} cerrado con candado y marcado como Digitado (Col O).`
             : `Candado desbloqueado para el ítem ${row.codigo}.`
         });
       } else {
@@ -1975,7 +1999,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* CASILLA DIGITADO (COL O - INDEPENDIENTE, CUALQUIER USUARIO PUEDE MARCARLA) */}
+                    {/* CASILLA DIGITADO (COL O - INDEPENDIENTE, CUALQUIER USUARIO PUEDE MARCARLA O DESMARCARLA INCLUSO EN CERRADOS) */}
                     <td className="py-2.5 px-3 text-center">
                       <div className="inline-flex flex-col items-center justify-center">
                         <button
@@ -2029,7 +2053,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                               row.candado
                                 ? 'Cerrado (Clic para desbloquear con PIN 030621)'
                                 : isDifCero
-                                ? 'Activar Candado (Cerrar ítem y limpiar Revisión)'
+                                ? 'Activar Candado (Cerrar ítem y marcar Digitado automáticamente)'
                                 : 'Requiere Diferencia = 0 para cerrar candado'
                             }
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all ${
