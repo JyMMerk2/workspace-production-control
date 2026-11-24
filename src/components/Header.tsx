@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Menu, 
   ChevronUp, 
@@ -15,7 +15,10 @@ import {
   Check,
   Zap,
   Briefcase,
-  ArrowUpCircle
+  ArrowUpCircle,
+  Share2,
+  Mail,
+  Copy
 } from 'lucide-react';
 import { THEME_OPTIONS } from '../data/themesData';
 import { ThemeType } from '../types';
@@ -72,6 +75,74 @@ export const Header: React.FC<HeaderProps> = ({
   const { updateAvailable, applyUpdate } = useUpdateChecker();
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'neon' | 'corporate'>('neon');
+
+  // Estado para el menú desplegable de Compartir / Enviar por Correo
+  const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const appShareUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : 'https://workspace-production-control-rho.vercel.app/';
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target as Node)) {
+        setIsShareMenuOpen(false);
+      }
+    };
+    if (isShareMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isShareMenuOpen]);
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(appShareUrl);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = appShareUrl;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setLinkCopied(true);
+    setTimeout(() => {
+      setLinkCopied(false);
+      setIsShareMenuOpen(false);
+    }, 1500);
+  };
+
+  const handleSendEmail = () => {
+    const subject = encodeURIComponent('Acceso a Boombah Workspace - Control de Producción');
+    const body = encodeURIComponent(
+      `Hola,\n\nTe comparto el enlace de acceso en vivo al panel de Control de Producción Boombah Workspace:\n\n${appShareUrl}\n\nSaludos,\n${authenticatedUser}`
+    );
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_self');
+    setIsShareMenuOpen(false);
+  };
+
+  const handleNativeShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Boombah Workspace - Control de Producción',
+          text: 'Accede al panel en vivo de Control de Producción Boombah Workspace:',
+          url: appShareUrl,
+        });
+        setIsShareMenuOpen(false);
+      } catch {
+        // Usuario canceló
+      }
+    } else {
+      await handleCopyLink();
+    }
+  };
 
   if (!headerVisible) {
     return (
@@ -211,7 +282,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Controles de la Derecha (Sincronización, Usuario y Sesión) */}
+        {/* Controles de la Derecha (Compartir, Temas, Sincronización, Usuario y Sesión) */}
         <div className="flex items-center gap-2">
           {/* BOTÓN ESTILO CHROME CUANDO HAY NUEVA ACTUALIZACIÓN LISTA */}
           {updateAvailable && (
@@ -225,6 +296,63 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Update • Reiniciar</span>
             </button>
           )}
+
+          {/* BOTÓN COMPARTIR APP / ENVIAR POR CORREO */}
+          <div ref={shareMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setIsShareMenuOpen((prev) => !prev)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-400/40 text-emerald-300 hover:bg-emerald-400 hover:text-[#0b0e14] transition-all cursor-pointer shadow-[0_0_8px_rgba(16,185,129,0.2)] text-xs font-bold"
+              title="Compartir enlace de la app o enviar por correo"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Compartir</span>
+            </button>
+
+            {isShareMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl bg-[#12161f] border border-[#00f2fe]/40 shadow-[0_10px_30px_rgba(0,0,0,0.85)] p-2 z-50 space-y-1">
+                <div className="px-2.5 py-1.5 border-b border-white/10">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-[#00f2fe]">
+                    Compartir Boombah Workspace
+                  </div>
+                  <div className="text-[10px] font-mono text-gray-400 truncate mt-0.5">
+                    {appShareUrl}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-bold text-gray-200 hover:bg-[#00f2fe]/15 hover:text-[#00f2fe] transition-colors cursor-pointer text-left"
+                >
+                  {linkCopied ? (
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  )}
+                  <span>{linkCopied ? '¡Enlace copiado!' : 'Copiar enlace directo'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSendEmail}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-bold text-gray-200 hover:bg-amber-500/15 hover:text-amber-300 transition-colors cursor-pointer text-left"
+                >
+                  <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Enviar enlace por correo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleNativeShare}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-bold text-gray-200 hover:bg-emerald-500/15 hover:text-emerald-300 transition-colors cursor-pointer text-left"
+                >
+                  <Share2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Compartir por WhatsApp / App...</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* BOTÓN SELECTOR DE TEMAS */}
           <button
