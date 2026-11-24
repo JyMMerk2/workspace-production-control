@@ -17,7 +17,8 @@ import {
   ShieldAlert,
   Check,
   AlertTriangle,
-  Printer
+  Printer,
+  UserCheck
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 import { Nave6ActivityEvent } from './InventarioKpiUsuariosView';
@@ -42,10 +43,20 @@ interface PaseInventarioViewProps {
   authenticatedUser?: string | null;
 }
 
+export interface PaseActiveSession {
+  usuario: string;
+  modulo: 'PASE_INVENTARIO';
+  ubicacionActiva?: string;
+  codigoActivo?: string;
+  hora: string;
+  timestamp: number;
+}
+
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
+const PASE_SESSIONS_CACHE_KEY = 'nave6_pase_active_sessions_v1';
 const BROADCAST_CHANNEL_NAME = 'nave6_realtime_sync_channel';
 
 function broadcastSyncMessage(payload: Record<string, any>) {
@@ -167,6 +178,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [baseListaEnMemoria, setBaseListaEnMemoria] = useState(false);
+  const [activePaseSessions, setActivePaseSessions] = useState<PaseActiveSession[]>([]);
 
   // Modal de selección de filtro para imprimir localidad
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -203,7 +215,128 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     selectedUbicacionRef.current = selectedUbicacion;
   }, [selectedUbicacion]);
 
-  // Registrar acción del operador en la bitácora global de KPI por Usuario (Temporada 13 Nov 2026)
+  // --- PRESENCIA EN VIVO INSTANTÁNEA EN TOMA Y PASE DE INVENTARIO ---
+  const publishPasePresence = useCallback(
+    async (isLeaving = false) => {
+      const now = Date.now();
+      const hora = new Date().toLocaleTimeString('es-DO', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const currentSession: PaseActiveSession = {
+        usuario: activeUserLabel,
+        modulo: 'PASE_INVENTARIO',
+        ubicacionActiva: selectedUbicacion || ubicacionInput.trim().toUpperCase() || undefined,
+        codigoActivo: selectedItem?.colB_Codigo || undefined,
+        hora,
+        timestamp: now,
+      };
+
+      let localMap: Record<string, PaseActiveSession> = {};
+      try {
+        const saved = localStorage.getItem(PASE_SESSIONS_CACHE_KEY);
+        if (saved) localMap = JSON.parse(saved);
+      } catch {
+        // Ignorar
+      }
+
+      if (isLeaving) {
+        delete localMap[activeUserLabel];
+      } else {
+        localMap[activeUserLabel] = currentSession;
+      }
+
+      Object.keys(localMap).forEach((k) => {
+        if (now - (localMap[k]?.timestamp || 0) > 35000) {
+          delete localMap[k];
+        }
+      });
+
+      const activeArray = Object.values(localMap);
+      setActivePaseSessions(activeArray);
+
+      try {
+        localStorage.setItem(PASE_SESSIONS_CACHE_KEY, JSON.stringify(localMap));
+      } catch {
+        // Ignorar
+      }
+
+      // Emitir al instante (0ms) al panel KPI por Usuario
+      broadcastSyncMessage({
+        type: 'PASE_PRESENCE_UPDATED',
+        sessions: activeArray,
+      });
+
+      try {
+        if (supabase) {
+          const { data } = await supabase
+            .from('boombah_announcements')
+            .select('message')
+            .eq('id', 'global_nave6_pase_sessions')
+            .maybeSingle();
+
+          let remoteMap: Record<string, PaseActiveSession> = {};
+          if (data?.message) {
+            const parsed = JSON.parse(data.message);
+            if (parsed && typeof parsed === 'object') remoteMap = parsed;
+          }
+
+          if (isLeaving) {
+            delete remoteMap[activeUserLabel];
+          } else {
+            remoteMap[activeUserLabel] = currentSession;
+          }
+
+          Object.keys(remoteMap).forEach((k) => {
+            if (now - (remoteMap[k]?.timestamp || 0) > 35000) {
+              delete remoteMap[k];
+            }
+          });
+
+          const mergedList = Object.values(remoteMap);
+          setActivePaseSessions(mergedList);
+          try {
+            localStorage.setItem(PASE_SESSIONS_CACHE_KEY, JSON.stringify(remoteMap));
+          } catch {
+            // Ignorar
+          }
+
+          await supabase.from('boombah_announcements').upsert({
+            id: 'global_nave6_pase_sessions',
+            message: JSON.stringify(remoteMap),
+            active: true,
+            priority: 'AVISO',
+            updated_by: activeUserLabel,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // Silencioso
+      }
+    },
+    [activeUserLabel, selectedUbicacion, ubicacionInput, selectedItem]
+  );
+
+  useEffect(() => {
+    publishPasePresence(false);
+    const heartbeat = setInterval(() => {
+      if (!document.hidden) publishPasePresence(false);
+    }, 2000);
+
+    const onBeforeUnload = () => {
+      publishPasePresence(true);
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      publishPasePresence(true);
+    };
+  }, [publishPasePresence]);
+
+  // Registrar acción del operador al instante (0ms) en la bitácora global de KPI por Usuario
   const recordOperatorActivity = useCallback(
     async (
       accion: Nave6ActivityEvent['accion'],
@@ -813,7 +946,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     setNotification(null);
 
     const willBeLocked = Boolean(colA && colI);
-    // Al volver a cerrar el candado (Col I = TRUE) se limpia automáticamente la etiqueta [REVISIÓN...]
     const comentarioFinal = colI ? limpiarEtiquetaRevision(colL) : colL;
 
     const payload = {
@@ -843,7 +975,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         setColL(comentarioFinal);
         setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
 
-        // Registrar efectividad del usuario en la temporada (13 Nov 2026)
+        // Registrar efectividad del usuario al instante (0ms) en la temporada (13 Nov 2026)
         const actividadMeta = {
           codigo: colB,
           item: colC,
@@ -859,7 +991,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
           recordOperatorActivity('EDICION', actividadMeta);
         }
 
-        // Sincronizar el ítem seleccionado para que permanezca visible con sus valores correctos
         const updatedItem: InventoryItem = {
           ...selectedItem,
           ...payload,
@@ -875,7 +1006,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         };
         setSelectedItem(updatedItem);
 
-        // Sincronizar tanto en la lista izquierda como en la caché en memoria
         setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? updatedItem : it));
         allInventoryRef.current = allInventoryRef.current.map(it =>
           it.rowNumber === selectedItem.rowNumber ? updatedItem : it
@@ -915,7 +1045,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
   };
 
-  // Filtro reactivo para el autocompletado de ubicaciones
   const ubicacionesFiltradas = ubicacionesList.filter(u => 
     u.toLowerCase().includes(ubicacionInput.toLowerCase())
   );
@@ -923,14 +1052,14 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   return (
     <div className="p-3 sm:p-5 space-y-4 text-gray-200 max-w-[1700px] mx-auto">
       
-      {/* Cabecera */}
+      {/* Cabecera con Sesión Activa */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
             <Edit3 className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-black uppercase text-white tracking-wide flex items-center gap-2">
+            <h1 className="text-base font-black uppercase text-white tracking-wide flex flex-wrap items-center gap-2">
               <span>Toma y Pase de Inventario</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -939,6 +1068,22 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
             </h1>
             <p className="text-[11px] text-gray-400">Captura en Vivo, Ubicaciones & Control de Candado (Nave 6)</p>
           </div>
+        </div>
+
+        {/* Badge de Sesión Activa del Operador */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#00f2fe]/10 border border-[#00f2fe]/35 text-xs">
+            <UserCheck className="w-3.5 h-3.5 text-[#00f2fe]" />
+            <span className="text-gray-400 font-semibold">Sesión activa:</span>
+            <span className="font-black text-white uppercase">{activeUserLabel}</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </div>
+
+          {activePaseSessions.length > 1 && (
+            <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 px-2.5 py-1 rounded-xl border border-amber-400/30">
+              {activePaseSessions.length} operadores en Toma/Pase
+            </span>
+          )}
         </div>
       </div>
 
@@ -983,7 +1128,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
               <MapPin className="w-3.5 h-3.5 text-amber-400 absolute left-2.5 top-2.5" />
             </div>
 
-            {/* Dropdown Predictivo */}
             {showUbiDropdown && (
               <div className="absolute left-0 right-0 top-full mt-1 bg-[#0d1017] border border-amber-500/30 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-40 custom-scrollbar">
                 <div 
@@ -1159,7 +1303,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                       <span>{isUnlockedByPin ? 'Desbloqueado temporalmente con PIN' : 'Modo Edición Abierto'}</span>
                     </div>
                     
-                    {/* Botón para Abrir Mini Calculadora */}
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -1178,7 +1321,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                   </div>
                 )}
 
-                {/* BOTÓN X EN LA PARTE SUPERIOR DERECHA */}
                 <button
                   type="button"
                   onClick={handleCerrarFormulario}
@@ -1189,7 +1331,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 </button>
               </div>
 
-              {/* Popup Mini Calculadora (Completamente Independiente) */}
+              {/* Popup Mini Calculadora */}
               {showCalculator && (
                 <div className="bg-[#0b0e14] border border-[#00f2fe]/40 rounded-xl p-3 shadow-2xl max-w-xs ml-auto space-y-2">
                   <div className="flex items-center justify-between text-[11px] text-gray-400 font-bold border-b border-white/10 pb-1">
@@ -1289,7 +1431,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 </div>
               </div>
 
-              {/* Métricas: NetSuite (D), Almacén (E), Salida (G), Nave 7 (N), Total Balance Newsoft y DIF */}
+              {/* Métricas */}
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
                 
                 <div className="space-y-1">
@@ -1387,7 +1529,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 />
               </div>
 
-              {/* Botonera: Cancelar, Reportar Descuadre a Slack & Confirmar */}
+              {/* Botonera */}
               <div className="pt-3 flex flex-wrap justify-between items-center gap-2 border-t border-white/10">
                 <button
                   type="button"
