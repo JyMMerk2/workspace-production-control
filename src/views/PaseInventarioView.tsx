@@ -16,7 +16,8 @@ import {
   Layers, 
   ShieldAlert,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Printer
 } from 'lucide-react';
 
 interface InventoryItem {
@@ -42,6 +43,14 @@ const MASTER_PIN = '030621';
 // Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
 function limpiarEtiquetaRevision(comentario: string): string {
   return comentario.replace(/\[REVISIÓN[^\]]*\]\s*/gi, '').trim();
+}
+
+function escapeHtml(text: string): string {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // Parser CSV exacto para sincronización en tiempo real sin consumir cuota de Apps Script
@@ -416,6 +425,138 @@ export const PaseInventarioView: React.FC = () => {
     setShowCalculator(false);
   };
 
+  // Imprimir hoja de conteo/auditoría de la localidad seleccionada
+  const handlePrintUbicacion = () => {
+    if (itemsList.length === 0) return;
+
+    const labelLocalidad = selectedUbicacion || ubicacionInput.trim() || 'TODAS LAS UBICACIONES';
+    const fechaHora = new Date().toLocaleString('es-DO', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const totalNetSuite = itemsList.reduce((acc, it) => acc + (Number(it.colD_NetSuite) || 0), 0);
+    const totalNewsoft = itemsList.reduce(
+      (acc, it) =>
+        acc + ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0),
+      0
+    );
+
+    const rowsHtml = itemsList
+      .map((it, index) => {
+        const bal = ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0);
+        const dif = bal - (Number(it.colD_NetSuite) || 0);
+        const estadoTexto = it.colI_Candado
+          ? 'CERRADO'
+          : it.colA_Validado
+          ? 'VALIDADO OK'
+          : 'PENDIENTE';
+
+        return `
+          <tr>
+            <td style="text-align:center;">${index + 1}</td>
+            <td style="font-family:monospace;font-weight:bold;">${escapeHtml(it.colB_Codigo)}</td>
+            <td>${escapeHtml(it.colC_Item)}</td>
+            <td style="text-align:center;">${escapeHtml(it.colH_Ubicacion || labelLocalidad)}</td>
+            <td style="text-align:center;font-weight:bold;">${it.colD_NetSuite}</td>
+            <td style="text-align:center;font-weight:bold;">${bal}</td>
+            <td style="text-align:center;font-weight:bold;color:${dif === 0 ? '#047857' : '#be123c'};">${dif}</td>
+            <td style="text-align:center;width:72px;"></td>
+            <td style="text-align:center;font-size:10px;font-weight:bold;">${estadoTexto}</td>
+            <td style="font-size:10px;">${escapeHtml(it.colL_Comentario || '')}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const printWindow = window.open('', '_blank', 'width=1050,height=780');
+    if (!printWindow) {
+      setNotification({
+        type: 'error',
+        text: 'El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes e inténtalo de nuevo.',
+      });
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Inventario Localidad ${escapeHtml(labelLocalidad)} - Boombah</title>
+        <style>
+          @page { size: letter landscape; margin: 12mm; }
+          body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; padding: 12px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 12px; }
+          .title { font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
+          .subtitle { font-size: 11px; color: #4b5563; margin-top: 2px; }
+          .badge-ubi { font-size: 20px; font-weight: 900; font-family: monospace; border: 2px solid #111827; padding: 4px 14px; border-radius: 6px; background: #f3f4f6; }
+          .summary { display: flex; gap: 20px; font-size: 11px; margin-bottom: 10px; background: #f9fafb; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background: #111827; color: #ffffff; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.4px; padding: 6px 5px; border: 1px solid #111827; }
+          td { border: 1px solid #9ca3af; padding: 5px; vertical-align: middle; }
+          tr:nth-child(even) { background: #f9fafb; }
+          .signatures { display: flex; justify-content: space-between; gap: 40px; margin-top: 28px; font-size: 11px; }
+          .sig-box { flex: 1; border-top: 1px solid #111827; padding-top: 4px; text-align: center; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">Boombah Workspace • Hoja de Conteo de Inventario (Nave 6)</h1>
+            <div class="subtitle">Fecha y hora de impresión: ${escapeHtml(fechaHora)}</div>
+          </div>
+          <div class="badge-ubi">LOCALIDAD: ${escapeHtml(labelLocalidad)}</div>
+        </div>
+
+        <div class="summary">
+          <div><strong>Total Artículos en Ubicación:</strong> ${itemsList.length}</div>
+          <div><strong>Suma NetSuite (NS):</strong> ${totalNetSuite}</div>
+          <div><strong>Suma Bal. Newsoft:</strong> ${totalNewsoft}</div>
+          <div><strong>Diferencia Neta:</strong> ${totalNewsoft - totalNetSuite}</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:28px;">#</th>
+              <th style="width:85px;">Código</th>
+              <th>Ítem / Descripción</th>
+              <th style="width:75px;">Ubicación</th>
+              <th style="width:55px;">NS</th>
+              <th style="width:65px;">Newsoft</th>
+              <th style="width:50px;">DIF</th>
+              <th style="width:75px;">Conteo Físico</th>
+              <th style="width:82px;">Estado</th>
+              <th style="width:150px;">Comentarios</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div class="signatures">
+          <div class="sig-box">Contado por (Operador)</div>
+          <div class="sig-box">Auditado por (Supervisor)</div>
+          <div class="sig-box">Fecha / Hora de Cierre</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   // Cálculos dinámicos en tiempo real: Tot. Bal. Newsoft = (Almacén - Salida) + Nave 7
   const numNetSuite = Number(colD) || 0;
   const numAlmacen = Number(colE) || 0;
@@ -750,15 +891,30 @@ export const PaseInventarioView: React.FC = () => {
         
         {/* LADO IZQUIERDO: Artículos de la Ubicación */}
         <div className="lg:col-span-5 bg-[#12161f] border border-white/10 rounded-2xl p-4 flex flex-col max-h-[750px]">
-          <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10 mb-2">
             <span className="text-xs font-black uppercase text-white tracking-wider">
               Artículos en Ubicación ({itemsList.length})
             </span>
-            {selectedUbicacion && (
-              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/30">
-                {selectedUbicacion}
-              </span>
-            )}
+
+            <div className="flex items-center gap-2">
+              {selectedUbicacion && (
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/30">
+                  {selectedUbicacion}
+                </span>
+              )}
+
+              {itemsList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handlePrintUbicacion}
+                  title={`Imprimir listado de ${selectedUbicacion || 'la ubicación seleccionada'}`}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe] text-[#00f2fe] hover:text-[#0b0e14] border border-[#00f2fe]/40 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3 h-3" />
+                  <span>Imprimir</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-y-auto space-y-2 flex-1 custom-scrollbar pr-1">
