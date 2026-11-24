@@ -18,6 +18,8 @@ export type TabType =
   | 'inventario-nave-6'
   | 'inventario-desglose'
   | 'inventario-pase'
+  | 'inventario-kpi'
+  | 'updates-history'
   | 'manual'
   | 'configuracion';
 
@@ -148,6 +150,7 @@ export interface InventoryItem {
   rowNumber?: number;
   salida?: number;
   candado?: boolean;
+  digitado?: boolean;
   comentario?: string;
   isLocked?: boolean;
 }
