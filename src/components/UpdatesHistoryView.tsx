@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   History,
   Search,
@@ -20,6 +20,8 @@ import {
   FileSpreadsheet,
   Sliders,
   Lock,
+  MonitorPlay,
+  Layers,
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -546,6 +548,9 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
     return {};
   });
 
+  // Alternar entre Video/Captura real y Mockup Interactivo cuando hay media disponible
+  const [previewTab, setPreviewTab] = useState<'media' | 'mockup'>('media');
+
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [isEditingMedia, setIsEditingMedia] = useState<boolean>(false);
   const [draftUrl, setDraftUrl] = useState<string>('');
@@ -558,30 +563,81 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
   const [tagFilter, setTagFilter] = useState<'ALL' | 'NUEVO' | 'MEJORA' | 'CORRECCIÓN'>('ALL');
   const [yearFilter, setYearFilter] = useState<string>('ALL');
 
-  // Cargar URLs multimedia desde Supabase para que todo el equipo las vea en vivo
-  useEffect(() => {
-    const loadSharedMedia = async () => {
-      try {
-        if (!supabase) return;
-        const { data, error } = await supabase
-          .from('boombah_announcements')
-          .select('message')
-          .eq('id', 'global_whats_new_media')
-          .maybeSingle();
+  const loadSharedMedia = useCallback(async () => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('boombah_announcements')
+        .select('message')
+        .eq('id', 'global_whats_new_media')
+        .maybeSingle();
 
-        if (!error && data?.message) {
-          const parsed = JSON.parse(data.message);
-          if (parsed && typeof parsed === 'object') {
+      if (!error && data?.message) {
+        const parsed = JSON.parse(data.message);
+        if (parsed && typeof parsed === 'object') {
+          const nextStr = JSON.stringify(parsed);
+          const prevStr = localStorage.getItem(MEDIA_CACHE_KEY);
+          if (nextStr !== prevStr) {
             setMediaMap(parsed);
-            localStorage.setItem(MEDIA_CACHE_KEY, JSON.stringify(parsed));
+            localStorage.setItem(MEDIA_CACHE_KEY, nextStr);
           }
         }
-      } catch {
-        // Mantener caché local
+      }
+    } catch {
+      // Mantener caché local
+    }
+  }, []);
+
+  // Sincronización en vivo de videos/imágenes (Realtime + Polling cada 10s sin Ctrl+F5)
+  useEffect(() => {
+    loadSharedMedia();
+
+    const interval = setInterval(loadSharedMedia, 10000);
+    const handleFocus = () => loadSharedMedia();
+    window.addEventListener('focus', handleFocus);
+
+    let channel: any = null;
+    try {
+      if (supabase) {
+        channel = supabase
+          .channel('whats_new_media_realtime')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'boombah_announcements',
+              filter: 'id=eq.global_whats_new_media',
+            },
+            (payload: any) => {
+              const rawMsg = payload?.new?.message;
+              if (rawMsg) {
+                try {
+                  const parsed = JSON.parse(rawMsg);
+                  if (parsed && typeof parsed === 'object') {
+                    setMediaMap(parsed);
+                    localStorage.setItem(MEDIA_CACHE_KEY, JSON.stringify(parsed));
+                  }
+                } catch {
+                  // Ignorar
+                }
+              }
+            }
+          )
+          .subscribe();
+      }
+    } catch {
+      // Continuar con polling
+    }
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
       }
     };
-    loadSharedMedia();
-  }, []);
+  }, [loadSharedMedia]);
 
   // Descargar commits de GitHub automáticamente
   const fetchAllPermanentHistory = async () => {
@@ -650,6 +706,11 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
   const safeActiveIndex = showcaseItems.length > 0 ? activeIndex % showcaseItems.length : 0;
   const currentShowcase = showcaseItems[safeActiveIndex] || FEATURED_SHOWCASE[0];
   const currentMedia = mediaMap[currentShowcase.sha];
+
+  // Al cambiar de tarjeta, mostrar por defecto el video/foto si existe, o el mockup si no existe
+  useEffect(() => {
+    setPreviewTab(currentMedia?.url ? 'media' : 'mockup');
+  }, [currentShowcase.sha, currentMedia?.url]);
 
   const handleOpenMediaEditor = () => {
     setMediaFeedback('');
@@ -923,7 +984,7 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/15 text-red-300 border border-red-500/30 text-xs font-bold cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Volver a Mockup</span>
+                      <span>Quitar Video/Foto</span>
                     </button>
                   )}
                 </div>
@@ -935,29 +996,59 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
             )}
           </div>
 
-          {/* Columna Derecha: Tarjeta visual grande (Imagen/Video real del Admin OR Mockup Interactivo) */}
-          <div className="lg:col-span-7">
+          {/* Columna Derecha: Tarjeta visual grande con pestañas para ver AMBOS (Video/Foto y Mockup) */}
+          <div className="lg:col-span-7 space-y-2.5">
+            {resolvedMedia && (
+              <div className="flex items-center justify-between gap-2 px-1">
+                <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-[#0d1017] border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('media')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-black transition-colors cursor-pointer ${
+                      previewTab === 'media'
+                        ? 'bg-[#00f2fe] text-[#0b0e14]'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <MonitorPlay className="w-3.5 h-3.5" />
+                    <span>{currentMedia?.type === 'image' ? 'Captura Real' : 'Video Real'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab('mockup')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-black transition-colors cursor-pointer ${
+                      previewTab === 'mockup'
+                        ? 'bg-[#00f2fe] text-[#0b0e14]'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Mockup Interactivo</span>
+                  </button>
+                </div>
+
+                <a
+                  href={resolvedMedia.originalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-bold text-[#00f2fe] hover:underline"
+                >
+                  Abrir video completo ↗
+                </a>
+              </div>
+            )}
+
             <div className="w-full h-[310px] md:h-[360px] rounded-2xl bg-[#0d1017] border border-white/10 p-3 shadow-2xl overflow-hidden flex items-center justify-center">
-              {resolvedMedia ? (
+              {resolvedMedia && previewTab === 'media' ? (
                 resolvedMedia.kind === 'iframe' ? (
-                  <div className="relative w-full h-full">
-                    <iframe
-                      src={resolvedMedia.src}
-                      className="w-full h-full rounded-xl border-0 bg-black"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                      allowFullScreen
-                      title={currentShowcase.title}
-                    />
-                    <a
-                      href={resolvedMedia.originalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Abrir video en pestaña completa"
-                      className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-black/75 hover:bg-[#00f2fe] text-white hover:text-[#0b0e14] border border-white/20 text-[10px] font-black uppercase tracking-wider transition-colors"
-                    >
-                      Abrir video ↗
-                    </a>
-                  </div>
+                  <iframe
+                    src={resolvedMedia.src}
+                    className="w-full h-full rounded-xl border-0 bg-black"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    title={currentShowcase.title}
+                  />
                 ) : resolvedMedia.kind === 'video' ? (
                   <video
                     src={resolvedMedia.src}
@@ -1020,7 +1111,7 @@ export const UpdatesHistoryView: React.FC<UpdatesHistoryViewProps> = ({
                       {card.tag}
                     </span>
                     <span className="text-[10px] font-mono text-gray-400">
-                      {hasCustomMedia ? '🎬 Media' : '⚡ Guía'}
+                      {hasCustomMedia ? '🎬 Video + Guía' : '⚡ Guía'}
                     </span>
                   </div>
                   <div className="text-xs font-extrabold text-white line-clamp-2 leading-snug">
