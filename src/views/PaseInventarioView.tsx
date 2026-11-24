@@ -139,6 +139,9 @@ export const PaseInventarioView: React.FC = () => {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [baseListaEnMemoria, setBaseListaEnMemoria] = useState(false);
 
+  // Modal de selección de filtro para imprimir localidad
+  const [showPrintModal, setShowPrintModal] = useState(false);
+
   // Estados de edición del ítem seleccionado
   const [colA, setColA] = useState(false);
   const [colB, setColB] = useState('');
@@ -425,9 +428,35 @@ export const PaseInventarioView: React.FC = () => {
     setShowCalculator(false);
   };
 
-  // Imprimir hoja de conteo/auditoría de la localidad seleccionada
-  const handlePrintUbicacion = () => {
-    if (itemsList.length === 0) return;
+  // Subgrupos de la ubicación actual para el modal de impresión
+  const faltanValidarList = itemsList.filter((it) => !it.colA_Validado);
+  const faltanCerrarList = itemsList.filter((it) => !it.colI_Candado);
+
+  // Imprimir hoja de conteo/auditoría según la opción elegida (Todos, Faltan Validar o Faltan Cerrar)
+  const handlePrintUbicacion = (mode: 'ALL' | 'PENDIENTE_VALIDAR' | 'PENDIENTE_CERRAR') => {
+    setShowPrintModal(false);
+
+    const targetItems =
+      mode === 'PENDIENTE_VALIDAR'
+        ? faltanValidarList
+        : mode === 'PENDIENTE_CERRAR'
+        ? faltanCerrarList
+        : itemsList;
+
+    if (targetItems.length === 0) {
+      setNotification({
+        type: 'error',
+        text: 'No hay artículos pendientes en esa categoría para imprimir.',
+      });
+      return;
+    }
+
+    const filterTitle =
+      mode === 'PENDIENTE_VALIDAR'
+        ? 'FALTAN POR VALIDAR (COL A)'
+        : mode === 'PENDIENTE_CERRAR'
+        ? 'FALTAN POR CERRAR CANDADO (COL I)'
+        : 'TODOS LOS ARTÍCULOS';
 
     const labelLocalidad = selectedUbicacion || ubicacionInput.trim() || 'TODAS LAS UBICACIONES';
     const fechaHora = new Date().toLocaleString('es-DO', {
@@ -438,22 +467,22 @@ export const PaseInventarioView: React.FC = () => {
       minute: '2-digit',
     });
 
-    const totalNetSuite = itemsList.reduce((acc, it) => acc + (Number(it.colD_NetSuite) || 0), 0);
-    const totalNewsoft = itemsList.reduce(
+    const totalNetSuite = targetItems.reduce((acc, it) => acc + (Number(it.colD_NetSuite) || 0), 0);
+    const totalNewsoft = targetItems.reduce(
       (acc, it) =>
         acc + ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0),
       0
     );
 
-    const rowsHtml = itemsList
+    const rowsHtml = targetItems
       .map((it, index) => {
         const bal = ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0);
         const dif = bal - (Number(it.colD_NetSuite) || 0);
         const estadoTexto = it.colI_Candado
           ? 'CERRADO'
           : it.colA_Validado
-          ? 'VALIDADO OK'
-          : 'PENDIENTE';
+          ? 'VALIDADO (SIN CERRAR)'
+          : 'SIN VALIDAR';
 
         return `
           <tr>
@@ -465,7 +494,7 @@ export const PaseInventarioView: React.FC = () => {
             <td style="text-align:center;font-weight:bold;">${bal}</td>
             <td style="text-align:center;font-weight:bold;color:${dif === 0 ? '#047857' : '#be123c'};">${dif}</td>
             <td style="text-align:center;width:72px;"></td>
-            <td style="text-align:center;font-size:10px;font-weight:bold;">${estadoTexto}</td>
+            <td style="text-align:center;font-size:9.5px;font-weight:bold;">${estadoTexto}</td>
             <td style="font-size:10px;">${escapeHtml(it.colL_Comentario || '')}</td>
           </tr>
         `;
@@ -486,14 +515,15 @@ export const PaseInventarioView: React.FC = () => {
       <html lang="es">
       <head>
         <meta charset="UTF-8" />
-        <title>Inventario Localidad ${escapeHtml(labelLocalidad)} - Boombah</title>
+        <title>Inventario Localidad ${escapeHtml(labelLocalidad)} - ${escapeHtml(filterTitle)}</title>
         <style>
           @page { size: letter landscape; margin: 12mm; }
           body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; padding: 12px; }
           .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 12px; }
-          .title { font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
-          .subtitle { font-size: 11px; color: #4b5563; margin-top: 2px; }
-          .badge-ubi { font-size: 20px; font-weight: 900; font-family: monospace; border: 2px solid #111827; padding: 4px 14px; border-radius: 6px; background: #f3f4f6; }
+          .title { font-size: 17px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
+          .subtitle { font-size: 11px; color: #4b5563; margin-top: 3px; }
+          .badge-ubi { font-size: 18px; font-weight: 900; font-family: monospace; border: 2px solid #111827; padding: 4px 14px; border-radius: 6px; background: #f3f4f6; text-align: right; }
+          .badge-filter { display: block; font-size: 10px; font-family: Arial, sans-serif; color: #b91c1c; margin-top: 2px; }
           .summary { display: flex; gap: 20px; font-size: 11px; margin-bottom: 10px; background: #f9fafb; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; }
           table { width: 100%; border-collapse: collapse; font-size: 11px; }
           th { background: #111827; color: #ffffff; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.4px; padding: 6px 5px; border: 1px solid #111827; }
@@ -509,11 +539,14 @@ export const PaseInventarioView: React.FC = () => {
             <h1 class="title">Boombah Workspace • Hoja de Conteo de Inventario (Nave 6)</h1>
             <div class="subtitle">Fecha y hora de impresión: ${escapeHtml(fechaHora)}</div>
           </div>
-          <div class="badge-ubi">LOCALIDAD: ${escapeHtml(labelLocalidad)}</div>
+          <div class="badge-ubi">
+            LOCALIDAD: ${escapeHtml(labelLocalidad)}
+            <span class="badge-filter">FILTRO: ${escapeHtml(filterTitle)}</span>
+          </div>
         </div>
 
         <div class="summary">
-          <div><strong>Total Artículos en Ubicación:</strong> ${itemsList.length}</div>
+          <div><strong>Artículos Impresos:</strong> ${targetItems.length} de ${itemsList.length}</div>
           <div><strong>Suma NetSuite (NS):</strong> ${totalNetSuite}</div>
           <div><strong>Suma Bal. Newsoft:</strong> ${totalNewsoft}</div>
           <div><strong>Diferencia Neta:</strong> ${totalNewsoft - totalNetSuite}</div>
@@ -530,8 +563,8 @@ export const PaseInventarioView: React.FC = () => {
               <th style="width:65px;">Newsoft</th>
               <th style="width:50px;">DIF</th>
               <th style="width:75px;">Conteo Físico</th>
-              <th style="width:82px;">Estado</th>
-              <th style="width:150px;">Comentarios</th>
+              <th style="width:95px;">Estado</th>
+              <th style="width:145px;">Comentarios</th>
             </tr>
           </thead>
           <tbody>
@@ -906,7 +939,7 @@ export const PaseInventarioView: React.FC = () => {
               {itemsList.length > 0 && (
                 <button
                   type="button"
-                  onClick={handlePrintUbicacion}
+                  onClick={() => setShowPrintModal(true)}
                   title={`Imprimir listado de ${selectedUbicacion || 'la ubicación seleccionada'}`}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe] text-[#00f2fe] hover:text-[#0b0e14] border border-[#00f2fe]/40 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
                 >
@@ -1281,6 +1314,87 @@ export const PaseInventarioView: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Modal de Selección de Qué Imprimir en la Localidad */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl p-5 max-w-md w-full space-y-4 shadow-[0_0_30px_rgba(0,242,254,0.25)]">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <div className="flex items-center gap-2 text-[#00f2fe] font-black text-xs uppercase tracking-wider">
+                <Printer className="w-4 h-4" />
+                <span>Imprimir Localidad {selectedUbicacion || ''}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300">
+              ¿Qué artículos de la ubicación <strong className="text-amber-400 font-mono">{selectedUbicacion || 'seleccionada'}</strong> deseas incluir en la hoja de impresión?
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handlePrintUbicacion('PENDIENTE_VALIDAR')}
+                disabled={faltanValidarList.length === 0}
+                className="w-full p-3 rounded-xl bg-[#0d1017] hover:bg-emerald-500/15 border border-white/10 hover:border-emerald-400/50 flex items-center justify-between text-left transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <div>
+                  <div className="text-xs font-black text-white">Faltan por Validar (Col A)</div>
+                  <div className="text-[11px] text-gray-400">Artículos que aún no tienen el check de validación</div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-black text-xs">
+                  {faltanValidarList.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePrintUbicacion('PENDIENTE_CERRAR')}
+                disabled={faltanCerrarList.length === 0}
+                className="w-full p-3 rounded-xl bg-[#0d1017] hover:bg-amber-500/15 border border-white/10 hover:border-amber-400/50 flex items-center justify-between text-left transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <div>
+                  <div className="text-xs font-black text-white">Faltan por Cerrar Candado (Col I)</div>
+                  <div className="text-[11px] text-gray-400">Artículos cuyo candado aún sigue abierto</div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-mono font-black text-xs">
+                  {faltanCerrarList.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePrintUbicacion('ALL')}
+                className="w-full p-3 rounded-xl bg-[#0d1017] hover:bg-[#00f2fe]/15 border border-white/10 hover:border-[#00f2fe]/50 flex items-center justify-between text-left transition-colors cursor-pointer"
+              >
+                <div>
+                  <div className="text-xs font-black text-white">Todos los Artículos</div>
+                  <div className="text-[11px] text-gray-400">Listado completo de la ubicación seleccionada</div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-[#00f2fe]/20 text-[#00f2fe] font-mono font-black text-xs">
+                  {itemsList.length}
+                </span>
+              </button>
+            </div>
+
+            <div className="pt-1 text-right">
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                className="px-4 py-1.5 rounded-lg border border-white/10 text-xs font-bold text-gray-400 hover:text-white cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Emergente de Solicitud de PIN */}
       {showPinModal && (
