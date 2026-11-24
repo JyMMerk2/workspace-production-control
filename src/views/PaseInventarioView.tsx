@@ -46,6 +46,17 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTP
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
+const BROADCAST_CHANNEL_NAME = 'nave6_realtime_sync_channel';
+
+function broadcastSyncMessage(payload: Record<string, any>) {
+  try {
+    const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+    bc.postMessage(payload);
+    bc.close();
+  } catch {
+    // Ignorar si el navegador no soporta BroadcastChannel
+  }
+}
 
 // Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
 function limpiarEtiquetaRevision(comentario: string): string {
@@ -230,6 +241,9 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       } catch {
         // Ignorar
       }
+
+      // Notificar al instante (0ms) a la vista de KPI por Usuario
+      broadcastSyncMessage({ type: 'ACTIVITY_UPDATED', event: nuevoEvento });
 
       try {
         if (supabase) {
@@ -813,6 +827,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       colG: Number(colG) || 0,
       colH,
       colI,
+      ...(colI ? { colO: true, usuario: activeUserLabel } : {}),
       colL: comentarioFinal,
       colN: Number(colN) || 0,
       forceUnlock: isUnlockedByPin
