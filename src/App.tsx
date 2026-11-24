@@ -452,7 +452,9 @@ export default function App() {
             )}
 
             {/* 8.1. Módulo Inventario: Pase de Inventario */}
-            {(activeTab as string) === 'inventario-pase' && <PaseInventarioView />}
+            {(activeTab as string) === 'inventario-pase' && (
+              <PaseInventarioView authenticatedUser={authenticatedUser} />
+            )}
 
             {/* 8.2. Módulo Inventario: KPI por Usuario (Temporada 13 Nov 2026) */}
             {(activeTab as string) === 'inventario-kpi' && (
