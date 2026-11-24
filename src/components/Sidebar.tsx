@@ -22,6 +22,7 @@ import {
   Warehouse,
   Edit3,
   History,
+  BarChart3,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { SHEETS_CONFIG } from '../data/sheetsConfig';
@@ -62,7 +63,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     'wip': activeTab === 'wip',
     'seguimiento-ordenes': activeTab === ('seguimiento-ordenes' as TabType),
-    'inventario': activeTab === 'inventario-nave-6' || activeTab === 'inventario-desglose' || activeTab === ('inventario-pase' as TabType),
+    'inventario':
+      activeTab === 'inventario-nave-6' ||
+      activeTab === 'inventario-desglose' ||
+      activeTab === ('inventario-pase' as TabType) ||
+      activeTab === ('inventario-kpi' as TabType),
   });
 
   const [dynamicSubTabs, setDynamicSubTabs] = useState<Record<string, { nombre: string; gid: string }[]>>({});
@@ -212,7 +217,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }
             }}
             className={`flex items-center justify-between px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-left transition-all border-l-4 cursor-pointer ${
-              activeTab === 'inventario-nave-6' || activeTab === 'inventario-desglose' || activeTab === ('inventario-pase' as TabType)
+              activeTab === 'inventario-nave-6' ||
+              activeTab === 'inventario-desglose' ||
+              activeTab === ('inventario-pase' as TabType) ||
+              activeTab === ('inventario-kpi' as TabType)
                 ? 'text-amber-400 bg-amber-400/10 border-amber-400'
                 : 'text-[#8f9ba8] border-transparent hover:text-white hover:bg-white/5'
             }`}
@@ -267,7 +275,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               </button>
 
-              {/* NUEVA PESTAÑA: Pase de Inventario */}
+              {/* Pase de Inventario */}
               <button
                 onClick={() => onSelectTab('inventario-pase' as TabType, undefined, 'INVENTARIO - PASE DE INVENTARIO')}
                 className={`flex items-center justify-between px-6 py-2 text-[11px] font-semibold text-left transition-all cursor-pointer ${
@@ -282,6 +290,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                   Conteo
+                </span>
+              </button>
+
+              {/* NUEVA PESTAÑA: KPI por Usuario (Temporada desde 13 Nov 2026) */}
+              <button
+                onClick={() =>
+                  onSelectTab(
+                    'inventario-kpi' as TabType,
+                    undefined,
+                    'INVENTARIO - KPI POR USUARIO (TEMPORADA 13 NOV 2026)'
+                  )
+                }
+                className={`flex items-center justify-between px-6 py-2 text-[11px] font-semibold text-left transition-all cursor-pointer ${
+                  activeTab === ('inventario-kpi' as TabType)
+                    ? 'text-amber-400 font-bold bg-amber-400/15'
+                    : 'text-[#6c7a89] hover:text-amber-400 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <BarChart3 className="w-3 h-3 text-[#00f2fe]" />
+                  <span>KPI por Usuario</span>
+                </div>
+                <span className="text-[9px] font-mono text-[#00f2fe] bg-[#00f2fe]/10 px-1.5 py-0.5 rounded border border-[#00f2fe]/25">
+                  13 Nov
                 </span>
               </button>
             </div>
