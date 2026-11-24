@@ -16,11 +16,10 @@ import {
   Trash2,
   ArrowUpRight,
   Lightbulb,
-  Layers,
-  Zap,
   Megaphone,
   FileSpreadsheet,
   Sliders,
+  Lock,
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -55,7 +54,8 @@ const GITHUB_REPO_COMMITS_BASE =
 const PERMANENT_STORAGE_KEY = 'boombah_updates_history_permanent_v2';
 const MEDIA_CACHE_KEY = 'boombah_whats_new_media_v1';
 
-const ADMIN_USERS = ['JMERCADO', 'ADMIN', 'SUPERVISOR'];
+// Usuarios con permiso exclusivo para subir/cambiar fotos o videos de ejemplo
+const ADMIN_USERS = ['JUAN MERCADO', 'JMERCADO', 'ADMIN', 'SUPERVISOR'];
 
 // Novedades destacadas con explicación paso a paso y mockup interactivo
 const FEATURED_SHOWCASE: UpdateEntry[] = [
@@ -65,13 +65,13 @@ const FEATURED_SHOWCASE: UpdateEntry[] = [
     color: 'text-[#00f2fe] border-[#00f2fe]/40 bg-[#00f2fe]/10',
     title: 'Lotes en Proceso en Vivo con color personal y flechas ▲ / ▼',
     details:
-      'Toma tu cantidad o rack asignado en tiempo real, resalta tus filas con tu color único de operador y salta al instante entre páginas e ítems activos.',
+      'Anota la cantidad fija o grupo que estás pasando a Newsoft (ej. 69 o Cant. 12 A-11) para resaltarlo por color y saltar al instante entre ítems y páginas.',
     steps: [
-      'Entra a Desglose Operativo y selecciona la cantidad o rack de tu lote activo.',
-      'Tus filas quedarán marcadas con tu color personal para que ningún compañero duplique conteo.',
-      'Usa las flechas (▲ / ▼) en tu etiqueta superior para saltar directo entre tus ítems.',
+      'En Desglose Operativo, escribe la cantidad fija o grupo en "Cantidad o Grupo" y pulsa "+ Tomar Lote".',
+      'Solo los artículos con esa cantidad (ej. 69) se sombrean con tu color y muestran la insignia 69 (JM) en Total Balance.',
+      'Usa las flechas (∧ / ∨) en tu píldora activa para saltar directo entre los ítems encontrados (1/2 ítems).',
     ],
-    tip: 'Cada operador tiene un contador y color distinto visible en tiempo real para todo el piso.',
+    tip: 'Cada operador tiene su propia píldora con contador y color distinto visible en vivo para todo el equipo.',
     mockupType: 'lotes',
     author: 'Juan Mercado',
     fullDate: '20 nov 2026',
@@ -275,59 +275,104 @@ const InteractiveMockupPreview: React.FC<{ item: UpdateEntry }> = ({ item }) => 
   const kind = item.mockupType || detectMockupType(item.title);
 
   if (kind === 'lotes') {
+    const selectedQty = 69;
+    const rows = [
+      { code: '951986', sku: 'BM-437CS B-M', inv: 78, total: 78, loc: 'A-1-3' },
+      { code: '951985', sku: 'BM-437CS B-S', inv: 60, total: 60, loc: 'A-1-3' },
+      { code: '952186', sku: 'BM-437CS W-M', inv: 69, total: 69, loc: 'A-1-3' },
+      { code: '952185', sku: 'BM-437CS W-S', inv: 25, total: 26, loc: 'A-1-3' },
+    ];
+
     return (
-      <div className="w-full h-full bg-[#0b0e14] rounded-xl border border-white/15 p-4 flex flex-col justify-between shadow-inner select-none">
-        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg bg-[#00f2fe]/15 border border-[#00f2fe]/50 text-[#00f2fe] text-[11px] font-black">
-              ● TU LOTE ACTIVO: 12 ÍTEMS
-            </span>
-            <div className="inline-flex items-center rounded-lg bg-[#12161f] border border-white/15 overflow-hidden">
-              <span className="px-2 py-0.5 text-[11px] font-bold text-[#00f2fe] border-r border-white/10">
-                ▲
+      <div className="w-full h-full bg-[#0b0e14] rounded-xl border border-white/15 p-3.5 flex flex-col justify-between shadow-inner select-none overflow-hidden">
+        {/* Panel superior idéntico a LOTES EN PROCESO (EQUIPO EN VIVO) */}
+        <div className="p-2.5 rounded-xl bg-[#10151f] border border-white/10 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase text-[#00f2fe] tracking-wider">
+                LOTES EN PROCESO (EQUIPO EN VIVO)
               </span>
-              <span className="px-2 py-0.5 text-[11px] font-bold text-[#00f2fe]">▼</span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-[9px] font-black">
+                1 ACTIVO
+              </span>
             </div>
+            <span className="text-[9px] font-mono text-gray-400">Cant. seleccionada: 69</span>
           </div>
-          <span className="text-[10px] font-mono text-emerald-400">En Vivo • Sincronizado</span>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#00f2fe]/12 border border-[#00f2fe]/50 text-[10px]">
+              <span className="w-2 h-2 rounded-full bg-[#00f2fe]" />
+              <span className="font-bold text-cyan-100">Juan Mercado (JM):</span>
+              <span className="font-black text-white">{selectedQty}</span>
+              <span className="px-1.5 py-0.5 rounded bg-white/10 text-gray-200 font-mono text-[9px]">
+                1/2 ítems
+              </span>
+              <span className="text-[#00f2fe] font-bold text-[10px] tracking-tighter">∧ ∨</span>
+            </div>
+
+            <span className="hidden sm:inline-block px-2.5 py-1 rounded-lg bg-[#00f2fe]/20 border border-[#00f2fe]/50 text-[#00f2fe] text-[9px] font-black">
+              + Tomar Lote (69)
+            </span>
+          </div>
         </div>
 
-        <div className="space-y-1.5 my-2">
-          {[
-            { sku: 'BM-5060NI STL-40', loc: 'F-11-1', qty: 12, mine: true, user: 'TÚ' },
-            { sku: 'BM-5060NI W-38', loc: 'F-11-2', qty: 18, mine: true, user: 'TÚ' },
-            { sku: 'BM-5060W STL-24', loc: 'D-10-4', qty: 45, mine: false, user: 'CARLOS' },
-            { sku: 'BM-5060WC23 C-24', loc: 'E-10-1', qty: 24, mine: true, user: 'TÚ' },
-          ].map((row, idx) => (
-            <div
-              key={idx}
-              className={`px-3 py-2 rounded-lg border flex items-center justify-between text-xs ${
-                row.mine
-                  ? 'bg-[#00f2fe]/12 border-[#00f2fe]/50 text-white'
-                  : 'bg-amber-500/10 border-amber-400/35 text-gray-300'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <span
-                  className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                    row.mine ? 'bg-[#00f2fe] text-black' : 'bg-amber-400 text-black'
+        {/* Tabla fiel a la captura real: solo el 69 aparece sombreado con 69 (JM) */}
+        <div className="my-1.5 rounded-lg border border-white/10 overflow-hidden bg-[#10141d]">
+          <div className="grid grid-cols-12 gap-1 px-2.5 py-1.5 bg-[#161b26] text-[8.5px] font-black uppercase text-gray-400 border-b border-white/10">
+            <div className="col-span-2">Estado</div>
+            <div className="col-span-2">Candado</div>
+            <div className="col-span-3">Item NT/NS</div>
+            <div className="col-span-2 text-center">Cant. Inv</div>
+            <div className="col-span-3 text-center">Total Balance</div>
+          </div>
+
+          <div className="divide-y divide-white/5 text-[10.5px]">
+            {rows.map((row, idx) => {
+              const isMatched = row.total === selectedQty;
+              return (
+                <div
+                  key={idx}
+                  className={`grid grid-cols-12 gap-1 items-center px-2.5 py-1.5 transition-colors ${
+                    isMatched
+                      ? 'bg-[#00f2fe]/15 border-l-2 border-l-[#00f2fe]'
+                      : 'hover:bg-white/[0.02]'
                   }`}
                 >
-                  {row.user}
-                </span>
-                <span className="font-mono font-bold">{row.sku}</span>
-              </div>
-              <div className="flex items-center gap-4 font-mono text-[11px]">
-                <span className="text-gray-400">{row.loc}</span>
-                <span className="font-black text-[#39ff14]">{row.qty} uds</span>
-              </div>
-            </div>
-          ))}
+                  <div className="col-span-2">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/40 text-emerald-400 text-[8.5px] font-bold">
+                      ✓ OK
+                    </span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-400/40 text-amber-300 text-[8.5px] font-bold">
+                      <Lock className="w-2.5 h-2.5" />
+                      Cerrar
+                    </span>
+                  </div>
+                  <div className="col-span-3 font-mono font-bold text-gray-200 truncate">
+                    {row.sku}
+                  </div>
+                  <div className="col-span-2 text-center font-mono font-bold text-emerald-400">
+                    {row.inv}
+                  </div>
+                  <div className="col-span-3 flex justify-center">
+                    {isMatched ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-[#00f2fe]/20 border border-[#00f2fe] text-[#00f2fe] font-mono font-black text-[9.5px] shadow-[0_0_8px_rgba(0,242,254,0.35)]">
+                        {row.total} (JM)
+                      </span>
+                    ) : (
+                      <span className="font-mono font-bold text-[#00f2fe]">{row.total}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="text-[10px] text-gray-400 flex items-center justify-between pt-2 border-t border-white/10">
-          <span>Vista previa interactiva • Desglose Operativo</span>
-          <span className="text-[#00f2fe] font-bold">Salto rápido entre páginas</span>
+        <div className="text-[10px] text-gray-400 flex items-center justify-between pt-1.5 border-t border-white/10">
+          <span>Solo coincide y se sombrea la cantidad tomada (69)</span>
+          <span className="text-[#00f2fe] font-bold">Desglose Operativo en Vivo</span>
         </div>
       </div>
     );
