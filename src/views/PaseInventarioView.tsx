@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   Printer
 } from 'lucide-react';
+import { supabase } from '../data/supabaseClient';
+import { Nave6ActivityEvent } from './InventarioKpiUsuariosView';
 
 interface InventoryItem {
   rowNumber: number;
@@ -36,9 +38,14 @@ interface InventoryItem {
   isLocked: boolean;
 }
 
+interface PaseInventarioViewProps {
+  authenticatedUser?: string | null;
+}
+
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
+const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
 
 // Helper para limpiar la marca automática [REVISIÓN ...] al volver a cerrar el candado
 function limpiarEtiquetaRevision(comentario: string): string {
@@ -122,7 +129,18 @@ async function queryGAS(params: Record<string, string>): Promise<any> {
   });
 }
 
-export const PaseInventarioView: React.FC = () => {
+export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
+  authenticatedUser,
+}) => {
+  const activeUserLabel = (
+    authenticatedUser ||
+    sessionStorage.getItem('authenticated_user') ||
+    localStorage.getItem('authenticated_user') ||
+    'OPERADOR'
+  )
+    .trim()
+    .toUpperCase();
+
   const [searchTerm, setSearchTerm] = useState('');
   
   // Ubicaciones con autocompletado y búsqueda escrita
@@ -173,6 +191,76 @@ export const PaseInventarioView: React.FC = () => {
   useEffect(() => {
     selectedUbicacionRef.current = selectedUbicacion;
   }, [selectedUbicacion]);
+
+  // Registrar acción del operador en la bitácora global de KPI por Usuario (Temporada 13 Nov 2026)
+  const recordOperatorActivity = useCallback(
+    async (
+      accion: Nave6ActivityEvent['accion'],
+      datos: { codigo: string; item: string; ubicacion: string; cantidad: number }
+    ) => {
+      const nuevoEvento: Nave6ActivityEvent = {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        usuario: activeUserLabel,
+        accion,
+        codigo: datos.codigo,
+        item: datos.item,
+        ubicacion: datos.ubicacion,
+        cantidad: Number(datos.cantidad) || 0,
+        fecha: new Date().toLocaleString('es-DO', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        timestamp: Date.now(),
+      };
+
+      let listaActual: Nave6ActivityEvent[] = [];
+      try {
+        const saved = localStorage.getItem(ACTIVITY_LOG_CACHE_KEY);
+        if (saved) listaActual = JSON.parse(saved);
+      } catch {
+        // Ignorar
+      }
+
+      const actualizada = [nuevoEvento, ...listaActual].slice(0, 3000);
+      try {
+        localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(actualizada));
+      } catch {
+        // Ignorar
+      }
+
+      try {
+        if (supabase) {
+          const { data } = await supabase
+            .from('boombah_announcements')
+            .select('message')
+            .eq('id', 'global_nave6_season_activity')
+            .maybeSingle();
+
+          let remota: Nave6ActivityEvent[] = [];
+          if (data?.message) {
+            const parsed = JSON.parse(data.message);
+            if (Array.isArray(parsed)) remota = parsed;
+          }
+
+          const merged = [nuevoEvento, ...remota].slice(0, 3000);
+          await supabase.from('boombah_announcements').upsert({
+            id: 'global_nave6_season_activity',
+            message: JSON.stringify(merged),
+            active: true,
+            priority: 'AVISO',
+            updated_by: activeUserLabel,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // Continuar silenciosamente
+      }
+    },
+    [activeUserLabel]
+  );
 
   // Sincronización global ultrarrápida en memoria vía CSV cada 2s (elimina esperas de Apps Script al buscar)
   const syncInventarioEnMemoria = useCallback(async () => {
@@ -669,6 +757,13 @@ export const PaseInventarioView: React.FC = () => {
           it.rowNumber === selectedItem.rowNumber ? updatedItem : it
         );
 
+        recordOperatorActivity('SLACK', {
+          codigo: colB,
+          item: colC,
+          ubicacion: colH,
+          cantidad: totalBalanceNewsoft,
+        });
+
         setNotification({
           type: 'success',
           text: res.message || `Alerta del ítem ${colB} enviada a Slack y movida a Revisión.`
@@ -732,6 +827,22 @@ export const PaseInventarioView: React.FC = () => {
       if (data && data.success) {
         setColL(comentarioFinal);
         setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
+
+        // Registrar efectividad del usuario en la temporada (13 Nov 2026)
+        const actividadMeta = {
+          codigo: colB,
+          item: colC,
+          ubicacion: colH,
+          cantidad: totalBalanceNewsoft,
+        };
+
+        if (colI && !selectedItem.colI_Candado) {
+          recordOperatorActivity('CERRADO', actividadMeta);
+        } else if (colA && !selectedItem.colA_Validado) {
+          recordOperatorActivity('VALIDADO', actividadMeta);
+        } else {
+          recordOperatorActivity('EDICION', actividadMeta);
+        }
 
         // Sincronizar el ítem seleccionado para que permanezca visible con sus valores correctos
         const updatedItem: InventoryItem = {
