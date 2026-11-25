@@ -215,7 +215,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     selectedUbicacionRef.current = selectedUbicacion;
   }, [selectedUbicacion]);
 
-  // --- PRESENCIA EN VIVO INSTANTÁNEA EN TOMA Y PASE DE INVENTARIO ---
+  // --- PRESENCIA EN VIVO INSTANTÁNEA EN TOMA Y PASE DE INVENTARIO (FILA ÚNICA POR USUARIO SIN PARPADEO) ---
   const publishPasePresence = useCallback(
     async (isLeaving = false) => {
       const now = Date.now();
@@ -233,6 +233,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         timestamp: now,
       };
 
+      // 1. Actualizar caché local sin borrar sesiones vigentes de otros usuarios
       let localMap: Record<string, PaseActiveSession> = {};
       try {
         const saved = localStorage.getItem(PASE_SESSIONS_CACHE_KEY);
@@ -253,7 +254,9 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         }
       });
 
-      const activeArray = Object.values(localMap);
+      const activeArray = Object.values(localMap).sort((a, b) =>
+        a.usuario.localeCompare(b.usuario)
+      );
       setActivePaseSessions(activeArray);
 
       try {
@@ -268,44 +271,14 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         sessions: activeArray,
       });
 
+      // 2. Guardar en Supabase usando una fila INDEPENDIENTE por operador (evita colisiones y parpadeo)
       try {
         if (supabase) {
-          const { data } = await supabase
-            .from('boombah_announcements')
-            .select('message')
-            .eq('id', 'global_nave6_pase_sessions')
-            .maybeSingle();
-
-          let remoteMap: Record<string, PaseActiveSession> = {};
-          if (data?.message) {
-            const parsed = JSON.parse(data.message);
-            if (parsed && typeof parsed === 'object') remoteMap = parsed;
-          }
-
-          if (isLeaving) {
-            delete remoteMap[activeUserLabel];
-          } else {
-            remoteMap[activeUserLabel] = currentSession;
-          }
-
-          Object.keys(remoteMap).forEach((k) => {
-            if (now - (remoteMap[k]?.timestamp || 0) > 35000) {
-              delete remoteMap[k];
-            }
-          });
-
-          const mergedList = Object.values(remoteMap);
-          setActivePaseSessions(mergedList);
-          try {
-            localStorage.setItem(PASE_SESSIONS_CACHE_KEY, JSON.stringify(remoteMap));
-          } catch {
-            // Ignorar
-          }
-
+          const sessionRowId = `pase_session_${activeUserLabel}`;
           await supabase.from('boombah_announcements').upsert({
-            id: 'global_nave6_pase_sessions',
-            message: JSON.stringify(remoteMap),
-            active: true,
+            id: sessionRowId,
+            message: JSON.stringify(currentSession),
+            active: !isLeaving,
             priority: 'AVISO',
             updated_by: activeUserLabel,
             updated_at: new Date().toISOString(),
@@ -322,7 +295,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     publishPasePresence(false);
     const heartbeat = setInterval(() => {
       if (!document.hidden) publishPasePresence(false);
-    }, 2000);
+    }, 1500);
 
     const onBeforeUnload = () => {
       publishPasePresence(true);
