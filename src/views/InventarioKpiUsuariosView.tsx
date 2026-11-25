@@ -188,9 +188,9 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') {
           const now = Date.now();
-          return Object.values(parsed as Record<string, PaseActiveSession>).filter(
-            (s) => s && now - (s.timestamp || 0) <= 35000
-          );
+          return Object.values(parsed as Record<string, PaseActiveSession>)
+            .filter((s) => s && now - (s.timestamp || 0) <= 35000)
+            .sort((a, b) => a.usuario.localeCompare(b.usuario));
         }
       }
     } catch {
@@ -219,6 +219,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
   >(new Map());
   const isFastSyncingRef = useRef(false);
   const isSheetSyncingRef = useRef(false);
+  const lastPaseSignatureRef = useRef<string>('');
 
   const persistKnownOperators = useCallback(async (operatorsList: string[]) => {
     const uniqueSorted = Array.from(
@@ -248,7 +249,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     }
   }, []);
 
-  // SINCRONIZACIÓN RÁPIDA EN VIVO (Sesiones Toma/Pase + Lotes activos + Bitácora Supabase) -> < 1s
+  // SINCRONIZACIÓN RÁPIDA EN VIVO (Sesiones individuales pase_session_* + Lotes activos + Bitácora)
   const syncRealtimeActivityAndLotes = useCallback(async () => {
     if (isFastSyncingRef.current) return;
     isFastSyncingRef.current = true;
@@ -260,21 +261,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         discoveredOperators.add(normalizeOperatorName(authenticatedUser));
       }
 
-      // Leer sesiones activas locales de Toma y Pase de Inventario
-      try {
-        const cachedPase = localStorage.getItem(PASE_SESSIONS_CACHE_KEY);
-        if (cachedPase) {
-          const parsedMap = JSON.parse(cachedPase) as Record<string, PaseActiveSession>;
-          const activeList = Object.values(parsedMap).filter(
-            (s) => s && now - (s.timestamp || 0) <= 35000
-          );
-          setPaseSessions(activeList);
-          activeList.forEach((s) => discoveredOperators.add(normalizeOperatorName(s.usuario)));
-        }
-      } catch {
-        // Ignorar
-      }
-
       // Leer caché local instantánea de lotes
       let localLotes: LoteActivo[] = [];
       try {
@@ -283,7 +269,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           const parsed = JSON.parse(cachedLotes);
           if (Array.isArray(parsed)) {
             localLotes = parsed;
-            setLotesActivos(parsed);
             parsed.forEach((l) => {
               if (l?.usuario) discoveredOperators.add(normalizeOperatorName(l.usuario));
             });
@@ -293,7 +278,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         // Ignorar
       }
 
-      // Consultar en paralelo Apps Script (lotes en vivo) + Supabase (eventos, operadores y sesiones Pase)
+      // Consultar en paralelo Apps Script (lotes en vivo) + Supabase (eventos, operadores y filas individuales pase_session_*)
       const [lotesRes, supabaseRes] = await Promise.all([
         fetchGAS({ action: 'GET_LOTES' }).catch(() => null),
         supabase
@@ -315,9 +300,9 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 .maybeSingle(),
               supabase
                 .from('boombah_announcements')
-                .select('message')
-                .eq('id', 'global_nave6_pase_sessions')
-                .maybeSingle(),
+                .select('id, message, active, updated_at')
+                .like('id', 'pase_session_%')
+                .eq('active', true),
             ]).catch(() => null)
           : Promise.resolve(null),
       ]);
@@ -358,16 +343,38 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       if (supabaseRes) {
         const [{ data }, { data: digData }, { data: opsData }, { data: paseData }] = supabaseRes;
 
-        if (paseData?.message) {
-          try {
-            const parsedPase = JSON.parse(paseData.message) as Record<string, PaseActiveSession>;
-            if (parsedPase && typeof parsedPase === 'object') {
-              const activeRemote = Object.values(parsedPase).filter(
-                (s) => s && now - (s.timestamp || 0) <= 35000
-              );
-              setPaseSessions(activeRemote);
-              activeRemote.forEach((s) => discoveredOperators.add(normalizeOperatorName(s.usuario)));
+        // Agregar sesiones activas desde las filas individuales pase_session_* sin colisiones
+        if (Array.isArray(paseData)) {
+          const activeRemote: PaseActiveSession[] = [];
+          const nextLocalCache: Record<string, PaseActiveSession> = {};
+
+          for (const row of paseData) {
+            try {
+              const parsed = JSON.parse(row.message) as PaseActiveSession;
+              const updatedMs = row.updated_at ? new Date(row.updated_at).getTime() : parsed.timestamp;
+              if (parsed && now - updatedMs <= 35000) {
+                const sessionWithUpdatedTime = { ...parsed, timestamp: updatedMs };
+                activeRemote.push(sessionWithUpdatedTime);
+                nextLocalCache[normalizeOperatorName(parsed.usuario)] = sessionWithUpdatedTime;
+                discoveredOperators.add(normalizeOperatorName(parsed.usuario));
+              }
+            } catch {
+              // Ignorar
             }
+          }
+
+          activeRemote.sort((a, b) => a.usuario.localeCompare(b.usuario));
+          const signature = activeRemote
+            .map((s) => `${s.usuario}|${s.ubicacionActiva || ''}|${s.codigoActivo || ''}`)
+            .join(';');
+
+          if (signature !== lastPaseSignatureRef.current) {
+            lastPaseSignatureRef.current = signature;
+            setPaseSessions(activeRemote);
+          }
+
+          try {
+            localStorage.setItem(PASE_SESSIONS_CACHE_KEY, JSON.stringify(nextLocalCache));
           } catch {
             // Ignorar
           }
@@ -438,6 +445,21 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           }
         }
       } else {
+        // Respaldo offline usando caché local
+        try {
+          const cachedPase = localStorage.getItem(PASE_SESSIONS_CACHE_KEY);
+          if (cachedPase) {
+            const parsedMap = JSON.parse(cachedPase) as Record<string, PaseActiveSession>;
+            const activeList = Object.values(parsedMap)
+              .filter((s) => s && now - (s.timestamp || 0) <= 35000)
+              .sort((a, b) => a.usuario.localeCompare(b.usuario));
+            setPaseSessions(activeList);
+            activeList.forEach((s) => discoveredOperators.add(normalizeOperatorName(s.usuario)));
+          }
+        } catch {
+          // Ignorar
+        }
+
         try {
           const savedDig = localStorage.getItem(DIGITADO_META_CACHE_KEY);
           if (savedDig) {
@@ -573,7 +595,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     [syncRealtimeActivityAndLotes, syncSheetSummaryStats]
   );
 
-  // Efecto de sincronización instantánea (<100ms entre pestañas y 1.2s con servidor)
+  // Efecto de sincronización instantánea (<100ms entre pestañas y 1.5s con servidor)
   useEffect(() => {
     loadAllKpiData(false);
 
@@ -586,7 +608,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           setLotesActivos(msg.data.lotes);
         }
         if (msg?.data?.type === 'PASE_PRESENCE_UPDATED' && Array.isArray(msg.data.sessions)) {
-          setPaseSessions(msg.data.sessions);
+          const sorted = [...msg.data.sessions].sort((a: PaseActiveSession, b: PaseActiveSession) =>
+            a.usuario.localeCompare(b.usuario)
+          );
+          setPaseSessions(sorted);
         }
         if (msg?.data?.type === 'ACTIVITY_UPDATED' && msg.data.event) {
           const ev: Nave6ActivityEvent = msg.data.event;
@@ -614,7 +639,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     };
     window.addEventListener('storage', onStorage);
 
-    // 3. Suscripción en tiempo real a Supabase (push inmediato cuando cualquier compañero actúa)
+    // 3. Suscripción en tiempo real a Supabase (push inmediato cuando cualquier compañero actúa o entra a Toma/Pase)
     const realtimeChannel = supabase
       ? supabase
           .channel('nave6-kpi-realtime')
@@ -631,7 +656,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 rowId === 'global_nave6_season_activity' ||
                 rowId === 'global_nave6_digitado_meta' ||
                 rowId === 'global_nave6_season_operators' ||
-                rowId === 'global_nave6_pase_sessions'
+                (typeof rowId === 'string' && rowId.startsWith('pase_session_'))
               ) {
                 syncRealtimeActivityAndLotes();
               }
@@ -640,10 +665,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           .subscribe()
       : null;
 
-    // 4. Polling ultra rápido (1.2s) para sesiones, lotes activos y acciones, y 12s para el CSV pesado
+    // 4. Polling rápido (1.5s) para sesiones, lotes activos y acciones, y 12s para el CSV pesado
     const fastInterval = setInterval(() => {
       syncRealtimeActivityAndLotes();
-    }, 1200);
+    }, 1500);
 
     const sheetInterval = setInterval(() => {
       if (!document.hidden) syncSheetSummaryStats(true);
@@ -683,7 +708,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
   }, [events, dateRangeFilter]);
 
   // Operadores activos en vivo combinados:
-  // 1) Sesiones abiertas en Toma y Pase de Inventario
+  // 1) Sesiones abiertas en Toma y Pase de Inventario (filas individuales pase_session_*)
   // 2) Lotes tomados en Desglose Operativo
   // 3) Operadores con actividad registrada en los últimos 3 minutos
   const activeLiveOperators = useMemo(() => {
@@ -755,7 +780,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
     }
 
-    return Array.from(map.values());
+    return Array.from(map.values()).sort((a, b) => a.usuario.localeCompare(b.usuario));
   }, [lotesActivos, paseSessions, events]);
 
   // Tarjetas Permanentes por Operador (Bloque Medio - NUNCA desaparecen aunque liberen lote o se desconecten)
