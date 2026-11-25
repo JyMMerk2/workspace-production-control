@@ -203,8 +203,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const [pinInput, setPinInput] = useState('');
   const [sendingPinEmail, setSendingPinEmail] = useState(false);
 
-  // Modal de confirmación + PIN 030621 para mover artículos en 0 a "ELIMINADOS EN 0"
-  const [archiveZeroTargets, setArchiveZeroTargets] = useState<InventoryItem[] | null>(null);
+  // Modal de confirmación + PIN 030621 para mover artículo en 0 a "ELIMINADOS EN 0"
+  const [archiveZeroTarget, setArchiveZeroTarget] = useState<InventoryItem | null>(null);
   const [archiveZeroPinInput, setArchiveZeroPinInput] = useState('');
   const [archiveZeroPinError, setArchiveZeroPinError] = useState(false);
 
@@ -673,41 +673,26 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     setShowCalculator(false);
   };
 
-  // Verificar si un artículo de la lista tiene NetSuite = 0 y Balance Newsoft = 0
-  const isItemEnCeroTotal = (it: InventoryItem): boolean => {
-    const bal = ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0);
-    return (Number(it.colD_NetSuite) || 0) === 0 && bal === 0;
-  };
-
-  // Subgrupos de las ubicaciones activas para el modal de impresión y archivo en 0
+  // Subgrupos de las ubicaciones activas para el modal de impresión
   const faltanValidarList = itemsList.filter((it) => !it.colA_Validado);
   const faltanCerrarList = itemsList.filter((it) => !it.colI_Candado);
-  const enCeroLocationList = itemsList.filter(isItemEnCeroTotal);
 
-  // Abrir modal de confirmación para mover artículos en 0 a la pestaña "ELIMINADOS EN 0"
-  const handlePromptArchiveZero = (targets: InventoryItem[]) => {
-    const validZeroTargets = targets.filter(isItemEnCeroTotal);
-    if (validZeroTargets.length === 0) {
-      setNotification({
-        type: 'error',
-        text: 'No hay artículos con NetSuite = 0 y Balance Newsoft = 0 para mover.',
-      });
-      return;
-    }
-    setArchiveZeroTargets(validZeroTargets);
+  // Abrir modal de confirmación para mover el artículo seleccionado en 0 a la pestaña "ELIMINADOS EN 0"
+  const handlePromptArchiveZero = (item: InventoryItem) => {
+    setArchiveZeroTarget(item);
     setArchiveZeroPinInput('');
     setArchiveZeroPinError(false);
   };
 
   // Ejecutar traslado a la pestaña "ELIMINADOS EN 0" y borrado de la hoja "PROGRESO"
   const handleConfirmArchiveZero = async () => {
-    if (archiveZeroPinInput.trim() !== MASTER_PIN || !archiveZeroTargets) {
+    if (archiveZeroPinInput.trim() !== MASTER_PIN || !archiveZeroTarget) {
       setArchiveZeroPinError(true);
       return;
     }
 
-    const targetsToMove = [...archiveZeroTargets];
-    setArchiveZeroTargets(null);
+    const targetToMove = archiveZeroTarget;
+    setArchiveZeroTarget(null);
     setArchiveZeroPinInput('');
     setArchiveZeroPinError(false);
     setArchivingZeroRows(true);
@@ -718,10 +703,12 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         action: 'ARCHIVE_ZERO_ITEMS',
         payload: JSON.stringify({
           usuario: activeUserLabel,
-          items: targetsToMove.map((it) => ({
-            rowNumber: it.rowNumber,
-            codigo: it.colB_Codigo,
-          })),
+          items: [
+            {
+              rowNumber: targetToMove.rowNumber,
+              codigo: targetToMove.colB_Codigo,
+            },
+          ],
         }),
       });
 
@@ -729,7 +716,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         const movedRowSet = new Set<number>(
           Array.isArray(res.deletedRows) && res.deletedRows.length > 0
             ? res.deletedRows
-            : targetsToMove.map((t) => t.rowNumber)
+            : [targetToMove.rowNumber]
         );
 
         // Remover inmediatamente de la lista izquierda y de la caché en memoria
@@ -747,7 +734,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
           type: 'success',
           text:
             res.message ||
-            `${targetsToMove.length} artículo(s) en 0 movido(s) a la pestaña "ELIMINADOS EN 0".`,
+            `Artículo ${targetToMove.colB_Codigo} en 0 movido a la pestaña "ELIMINADOS EN 0".`,
         });
 
         setTimeout(() => {
@@ -756,13 +743,13 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       } else {
         setNotification({
           type: 'error',
-          text: res?.error || 'No se pudieron mover los artículos en 0.',
+          text: res?.error || 'No se pudo mover el artículo en 0.',
         });
       }
     } catch (err: any) {
       setNotification({
         type: 'error',
-        text: 'Error al mover artículos en 0: ' + err.message,
+        text: 'Error al mover artículo en 0: ' + err.message,
       });
     } finally {
       setArchivingZeroRows(false);
@@ -1386,22 +1373,9 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
             <div className="flex flex-wrap items-center gap-1.5">
               {ubicacionesLabel && (
-                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/30 max-w-[140px] truncate">
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/30 max-w-[160px] truncate">
                   {ubicacionesLabel}
                 </span>
-              )}
-
-              {enCeroLocationList.length > 0 && (
-                <button
-                  type="button"
-                  disabled={archivingZeroRows}
-                  onClick={() => handlePromptArchiveZero(enCeroLocationList)}
-                  title={`Mover ${enCeroLocationList.length} artículo(s) en 0 de esta lista a la pestaña "ELIMINADOS EN 0"`}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-700/70 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-500/40 hover:border-rose-400 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <Archive className="w-3 h-3" />
-                  <span>En 0 ({enCeroLocationList.length})</span>
-                </button>
               )}
 
               {itemsList.length > 0 && (
@@ -1423,7 +1397,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
               itemsList.map((it) => {
                 const bal = ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0);
                 const dif = bal - (Number(it.colD_NetSuite) || 0);
-                const isEnCero = isItemEnCeroTotal(it);
 
                 return (
                   <div
@@ -1456,21 +1429,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {isEnCero && (
-                        <button
-                          type="button"
-                          disabled={archivingZeroRows}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePromptArchiveZero([it]);
-                          }}
-                          title='Mover este artículo en 0 a la pestaña "ELIMINADOS EN 0"'
-                          className="px-2 py-1 rounded-lg bg-slate-700/70 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-500/40 hover:border-rose-400 text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <Archive className="w-3 h-3" />
-                          <span>A Pestaña 0</span>
-                        </button>
-                      )}
                       {it.colA_Validado && (
                         <span className="p-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400" title="Validado (Col A)">
                           <Check className="w-3.5 h-3.5" />
@@ -1748,7 +1706,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 />
               </div>
 
-              {/* Botonera: Cancelar, Mover a Pestaña 0, Slack & Confirmar */}
+              {/* Botonera: Cancelar, Mover a Pestaña 0 (si NS = 0 y Newsoft = 0), Slack & Confirmar */}
               <div className="pt-3 flex flex-wrap justify-between items-center gap-2 border-t border-white/10">
                 <button
                   type="button"
@@ -1763,7 +1721,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                     <button
                       type="button"
                       disabled={archivingZeroRows}
-                      onClick={() => handlePromptArchiveZero([selectedItem])}
+                      onClick={() => handlePromptArchiveZero(selectedItem)}
                       title='Eliminar de PROGRESO y guardar en la pestaña "ELIMINADOS EN 0" (NetSuite = 0 y Newsoft = 0)'
                       className="px-4 py-2.5 rounded-xl bg-slate-700/80 hover:bg-rose-600 text-slate-100 hover:text-white border border-slate-500/50 hover:border-rose-400 font-black text-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                     >
@@ -1900,8 +1858,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         </div>
       )}
 
-      {/* Modal Confirmación + PIN 030621 para Mover Artículos en 0 a "ELIMINADOS EN 0" */}
-      {archiveZeroTargets && (
+      {/* Modal Confirmación + PIN 030621 para Mover Artículo en 0 a "ELIMINADOS EN 0" */}
+      {archiveZeroTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-[#12161f] border border-amber-500/50 rounded-2xl w-full max-w-md p-6 shadow-[0_0_35px_rgba(245,158,11,0.25)] space-y-4">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
@@ -1909,7 +1867,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 <Archive className="w-4 h-4" /> Mover a Pestaña "ELIMINADOS EN 0"
               </span>
               <button
-                onClick={() => { setArchiveZeroTargets(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
+                onClick={() => { setArchiveZeroTarget(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
                 className="text-gray-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -1918,20 +1876,17 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
             <div className="text-xs text-gray-300 space-y-2">
               <p>
-                Se moverán <strong className="text-white">{archiveZeroTargets.length.toLocaleString()}</strong> artículo(s) con{' '}
-                <strong className="text-cyan-300">NetSuite = 0</strong> y{' '}
+                Se moverá este artículo con <strong className="text-cyan-300">NetSuite = 0</strong> y{' '}
                 <strong className="text-cyan-300">Balance Newsoft = 0</strong> desde la hoja{' '}
                 <strong className="text-white">PROGRESO</strong> hacia la pestaña de respaldo{' '}
                 <strong className="text-amber-300">ELIMINADOS EN 0</strong> en Google Sheets.
               </p>
 
-              {archiveZeroTargets.length === 1 && (
-                <div className="p-2.5 rounded-xl bg-[#0d1017] border border-white/10 font-mono text-[11px]">
-                  <span className="text-amber-400 font-bold">{archiveZeroTargets[0].colB_Codigo}</span> •{' '}
-                  <span className="text-white">{archiveZeroTargets[0].colC_Item}</span> (Ubi:{' '}
-                  {archiveZeroTargets[0].colH_Ubicacion})
-                </div>
-              )}
+              <div className="p-2.5 rounded-xl bg-[#0d1017] border border-white/10 font-mono text-[11px]">
+                <span className="text-amber-400 font-bold">{archiveZeroTarget.colB_Codigo}</span> •{' '}
+                <span className="text-white">{archiveZeroTarget.colC_Item}</span> (Ubi:{' '}
+                {archiveZeroTarget.colH_Ubicacion})
+              </div>
 
               <p className="text-[11px] text-gray-400">
                 Introduce el PIN maestro de 6 dígitos para confirmar esta operación:
@@ -1957,7 +1912,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
             <div className="flex gap-2 justify-end pt-2">
               <button
-                onClick={() => { setArchiveZeroTargets(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
+                onClick={() => { setArchiveZeroTarget(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
                 className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-gray-300 hover:bg-white/5 cursor-pointer"
               >
                 Cancelar
