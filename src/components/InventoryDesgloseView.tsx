@@ -1561,7 +1561,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setArchiveZeroPinError(false);
   };
 
-  // Ejecutar traslado a la pestaña "ELIMINADOS EN 0" en micro-lotes de 25 para no bloquear a otros operadores
+  // Ejecutar traslado a "ELIMINADOS EN 0" con desaparición instantánea en pantalla (0ms) y envío rápido en bloque
   const handleConfirmArchiveZero = async () => {
     if (archiveZeroPinInput.trim() !== MASTER_PIN || !archiveZeroTargets) {
       setArchiveZeroPinError(true);
@@ -1569,13 +1569,20 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
 
     const targetsToMove = [...archiveZeroTargets];
+    const targetRowSet = new Set<number>(targetsToMove.map((t) => t.rowNumber));
+
+    // 1. DESAPARICIÓN INSTANTÁNEA EN PANTALLA (0ms) ANTES DE ESPERAR AL SERVIDOR
+    setItems((prev) => prev.filter((it) => !targetRowSet.has(it.rowNumber)));
     setArchiveZeroTargets(null);
     setArchiveZeroPinInput('');
     setArchiveZeroPinError(false);
     setArchivingZeroRows(true);
-    setNotification(null);
+    setNotification({
+      type: 'success',
+      text: `${targetsToMove.length} artículo(s) en 0 retirados de la vista. Sincronizando con Google Sheets...`,
+    });
 
-    const BATCH_SIZE = 25;
+    const BATCH_SIZE = 150;
     let totalMoved = 0;
 
     try {
@@ -1594,37 +1601,16 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         });
 
         if (res && res.success) {
-          const movedCount = Number(res.deletedCount) || chunk.length;
-          totalMoved += movedCount;
-
-          const movedCodeSet = new Set(chunk.map((c) => c.codigo));
-          const movedRowSet = new Set<number>(
-            Array.isArray(res.deletedRows) && res.deletedRows.length > 0
-              ? res.deletedRows
-              : chunk.map((t) => t.rowNumber)
-          );
-
-          // Remover al instante de la tabla local
-          setItems((prev) =>
-            prev.filter(
-              (it) =>
-                !movedRowSet.has(it.rowNumber) &&
-                !(movedCodeSet.has(it.codigo) && estaEnCeroTotal(it))
-            )
-          );
-
-          // Ceder paso 400ms entre micro-lotes para que otros usuarios puedan guardar sin espera
-          if (i + BATCH_SIZE < targetsToMove.length) {
-            await new Promise((r) => setTimeout(r, 400));
-          }
+          totalMoved += Number(res.deletedCount) || chunk.length;
         } else {
           setNotification({
             type: 'error',
             text:
               res?.error ||
-              `Se movieron ${totalMoved} artículo(s), pero ocurrió un error en el lote actual.`,
+              `Se movieron ${totalMoved} artículo(s), pero ocurrió un error al sincronizar con Sheets.`,
           });
-          break;
+          await fetchSheetData(true);
+          return;
         }
       }
 
@@ -1637,13 +1623,14 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         setTimeout(() => {
           fetchSheetData(true);
           fetchTrashItems(true);
-        }, 1200);
+        }, 800);
       }
     } catch (err: any) {
       setNotification({
         type: 'error',
         text: 'Error al mover artículos en 0: ' + err.message,
       });
+      await fetchSheetData(true);
     } finally {
       setArchivingZeroRows(false);
     }
@@ -2277,7 +2264,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 )}
                 <span>
                   {archivingZeroRows
-                    ? 'Moviendo a pestaña...'
+                    ? 'Sincronizando...'
                     : `Mover todos a "ELIMINADOS EN 0" (${filteredItems.length.toLocaleString()})`}
                 </span>
               </button>
