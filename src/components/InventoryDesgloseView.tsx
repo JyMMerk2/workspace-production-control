@@ -21,7 +21,9 @@ import {
   Download,
   Send,
   Users,
-  Plus
+  Plus,
+  Archive,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -188,11 +190,9 @@ function parseLoteTarget(loteText: string): { qty: number | null; locationFilter
   const clean = loteText.trim().toUpperCase();
   if (!clean) return { qty: null, locationFilter: null };
 
-  // Detectar ubicación tipo A-11, B-7-2, G-14-1, etc.
   const locMatch = clean.match(/\b([A-Z]{1,3}-\d+(?:-\d+)?)\b/);
   const locationFilter = locMatch ? locMatch[1] : null;
 
-  // Quitar la ubicación y palabras prefijo como "CANT." para leer el número de cantidad
   const sinUbicacion = locationFilter ? clean.replace(locationFilter, ' ') : clean;
   const numMatch = sinUbicacion.match(/(?:^|\s|[:=#])(-?\d+(?:\.\d+)?)(?:\s|$)/);
 
@@ -263,7 +263,7 @@ function parseCSVExact(text: string): string[][] {
   return rows;
 }
 
-// Cliente híbrido para actualizar celdas o enviar alertas en Google Apps Script sin problemas de CORS
+// Cliente híbrido para actualizar celdas, mover ítems en 0 o enviar alertas en Google Apps Script sin problemas de CORS
 async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
   const query = new URLSearchParams(params).toString();
   const url = `${APPS_SCRIPT_URL}?${query}`;
@@ -303,6 +303,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [updatingRow, setUpdatingRow] = useState<number | null>(null);
   const [updatingDigitadoRow, setUpdatingDigitadoRow] = useState<number | null>(null);
   const [sendingSlackRow, setSendingSlackRow] = useState<number | null>(null);
+  const [archivingZeroRows, setArchivingZeroRows] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Metadatos en vivo de quién y a qué hora marcó cada fila como Digitado (Col O)
@@ -378,7 +379,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO' | 'NAVE7'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO' | 'NAVE7' | 'ENCERO'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [inputPage, setInputPage] = useState('1');
@@ -392,6 +393,11 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [unlockTargetRow, setUnlockTargetRow] = useState<SheetRowItem | null>(null);
   const [unlockPinInput, setUnlockPinInput] = useState('');
   const [unlockPinError, setUnlockPinError] = useState(false);
+
+  // Modal de confirmación + PIN 030621 para mover artículos en 0 a "ELIMINADOS EN 0"
+  const [archiveZeroTargets, setArchiveZeroTargets] = useState<SheetRowItem[] | null>(null);
+  const [archiveZeroPinInput, setArchiveZeroPinInput] = useState('');
+  const [archiveZeroPinError, setArchiveZeroPinError] = useState(false);
 
   // Controles de concurrencia para evitar solapamiento de red o interrumpir ediciones activas
   const isFetchingRef = useRef(false);
@@ -409,7 +415,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       updatingRow !== null ||
       updatingDigitadoRow !== null ||
       sendingSlackRow !== null ||
-      unlockTargetRow !== null
+      archivingZeroRows ||
+      unlockTargetRow !== null ||
+      archiveZeroTargets !== null
     );
   }, [
     editingNsRow,
@@ -421,7 +429,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     updatingRow,
     updatingDigitadoRow,
     sendingSlackRow,
-    unlockTargetRow
+    archivingZeroRows,
+    unlockTargetRow,
+    archiveZeroTargets
   ]);
 
   const GOOGLE_SHEETS_URL =
@@ -567,7 +577,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setUpdatingDigitadoRow(row.rowNumber);
     setNotification(null);
 
-    // Actualización optimista inmediata en la tabla
     setItems((prev) =>
       prev.map((it) =>
         it.rowNumber === row.rowNumber ? { ...it, digitado: nuevoEstado } : it
@@ -603,7 +612,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           recordOperatorActivity('DIGITADO', row);
         }
       } else {
-        // Revertir si hubo error en Sheets
         setItems((prev) =>
           prev.map((it) =>
             it.rowNumber === row.rowNumber ? { ...it, digitado: !nuevoEstado } : it
@@ -642,7 +650,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       const { qty, locationFilter } = parseLoteTarget(itemLote.lote);
 
-      // Obtener los artículos en "Validados OK" que coinciden con este lote
       const matchedRows: SheetRowItem[] = [];
       if (qty !== null) {
         for (const row of items) {
@@ -674,7 +681,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   // Buscar si una fila abierta coincide con el lote activo del operador de la sesión actual
   const getMatchLoteForRow = useCallback(
     (row: SheetRowItem) => {
-      // No resaltar si ya está cerrado con candado
       if (row.validado && row.candado) return null;
 
       const sesionActiva = operadorNombre.trim().toLowerCase();
@@ -683,7 +689,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       const rowUbi = row.ubicacion.trim().toUpperCase();
 
       for (const lote of parsedLotesActivos) {
-        // Solo resaltar los lotes que pertenezcan al nombre de la sesión activa
         if (lote.usuario.trim().toLowerCase() !== sesionActiva) continue;
 
         if (lote.targetQty === null) continue;
@@ -814,15 +819,12 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         const cols = allRows[i];
         if (!cols || cols.length < 3) continue;
         
-        // Columna A (Índice 0): Validado
         const rawValidado = (cols[0] || '').toUpperCase();
         const isValid = rawValidado === 'TRUE' || rawValidado === 'VERDADERO' || rawValidado === 'OK' || rawValidado === '1';
 
-        // Columna I (Índice 8): Candado Bloqueo
         const rawCandado = (cols[8] || '').toUpperCase();
         const isLocked = rawCandado === 'TRUE' || rawCandado === 'VERDADERO' || rawCandado === 'OK' || rawCandado === '1';
 
-        // Columna O (Índice 14): Digitado Newsoft (TRUE / FALSE independiente)
         const rawDigitado = (cols[14] || '').toUpperCase();
         const isDigitado = rawDigitado === 'TRUE' || rawDigitado === 'VERDADERO' || rawDigitado === 'OK' || rawDigitado === '1';
 
@@ -830,7 +832,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         const itemName = cols[2] || '';
         if (!itemName && !codigo) continue;
 
-        // Omitir filas de comentario o encabezados repetidos
         if (codigo.toUpperCase() === 'COMENTARIO' || itemName.toUpperCase() === 'COMENTARIO') continue;
 
         const nsVal = parseFloat(cols[3]?.replace(/[^0-9.-]+/g, '')) || 0;
@@ -838,19 +839,17 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         const salidaGVal = parseFloat(cols[6]?.replace(/[^0-9.-]+/g, '')) || 0;
         const nave7NVal = parseFloat(cols[13]?.replace(/[^0-9.-]+/g, '')) || 0;
         
-        // Columna K (Índice 10) o cálculo directo ((Col E - Col G) + Col N)
         const newsoftKVal = parseFloat(cols[10]?.replace(/[^0-9.-]+/g, ''));
         const finalNewsoftVal = !isNaN(newsoftKVal) ? newsoftKVal : ((almacenEVal - salidaGVal) + nave7NVal);
 
         const difVal = cols[5] !== undefined && cols[5] !== '' ? cols[5] : (finalNewsoftVal - nsVal);
         const ubicacion = cols[7] || cols[6] || '-';
-        const comentario = cols[11] || ''; // Columna L (Índice 11)
+        const comentario = cols[11] || '';
 
-        // Está en Revisión si tiene Col A activa, candado abierto y la etiqueta [REVISIÓN...] en comentarios
         const enRevision = isValid && !isLocked && /\[REVISIÓN/i.test(comentario);
 
         parsedItems.push({
-          rowNumber: i + 1, // Fila real exacta en Google Sheets (1-based)
+          rowNumber: i + 1,
           validado: isValid,
           candado: isLocked,
           digitado: isDigitado,
@@ -1414,8 +1413,90 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     return row.newsoft === row.ns;
   };
 
+  // Verificar si un registro está completamente en 0 (NetSuite = 0 y Total Balance Disponible Newsoft = 0)
+  const estaEnCeroTotal = (row: SheetRowItem): boolean => {
+    return (Number(row.ns) || 0) === 0 && (Number(row.newsoft) || 0) === 0;
+  };
+
+  // Abrir modal de confirmación para mover artículos en 0 a la pestaña "ELIMINADOS EN 0"
+  const handlePromptArchiveZero = (targets: SheetRowItem[]) => {
+    const validZeroTargets = targets.filter(estaEnCeroTotal);
+    if (validZeroTargets.length === 0) {
+      setNotification({
+        type: 'error',
+        text: 'No hay artículos con NetSuite = 0 y Balance Newsoft = 0 para mover.'
+      });
+      return;
+    }
+    setArchiveZeroTargets(validZeroTargets);
+    setArchiveZeroPinInput('');
+    setArchiveZeroPinError(false);
+  };
+
+  // Ejecutar traslado a la pestaña "ELIMINADOS EN 0" y borrado de la hoja "PROGRESO"
+  const handleConfirmArchiveZero = async () => {
+    if (archiveZeroPinInput.trim() !== MASTER_PIN || !archiveZeroTargets) {
+      setArchiveZeroPinError(true);
+      return;
+    }
+
+    const targetsToMove = [...archiveZeroTargets];
+    setArchiveZeroTargets(null);
+    setArchiveZeroPinInput('');
+    setArchiveZeroPinError(false);
+    setArchivingZeroRows(true);
+    setNotification(null);
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'ARCHIVE_ZERO_ITEMS',
+        payload: JSON.stringify({
+          usuario: activeUserLabel,
+          items: targetsToMove.map((it) => ({
+            rowNumber: it.rowNumber,
+            codigo: it.codigo,
+          })),
+        }),
+      });
+
+      if (res && res.success) {
+        const movedRowSet = new Set<number>(
+          Array.isArray(res.deletedRows) && res.deletedRows.length > 0
+            ? res.deletedRows
+            : targetsToMove.map((t) => t.rowNumber)
+        );
+
+        // Remover inmediatamente de la tabla local mientras se refresca el CSV desde Google Sheets
+        setItems((prev) => prev.filter((it) => !movedRowSet.has(it.rowNumber)));
+
+        setNotification({
+          type: 'success',
+          text:
+            res.message ||
+            `${targetsToMove.length} artículo(s) en 0 movido(s) a la pestaña "ELIMINADOS EN 0".`,
+        });
+
+        // Recargar el CSV fresco tras 1.2s para sincronizar los nuevos números de fila
+        setTimeout(() => {
+          fetchSheetData(true);
+        }, 1200);
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudieron mover los artículos en 0.',
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        text: 'Error al mover artículos en 0: ' + err.message,
+      });
+    } finally {
+      setArchivingZeroRows(false);
+    }
+  };
+
   // Acción directa para activar o desactivar el candado (Col I) en Google Sheets
-  // Al cerrar el candado (Col I = TRUE) marca automáticamente DIGITADO (Col O = TRUE)
   const toggleCandadoFila = async (row: SheetRowItem, nuevoEstadoCandado: boolean, conPinAutorizado = false) => {
     if (nuevoEstadoCandado && !tieneDiferenciaCero(row)) {
       setNotification({
@@ -1435,7 +1516,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setUpdatingRow(row.rowNumber);
     setNotification(null);
 
-    // Al volver a cerrar el candado (Col I = TRUE) limpia automáticamente la etiqueta [REVISIÓN...]
     const comentarioFinal = nuevoEstadoCandado
       ? limpiarEtiquetaRevision(row.comentario)
       : row.comentario;
@@ -1447,7 +1527,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       forceUnlock: conPinAutorizado
     };
 
-    // Marcar automáticamente Col O (DIGITADO NEWSOFT = TRUE) al cerrar el candado
     if (nuevoEstadoCandado) {
       payload.colO = true;
       payload.usuario = activeUserLabel;
@@ -1532,10 +1611,14 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     let revision = 0;
     let cerrados = 0;
     let nave7 = 0;
+    let enCero = 0;
 
     for (const it of items) {
       if ((Number(it.nave7) || 0) > 0) {
         nave7++;
+      }
+      if ((Number(it.ns) || 0) === 0 && (Number(it.newsoft) || 0) === 0) {
+        enCero++;
       }
       if (it.validado && it.candado) {
         cerrados++;
@@ -1547,7 +1630,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         pendientes++;
       }
     }
-    return { pendientes, validadosOk, revision, cerrados, nave7 };
+    return { pendientes, validadosOk, revision, cerrados, nave7, enCero };
   }, [items]);
 
   const filteredItems = useMemo(() => {
@@ -1564,6 +1647,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       if (filterStatus === 'REVISION') return it.enRevision;
       if (filterStatus === 'CERRADO') return it.validado && it.candado;
       if (filterStatus === 'NAVE7') return (Number(it.nave7) || 0) > 0;
+      if (filterStatus === 'ENCERO') return (Number(it.ns) || 0) === 0 && (Number(it.newsoft) || 0) === 0;
       return true;
     });
   }, [items, searchTerm, filterStatus]);
@@ -1846,7 +1930,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         )}
       </div>
 
-      {/* Notificaciones de Candado / Guardado / Slack */}
+      {/* Notificaciones de Candado / Guardado / Slack / Archivo en 0 */}
       {notification && (
         <div
           className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 ${
@@ -1938,6 +2022,21 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               >
                 <span>Nave 7 ({counts.nave7.toLocaleString()})</span>
               </button>
+
+              <button
+                onClick={() => { setFilterStatus('ENCERO'); setCurrentPage(1); }}
+                title="Artículos con NetSuite = 0 y Balance Newsoft = 0 listos para archivar en ELIMINADOS EN 0"
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === 'ENCERO'
+                    ? 'bg-slate-600/40 text-slate-200 border border-slate-400/50'
+                    : counts.enCero > 0
+                    ? 'text-slate-300 hover:bg-white/10'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <Archive className="w-3.5 h-3.5 text-slate-300" />
+                <span>En Cero ({counts.enCero.toLocaleString()})</span>
+              </button>
             </div>
 
             <select
@@ -1950,6 +2049,27 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               <option value={100}>100 por pág.</option>
               <option value={200}>200 por pág.</option>
             </select>
+
+            {filterStatus === 'ENCERO' && filteredItems.length > 0 && (
+              <button
+                type="button"
+                disabled={archivingZeroRows}
+                onClick={() => handlePromptArchiveZero(filteredItems)}
+                title='Mover todos los artículos visibles en 0 a la pestaña "ELIMINADOS EN 0" en Google Sheets'
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40 font-black text-xs transition-all cursor-pointer disabled:opacity-50"
+              >
+                {archivingZeroRows ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {archivingZeroRows
+                    ? 'Moviendo a pestaña...'
+                    : `Mover todos a "ELIMINADOS EN 0" (${filteredItems.length.toLocaleString()})`}
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="relative">
@@ -1985,12 +2105,13 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
                 <th className="py-3 px-3">Comentarios</th>
-                <th className="py-3 px-3 text-center">Slack</th>
+                <th className="py-3 px-3 text-center">Slack / En 0</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 font-medium">
               {paginatedItems.map((row) => {
                 const isDifCero = tieneDiferenciaCero(row);
+                const isEnCero = estaEnCeroTotal(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
                 const isDigitadoUpdating = updatingDigitadoRow === row.rowNumber;
                 const isSendingSlack = sendingSlackRow === row.rowNumber;
@@ -2036,7 +2157,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* CASILLA DIGITADO (COL O - INDEPENDIENTE, CUALQUIER USUARIO PUEDE MARCARLA O DESMARCARLA INCLUSO EN CERRADOS) */}
+                    {/* CASILLA DIGITADO (COL O) */}
                     <td className="py-2.5 px-3 text-center">
                       <div className="inline-flex flex-col items-center justify-center">
                         <button
@@ -2132,7 +2253,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                     <td className="py-2.5 px-3 font-mono font-bold text-gray-300">{row.codigo}</td>
                     <td className="py-2.5 px-3 text-white font-bold">{row.item}</td>
 
-                    {/* CANTIDAD NETSUITE (EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    {/* CANTIDAD NETSUITE */}
                     <td className="py-2.5 px-3 text-right font-mono">
                       {isEditingNs ? (
                         <input
@@ -2170,7 +2291,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* CANTIDAD INVENTARIO / ALMACÉN (COL E - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    {/* CANTIDAD INVENTARIO / ALMACÉN (COL E) */}
                     <td className="py-2.5 px-3 text-right font-mono font-bold">
                       {isEditingAlmacen ? (
                         <input
@@ -2208,7 +2329,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* SALIDA (COL G - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    {/* SALIDA (COL G) */}
                     <td className="py-2.5 px-3 text-right font-mono">
                       {isEditingSalida ? (
                         <input
@@ -2248,7 +2369,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* NAVE 7 (COL N - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    {/* NAVE 7 (COL N) */}
                     <td className="py-2.5 px-3 text-right font-mono">
                       {isEditingNave7 ? (
                         <input
@@ -2288,7 +2409,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT ((Col E - Col G) + Col N) CON INSIGNIA POR OPERADOR */}
+                    {/* TOTAL BALANCE DISPONIBLE NEWSOFT */}
                     <td className="py-2.5 px-3 text-right font-mono font-bold">
                       {matchedLote ? (
                         <span
@@ -2317,7 +2438,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* UBICACIÓN (COL H - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    {/* UBICACIÓN (COL H) */}
                     <td className="py-2.5 px-3 font-mono font-bold">
                       {isEditingUbicacion ? (
                         <input
@@ -2356,7 +2477,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* COMENTARIOS (COL L - EDITABLE EN LÍNEA SI NO ESTÁ CERRADO CON CANDADO) */}
+                    {/* COMENTARIOS (COL L) */}
                     <td className="py-2.5 px-3 text-gray-300 text-[11px] min-w-[200px] max-w-[280px]">
                       {isEditingComment ? (
                         <input
@@ -2399,7 +2520,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* BOTÓN ENVIAR DESCUADRE A SLACK */}
+                    {/* ACCIÓN: ENVIAR DESCUADRE A SLACK O MOVER ÍTEM EN 0 A PESTAÑA "ELIMINADOS EN 0" */}
                     <td className="py-2.5 px-3 text-center">
                       {!isDifCero ? (
                         <button
@@ -2415,6 +2536,17 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                             <Send className="w-3 h-3" />
                           )}
                           <span>Alertar</span>
+                        </button>
+                      ) : isEnCero ? (
+                        <button
+                          type="button"
+                          disabled={archivingZeroRows}
+                          onClick={() => handlePromptArchiveZero([row])}
+                          title='Eliminar de PROGRESO y guardar en la pestaña "ELIMINADOS EN 0" (NetSuite = 0 y Newsoft = 0)'
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-700/60 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-500/40 hover:border-rose-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <Archive className="w-3 h-3" />
+                          <span>A Pestaña 0</span>
                         </button>
                       ) : (
                         <span className="text-[10px] text-gray-600 font-mono">—</span>
@@ -2558,6 +2690,80 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               >
                 <Unlock className="w-3.5 h-3.5" />
                 <span>Desbloquear</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación + PIN 030621 para Mover Artículos en 0 a "ELIMINADOS EN 0" */}
+      {archiveZeroTargets && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#12161f] border border-amber-500/50 rounded-2xl w-full max-w-md p-6 shadow-[0_0_35px_rgba(245,158,11,0.25)] space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs font-black uppercase text-amber-400 flex items-center gap-2">
+                <Archive className="w-4 h-4" /> Mover a Pestaña "ELIMINADOS EN 0"
+              </span>
+              <button
+                onClick={() => { setArchiveZeroTargets(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-300 space-y-2">
+              <p>
+                Se moverán <strong className="text-white">{archiveZeroTargets.length.toLocaleString()}</strong> artículo(s) con{' '}
+                <strong className="text-cyan-300">NetSuite = 0</strong> y{' '}
+                <strong className="text-cyan-300">Balance Newsoft = 0</strong> desde la hoja{' '}
+                <strong className="text-white">PROGRESO</strong> hacia la pestaña de respaldo{' '}
+                <strong className="text-amber-300">ELIMINADOS EN 0</strong> en Google Sheets.
+              </p>
+
+              {archiveZeroTargets.length === 1 && (
+                <div className="p-2.5 rounded-xl bg-[#0d1017] border border-white/10 font-mono text-[11px]">
+                  <span className="text-amber-400 font-bold">{archiveZeroTargets[0].codigo}</span> •{' '}
+                  <span className="text-white">{archiveZeroTargets[0].item}</span> (Ubi:{' '}
+                  {archiveZeroTargets[0].ubicacion})
+                </div>
+              )}
+
+              <p className="text-[11px] text-gray-400">
+                Introduce el PIN maestro de 6 dígitos para confirmar esta operación:
+              </p>
+            </div>
+
+            <input
+              type="password"
+              maxLength={6}
+              value={archiveZeroPinInput}
+              onChange={(e) => { setArchiveZeroPinInput(e.target.value); setArchiveZeroPinError(false); }}
+              placeholder="••••••"
+              className="w-full text-center text-xl tracking-[0.4em] py-2.5 rounded-xl bg-[#0d1017] border border-amber-500/40 text-white focus:border-amber-400 outline-none font-mono"
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmArchiveZero()}
+              autoFocus
+            />
+
+            {archiveZeroPinError && (
+              <p className="text-xs text-rose-400 font-bold text-center">
+                PIN maestro incorrecto. Inténtalo de nuevo.
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => { setArchiveZeroTargets(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-gray-300 hover:bg-white/5 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmArchiveZero}
+                className="px-5 py-2 bg-rose-500 text-white font-black rounded-xl text-xs hover:bg-rose-600 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>Confirmar y Mover</span>
               </button>
             </div>
           </div>
