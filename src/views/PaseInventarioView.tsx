@@ -128,7 +128,7 @@ async function queryGAS(params: Record<string, string>): Promise<any> {
     if (res.ok) {
       return await res.json();
     }
-  } catch (e) {
+  } catch {
     // Fallback a JSONP si fetch es bloqueado por política de redirección
   }
 
@@ -165,8 +165,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Ubicaciones con autocompletado y búsqueda escrita
-  const [selectedUbicacion, setSelectedUbicacion] = useState('');
+  // Selección múltiple de ubicaciones con casillas de verificación
+  const [selectedUbicaciones, setSelectedUbicaciones] = useState<string[]>([]);
   const [ubicacionInput, setUbicacionInput] = useState('');
   const [ubicacionesList, setUbicacionesList] = useState<string[]>([]);
   const [showUbiDropdown, setShowUbiDropdown] = useState(false);
@@ -180,7 +180,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const [baseListaEnMemoria, setBaseListaEnMemoria] = useState(false);
   const [activePaseSessions, setActivePaseSessions] = useState<PaseActiveSession[]>([]);
 
-  // Modal de selección de filtro para imprimir localidad
+  // Modal de selección de filtro para imprimir localidad(es)
   const [showPrintModal, setShowPrintModal] = useState(false);
 
   // Estados de edición del ítem seleccionado
@@ -209,11 +209,19 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const ubiContainerRef = useRef<HTMLDivElement>(null);
   const allInventoryRef = useRef<InventoryItem[]>([]);
   const isSyncingRef = useRef(false);
-  const selectedUbicacionRef = useRef('');
+  const selectedUbicacionesRef = useRef<string[]>([]);
 
   useEffect(() => {
-    selectedUbicacionRef.current = selectedUbicacion;
-  }, [selectedUbicacion]);
+    selectedUbicacionesRef.current = selectedUbicaciones;
+  }, [selectedUbicaciones]);
+
+  // Etiqueta resumida de las ubicaciones seleccionadas (para presencia, encabezado e impresión)
+  const ubicacionesLabel =
+    selectedUbicaciones.length === 0
+      ? ''
+      : selectedUbicaciones.length <= 3
+      ? selectedUbicaciones.join(', ')
+      : `${selectedUbicaciones.slice(0, 2).join(', ')} +${selectedUbicaciones.length - 2}`;
 
   // --- PRESENCIA EN VIVO INSTANTÁNEA EN TOMA Y PASE DE INVENTARIO (FILA ÚNICA POR USUARIO SIN PARPADEO) ---
   const publishPasePresence = useCallback(
@@ -227,7 +235,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       const currentSession: PaseActiveSession = {
         usuario: activeUserLabel,
         modulo: 'PASE_INVENTARIO',
-        ubicacionActiva: selectedUbicacion || ubicacionInput.trim().toUpperCase() || undefined,
+        ubicacionActiva: ubicacionesLabel || ubicacionInput.trim().toUpperCase() || undefined,
         codigoActivo: selectedItem?.colB_Codigo || undefined,
         hora,
         timestamp: now,
@@ -288,7 +296,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         // Silencioso
       }
     },
-    [activeUserLabel, selectedUbicacion, ubicacionInput, selectedItem]
+    [activeUserLabel, ubicacionesLabel, ubicacionInput, selectedItem]
   );
 
   useEffect(() => {
@@ -382,7 +390,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     [activeUserLabel]
   );
 
-  // Sincronización global ultrarrápida en memoria vía CSV cada 2s (elimina esperas de Apps Script al buscar)
+  // Sincronización global ultrarrápida en memoria vía CSV cada 2s
   const syncInventarioEnMemoria = useCallback(async () => {
     if (isSyncingRef.current || saving || document.hidden) return;
     isSyncingRef.current = true;
@@ -436,14 +444,15 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         setBaseListaEnMemoria(true);
         setUbicacionesList(Array.from(setUbis).sort());
 
-        // Si hay un rack seleccionado, mantener su lista izquierda actualizada en vivo
-        const ubiActiva = selectedUbicacionRef.current.trim().toLowerCase();
-        if (ubiActiva && !saving) {
-          const itemsRack = parsedAll.filter(
-            (it) => it.colH_Ubicacion.trim().toLowerCase() === ubiActiva
+        // Si hay ubicaciones seleccionadas, mantener su lista izquierda actualizada en vivo
+        const ubisActivas = selectedUbicacionesRef.current.map((u) => u.trim().toLowerCase());
+        if (ubisActivas.length > 0 && !saving) {
+          const setActivas = new Set(ubisActivas);
+          const itemsRacks = parsedAll.filter((it) =>
+            setActivas.has(it.colH_Ubicacion.trim().toLowerCase())
           );
-          if (itemsRack.length > 0) {
-            setItemsList(itemsRack);
+          if (itemsRacks.length > 0) {
+            setItemsList(itemsRacks);
           }
         }
       }
@@ -498,13 +507,16 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     setIsUnlockedByPin(false);
   };
 
-  // Búsqueda instantánea en memoria (<1ms) con respaldo automático a Apps Script si aún está cargando la base inicial
-  const ejecutarBusqueda = async (queryTerm = searchTerm, ubiTerm = selectedUbicacion) => {
+  // Búsqueda instantánea en memoria (<1ms) soportando una o múltiples ubicaciones seleccionadas
+  const ejecutarBusqueda = async (
+    queryTerm = searchTerm,
+    ubisList: string[] = selectedUbicaciones
+  ) => {
     setNotification(null);
     setIsUnlockedByPin(false);
 
     const busqueda = queryTerm.trim().toLowerCase();
-    const ubiFiltro = ubiTerm.trim().toLowerCase();
+    const ubisNorm = ubisList.map((u) => u.trim().toLowerCase()).filter(Boolean);
     const tieneTerminoArticulo = busqueda !== '';
 
     // 1. VÍA RÁPIDA EN MEMORIA LOCAL (0ms de latencia de red)
@@ -512,7 +524,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       const base = allInventoryRef.current;
 
       if (tieneTerminoArticulo) {
-        // Priorizar coincidencia exacta por código antes que coincidencia parcial
         const exactos = base.filter((it) => it.colB_Codigo.trim().toLowerCase() === busqueda);
         const encontrados =
           exactos.length > 0
@@ -535,8 +546,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         const ubicacionDetectada = primerItem.colH_Ubicacion;
 
         if (ubicacionDetectada && ubicacionDetectada !== '-') {
-          setSelectedUbicacion(ubicacionDetectada);
-          setUbicacionInput(ubicacionDetectada);
+          setSelectedUbicaciones([ubicacionDetectada]);
+          setUbicacionInput('');
           const itemsRack = base.filter(
             (it) => it.colH_Ubicacion.trim().toLowerCase() === ubicacionDetectada.trim().toLowerCase()
           );
@@ -548,14 +559,20 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         seleccionarItemParaEditar(primerItem);
         return;
       } else {
-        // Filtro por ubicación (rack)
-        const filtradosUbi = ubiFiltro
-          ? base.filter((it) => it.colH_Ubicacion.trim().toLowerCase() === ubiFiltro)
-          : base.slice(0, 200);
+        // Filtro por una o varias ubicaciones marcadas con casilla
+        if (ubisNorm.length === 0) {
+          setItemsList(base.slice(0, 200));
+          return;
+        }
+
+        const setUbis = new Set(ubisNorm);
+        const filtradosUbi = base.filter((it) =>
+          setUbis.has(it.colH_Ubicacion.trim().toLowerCase())
+        );
 
         if (filtradosUbi.length === 0) {
           setItemsList([]);
-          setNotification({ type: 'error', text: 'No se encontraron artículos en esa ubicación.' });
+          setNotification({ type: 'error', text: 'No se encontraron artículos en las ubicaciones seleccionadas.' });
           return;
         }
 
@@ -568,12 +585,13 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
 
     // 2. RESPALDO POR APPS SCRIPT (solo si el usuario busca durante los primeros 1-2s antes de terminar la carga inicial)
+    const primeraUbi = ubisList[0] || '';
     setSearching(true);
     try {
       const data = await queryGAS({
         action: 'SEARCH_ITEM',
         query: queryTerm.trim(),
-        ubicacion: tieneTerminoArticulo ? '' : ubiTerm.trim()
+        ubicacion: tieneTerminoArticulo ? '' : primeraUbi.trim()
       });
 
       if (data && data.success) {
@@ -584,8 +602,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
           const ubicacionDetectada = primerItem.colH_Ubicacion;
 
           if (ubicacionDetectada) {
-            setSelectedUbicacion(ubicacionDetectada);
-            setUbicacionInput(ubicacionDetectada);
+            setSelectedUbicaciones([ubicacionDetectada]);
+            setUbicacionInput('');
 
             const dataRack = await queryGAS({
               action: 'SEARCH_ITEM',
@@ -620,13 +638,25 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
   };
 
-  // Seleccionar ubicación desde el autocompletado
-  const handleSelectUbicacion = (ubi: string) => {
-    setSelectedUbicacion(ubi);
-    setUbicacionInput(ubi);
+  // Marcar o desmarcar una ubicación individual con su casilla (permite seleccionar varias a la vez)
+  const handleToggleUbicacion = (ubi: string) => {
+    const exists = selectedUbicaciones.some((u) => u.toLowerCase() === ubi.toLowerCase());
+    const nextList = exists
+      ? selectedUbicaciones.filter((u) => u.toLowerCase() !== ubi.toLowerCase())
+      : [...selectedUbicaciones, ubi];
+
+    setSelectedUbicaciones(nextList);
+    setSelectedItem(null);
+    ejecutarBusqueda('', nextList);
+  };
+
+  // Limpiar todas las ubicaciones seleccionadas o mostrar todas
+  const handleClearUbicaciones = () => {
+    setSelectedUbicaciones([]);
+    setUbicacionInput('');
     setShowUbiDropdown(false);
     setSelectedItem(null);
-    ejecutarBusqueda('', ubi);
+    ejecutarBusqueda('', []);
   };
 
   const handleCerrarFormulario = () => {
@@ -636,11 +666,11 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     setShowCalculator(false);
   };
 
-  // Subgrupos de la ubicación actual para el modal de impresión
+  // Subgrupos de las ubicaciones activas para el modal de impresión
   const faltanValidarList = itemsList.filter((it) => !it.colA_Validado);
   const faltanCerrarList = itemsList.filter((it) => !it.colI_Candado);
 
-  // Imprimir hoja de conteo/auditoría según la opción elegida (Todos, Faltan Validar o Faltan Cerrar)
+  // Imprimir hoja de conteo/auditoría con todas las ubicaciones marcadas
   const handlePrintUbicacion = (mode: 'ALL' | 'PENDIENTE_VALIDAR' | 'PENDIENTE_CERRAR') => {
     setShowPrintModal(false);
 
@@ -666,7 +696,11 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         ? 'FALTAN POR CERRAR CANDADO (COL I)'
         : 'TODOS LOS ARTÍCULOS';
 
-    const labelLocalidad = selectedUbicacion || ubicacionInput.trim() || 'TODAS LAS UBICACIONES';
+    const labelLocalidad =
+      selectedUbicaciones.length > 0
+        ? selectedUbicaciones.join(', ')
+        : ubicacionInput.trim().toUpperCase() || 'TODAS LAS UBICACIONES';
+
     const fechaHora = new Date().toLocaleString('es-DO', {
       day: '2-digit',
       month: 'short',
@@ -697,7 +731,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
             <td style="text-align:center;">${index + 1}</td>
             <td style="font-family:monospace;font-weight:bold;">${escapeHtml(it.colB_Codigo)}</td>
             <td>${escapeHtml(it.colC_Item)}</td>
-            <td style="text-align:center;">${escapeHtml(it.colH_Ubicacion || labelLocalidad)}</td>
+            <td style="text-align:center;font-weight:bold;">${escapeHtml(it.colH_Ubicacion || labelLocalidad)}</td>
             <td style="text-align:center;font-weight:bold;">${it.colD_NetSuite}</td>
             <td style="text-align:center;font-weight:bold;">${bal}</td>
             <td style="text-align:center;font-weight:bold;color:${dif === 0 ? '#047857' : '#be123c'};">${dif}</td>
@@ -730,7 +764,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
           .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 12px; }
           .title { font-size: 17px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
           .subtitle { font-size: 11px; color: #4b5563; margin-top: 3px; }
-          .badge-ubi { font-size: 18px; font-weight: 900; font-family: monospace; border: 2px solid #111827; padding: 4px 14px; border-radius: 6px; background: #f3f4f6; text-align: right; }
+          .badge-ubi { font-size: 15px; font-weight: 900; font-family: monospace; border: 2px solid #111827; padding: 4px 14px; border-radius: 6px; background: #f3f4f6; text-align: right; max-width: 440px; }
           .badge-filter { display: block; font-size: 10px; font-family: Arial, sans-serif; color: #b91c1c; margin-top: 2px; }
           .summary { display: flex; gap: 20px; font-size: 11px; margin-bottom: 10px; background: #f9fafb; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; }
           table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -807,10 +841,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const diferenciaCalculada = totalBalanceNewsoft - numNetSuite;
   const cuadranCantidades = totalBalanceNewsoft === numNetSuite;
 
-  // Estado del candado: Bloquea inputs si ya estaba cerrado en Sheets y no se ha metido el PIN
   const isLocked = Boolean(selectedItem?.isLocked && !isUnlockedByPin);
 
-  // Manejador de la calculadora auxiliar independiente
   const handleCalcBtn = (val: string) => {
     if (val === 'C') {
       setCalcDisplay('');
@@ -827,7 +859,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
   };
 
-  // Enviar reporte de descuadre directamente al canal #alerta-inventario-nave-6 en Slack y mover a Revisión
   const handleSendSlackAlert = async () => {
     if (!selectedItem) return;
     setSendingSlack(true);
@@ -901,7 +932,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
   };
 
-  // Guardar en Google Sheets (incluyendo Col D: NetSuite y Col N: Nave 7) y sincronizar estado reactivo local
   const handleSave = async () => {
     if (!selectedItem) return;
 
@@ -948,7 +978,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         setColL(comentarioFinal);
         setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
 
-        // Registrar efectividad del usuario al instante (0ms) en la temporada (13 Nov 2026)
         const actividadMeta = {
           codigo: colB,
           item: colC,
@@ -1018,7 +1047,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
   };
 
-  const ubicacionesFiltradas = ubicacionesList.filter(u => 
+  const ubicacionesFiltradas = ubicacionesList.filter((u) =>
     u.toLowerCase().includes(ubicacionInput.toLowerCase())
   );
 
@@ -1076,15 +1105,31 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-4 shadow-lg space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           
-          {/* Ubicación Escribible con Autocompletado */}
+          {/* Ubicación Escribible con Selección Múltiple por Casilla */}
           <div className="relative" ref={ubiContainerRef}>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-              Buscar o Escribir Ubicación (Rack)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                Buscar o Marcar Ubicaciones (Rack)
+              </label>
+              {selectedUbicaciones.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearUbicaciones}
+                  className="text-[10px] font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
+                >
+                  Limpiar ({selectedUbicaciones.length})
+                </button>
+              )}
+            </div>
+
             <div className="relative">
               <input
                 type="text"
-                placeholder="Escribe ubicación (ej. G-14-1, A-1)..."
+                placeholder={
+                  selectedUbicaciones.length > 0
+                    ? `${selectedUbicaciones.length} seleccionada(s): ${ubicacionesLabel}`
+                    : 'Escribe ubicación (ej. G-14-1, A-1)...'
+                }
                 value={ubicacionInput}
                 onChange={(e) => {
                   setUbicacionInput(e.target.value);
@@ -1093,36 +1138,103 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 onFocus={() => setShowUbiDropdown(true)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    handleSelectUbicacion(ubicacionInput.trim());
+                    const typed = ubicacionInput.trim().toUpperCase();
+                    if (!typed) {
+                      handleClearUbicaciones();
+                    } else {
+                      const exactMatch = ubicacionesList.find((u) => u.toUpperCase() === typed);
+                      if (exactMatch) {
+                        handleToggleUbicacion(exactMatch);
+                        setUbicacionInput('');
+                      } else {
+                        setSelectedUbicaciones([typed]);
+                        ejecutarBusqueda('', [typed]);
+                      }
+                    }
                   }
                 }}
-                className="w-full bg-[#0d1017] border border-white/15 rounded-xl pl-8 pr-3 py-2 text-xs text-white font-bold outline-none focus:border-amber-400 uppercase font-mono"
+                className="w-full bg-[#0d1017] border border-white/15 rounded-xl pl-8 pr-8 py-2 text-xs text-white font-bold outline-none focus:border-amber-400 uppercase font-mono placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:text-gray-400"
               />
               <MapPin className="w-3.5 h-3.5 text-amber-400 absolute left-2.5 top-2.5" />
+              {selectedUbicaciones.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearUbicaciones}
+                  title="Quitar ubicaciones seleccionadas"
+                  className="absolute right-2 top-2 text-gray-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            {showUbiDropdown && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-[#0d1017] border border-amber-500/30 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-40 custom-scrollbar">
-                <div 
-                  onClick={() => handleSelectUbicacion('')}
-                  className="px-3 py-2 text-xs text-gray-400 hover:bg-white/5 cursor-pointer font-bold border-b border-white/5"
-                >
-                  Todas las Ubicaciones ({ubicacionesList.length})
-                </div>
-                {ubicacionesFiltradas.length > 0 ? (
-                  ubicacionesFiltradas.slice(0, 40).map((ubi, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleSelectUbicacion(ubi)}
-                      className={`px-3 py-1.5 text-xs font-mono cursor-pointer transition-colors flex items-center justify-between ${
-                        selectedUbicacion === ubi 
-                          ? 'bg-amber-500/20 text-amber-300 font-bold' 
-                          : 'text-gray-300 hover:bg-white/5'
-                      }`}
+            {/* Chips rápidos de ubicaciones marcadas */}
+            {selectedUbicaciones.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {selectedUbicaciones.map((ubi) => (
+                  <span
+                    key={ubi}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/40 text-[10px] font-mono font-bold text-amber-300"
+                  >
+                    <span>{ubi}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleUbicacion(ubi)}
+                      className="hover:text-white cursor-pointer"
                     >
-                      <span>{ubi}</span>
-                    </div>
-                  ))
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Dropdown Predictivo con Casillas de Verificación */}
+            {showUbiDropdown && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-[#0d1017] border border-amber-500/30 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-40 custom-scrollbar">
+                <div className="px-3 py-2 text-xs text-gray-300 bg-[#12161f] border-b border-white/10 flex items-center justify-between sticky top-0 z-10">
+                  <button
+                    type="button"
+                    onClick={handleClearUbicaciones}
+                    className="font-bold text-gray-300 hover:text-white cursor-pointer"
+                  >
+                    Todas las Ubicaciones ({ubicacionesList.length})
+                  </button>
+                  {selectedUbicaciones.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearUbicaciones}
+                      className="text-[10px] font-black text-rose-400 hover:underline cursor-pointer"
+                    >
+                      Desmarcar ({selectedUbicaciones.length})
+                    </button>
+                  )}
+                </div>
+
+                {ubicacionesFiltradas.length > 0 ? (
+                  ubicacionesFiltradas.slice(0, 60).map((ubi) => {
+                    const isChecked = selectedUbicaciones.some(
+                      (s) => s.toLowerCase() === ubi.toLowerCase()
+                    );
+                    return (
+                      <label
+                        key={ubi}
+                        className={`px-3 py-1.5 text-xs font-mono cursor-pointer transition-colors flex items-center gap-2.5 select-none ${
+                          isChecked
+                            ? 'bg-amber-500/20 text-amber-300 font-bold'
+                            : 'text-gray-300 hover:bg-white/5'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleUbicacion(ubi)}
+                          className="w-3.5 h-3.5 accent-amber-400 rounded cursor-pointer shrink-0"
+                        />
+                        <span className="truncate">{ubi}</span>
+                      </label>
+                    );
+                  })
                 ) : (
                   <div className="px-3 py-2 text-xs text-gray-500">Sin coincidencias</div>
                 )}
@@ -1165,7 +1277,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       {/* Grid: Lista Izquierda | Formulario Derecho */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* LADO IZQUIERDO: Artículos de la Ubicación */}
+        {/* LADO IZQUIERDO: Artículos de las Ubicaciones Seleccionadas */}
         <div className="lg:col-span-5 bg-[#12161f] border border-white/10 rounded-2xl p-4 flex flex-col max-h-[750px]">
           <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/10 mb-2">
             <span className="text-xs font-black uppercase text-white tracking-wider">
@@ -1173,9 +1285,9 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
             </span>
 
             <div className="flex items-center gap-2">
-              {selectedUbicacion && (
-                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/30">
-                  {selectedUbicacion}
+              {ubicacionesLabel && (
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-mono border border-amber-500/30 max-w-[170px] truncate">
+                  {ubicacionesLabel}
                 </span>
               )}
 
@@ -1183,7 +1295,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowPrintModal(true)}
-                  title={`Imprimir listado de ${selectedUbicacion || 'la ubicación seleccionada'}`}
+                  title={`Imprimir listado de ${ubicacionesLabel || 'la ubicación seleccionada'}`}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe] text-[#00f2fe] hover:text-[#0b0e14] border border-[#00f2fe]/40 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
                 >
                   <Printer className="w-3 h-3" />
@@ -1212,6 +1324,11 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                     <div className="space-y-1 truncate pr-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-amber-400">{it.colB_Codigo}</span>
+                        {selectedUbicaciones.length > 1 && it.colH_Ubicacion && (
+                          <span className="px-1.5 py-0.2 rounded bg-white/10 text-[10px] font-mono text-gray-300">
+                            {it.colH_Ubicacion}
+                          </span>
+                        )}
                         <span className="text-[11px] text-gray-300 font-medium truncate">{it.colC_Item}</span>
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-gray-400">
@@ -1241,7 +1358,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
               })
             ) : (
               <div className="text-center py-16 text-gray-500 text-xs">
-                Selecciona una ubicación arriba o usa el escáner global para cargar los artículos.
+                Marca una o varias ubicaciones arriba o usa el escáner global para cargar los artículos.
               </div>
             )}
           </div>
@@ -1556,14 +1673,14 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
       </div>
 
-      {/* Modal de Selección de Qué Imprimir en la Localidad */}
+      {/* Modal de Selección de Qué Imprimir en la(s) Localidad(es) */}
       {showPrintModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
           <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl p-5 max-w-md w-full space-y-4 shadow-[0_0_30px_rgba(0,242,254,0.25)]">
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div className="flex items-center gap-2 text-[#00f2fe] font-black text-xs uppercase tracking-wider">
                 <Printer className="w-4 h-4" />
-                <span>Imprimir Localidad {selectedUbicacion || ''}</span>
+                <span>Imprimir Localidad {ubicacionesLabel || ''}</span>
               </div>
               <button
                 type="button"
@@ -1575,7 +1692,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
             </div>
 
             <p className="text-xs text-gray-300">
-              ¿Qué artículos de la ubicación <strong className="text-amber-400 font-mono">{selectedUbicacion || 'seleccionada'}</strong> deseas incluir en la hoja de impresión?
+              ¿Qué artículos de <strong className="text-amber-400 font-mono">{selectedUbicaciones.length > 0 ? selectedUbicaciones.join(', ') : 'la ubicación seleccionada'}</strong> deseas incluir en la hoja de impresión?
             </p>
 
             <div className="space-y-2">
@@ -1616,7 +1733,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
               >
                 <div>
                   <div className="text-xs font-black text-white">Todos los Artículos</div>
-                  <div className="text-[11px] text-gray-400">Listado completo de la ubicación seleccionada</div>
+                  <div className="text-[11px] text-gray-400">Listado completo de las ubicaciones seleccionadas</div>
                 </div>
                 <span className="px-2.5 py-1 rounded-lg bg-[#00f2fe]/20 text-[#00f2fe] font-mono font-black text-xs">
                   {itemsList.length}
