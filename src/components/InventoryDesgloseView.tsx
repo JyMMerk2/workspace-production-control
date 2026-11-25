@@ -1561,7 +1561,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setArchiveZeroPinError(false);
   };
 
-  // Ejecutar traslado a la pestaña "ELIMINADOS EN 0" y borrado de la hoja "PROGRESO"
+  // Ejecutar traslado a la pestaña "ELIMINADOS EN 0" en micro-lotes de 25 para no bloquear a otros operadores
   const handleConfirmArchiveZero = async () => {
     if (archiveZeroPinInput.trim() !== MASTER_PIN || !archiveZeroTargets) {
       setArchiveZeroPinError(true);
@@ -1575,43 +1575,69 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setArchivingZeroRows(true);
     setNotification(null);
 
+    const BATCH_SIZE = 25;
+    let totalMoved = 0;
+
     try {
-      const res = await updateSheetRowGAS({
-        action: 'ARCHIVE_ZERO_ITEMS',
-        payload: JSON.stringify({
-          usuario: activeUserLabel,
-          items: targetsToMove.map((it) => ({
-            rowNumber: it.rowNumber,
-            codigo: it.colB_Codigo || it.codigo,
-          })),
-        }),
-      });
+      for (let i = 0; i < targetsToMove.length; i += BATCH_SIZE) {
+        const chunk = targetsToMove.slice(i, i + BATCH_SIZE);
 
-      if (res && res.success) {
-        const movedRowSet = new Set<number>(
-          Array.isArray(res.deletedRows) && res.deletedRows.length > 0
-            ? res.deletedRows
-            : targetsToMove.map((t) => t.rowNumber)
-        );
+        const res = await updateSheetRowGAS({
+          action: 'ARCHIVE_ZERO_ITEMS',
+          payload: JSON.stringify({
+            usuario: activeUserLabel,
+            items: chunk.map((it) => ({
+              rowNumber: it.rowNumber,
+              codigo: it.codigo,
+            })),
+          }),
+        });
 
-        setItems((prev) => prev.filter((it) => !movedRowSet.has(it.rowNumber)));
+        if (res && res.success) {
+          const movedCount = Number(res.deletedCount) || chunk.length;
+          totalMoved += movedCount;
 
+          const movedCodeSet = new Set(chunk.map((c) => c.codigo));
+          const movedRowSet = new Set<number>(
+            Array.isArray(res.deletedRows) && res.deletedRows.length > 0
+              ? res.deletedRows
+              : chunk.map((t) => t.rowNumber)
+          );
+
+          // Remover al instante de la tabla local
+          setItems((prev) =>
+            prev.filter(
+              (it) =>
+                !movedRowSet.has(it.rowNumber) &&
+                !(movedCodeSet.has(it.codigo) && estaEnCeroTotal(it))
+            )
+          );
+
+          // Ceder paso 400ms entre micro-lotes para que otros usuarios puedan guardar sin espera
+          if (i + BATCH_SIZE < targetsToMove.length) {
+            await new Promise((r) => setTimeout(r, 400));
+          }
+        } else {
+          setNotification({
+            type: 'error',
+            text:
+              res?.error ||
+              `Se movieron ${totalMoved} artículo(s), pero ocurrió un error en el lote actual.`,
+          });
+          break;
+        }
+      }
+
+      if (totalMoved > 0) {
         setNotification({
           type: 'success',
-          text:
-            res.message ||
-            `${targetsToMove.length} artículo(s) en 0 movido(s) a la pestaña "ELIMINADOS EN 0".`,
+          text: `${totalMoved} artículo(s) en 0 movido(s) a la pestaña "ELIMINADOS EN 0".`,
         });
 
         setTimeout(() => {
           fetchSheetData(true);
           fetchTrashItems(true);
         }, 1200);
-      } else {
-        setNotification({
-          type: 'error',
-          text: res?.error || 'No se pudieron mover los artículos en 0.',
-        });
       }
     } catch (err: any) {
       setNotification({
