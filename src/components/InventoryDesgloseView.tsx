@@ -23,7 +23,8 @@ import {
   Users,
   Plus,
   Archive,
-  Trash2
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -43,6 +44,19 @@ interface SheetRowItem {
   dif: string | number;
   ubicacion: string;
   comentario: string;
+}
+
+interface ArchivedZeroItem {
+  trashRowNumber: number;
+  filaOriginal: number;
+  codigo: string;
+  item: string;
+  ns: number;
+  almacen: number;
+  ubicacion: string;
+  comentario: string;
+  eliminadoPor: string;
+  fechaEliminacion: string;
 }
 
 interface DigitadoMeta {
@@ -399,6 +413,16 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [archiveZeroPinInput, setArchiveZeroPinInput] = useState('');
   const [archiveZeroPinError, setArchiveZeroPinError] = useState(false);
 
+  // Estados de la Papelera ("ELIMINADOS EN 0")
+  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
+  const [trashItems, setTrashItems] = useState<ArchivedZeroItem[]>([]);
+  const [loadingTrash, setLoadingTrash] = useState(false);
+  const [trashSearchTerm, setTrashSearchTerm] = useState('');
+  const [restoringTrashItem, setRestoringTrashItem] = useState<ArchivedZeroItem | null>(null);
+  const [restorePinInput, setRestorePinInput] = useState('');
+  const [restorePinError, setRestorePinError] = useState(false);
+  const [restoringInProgress, setRestoringInProgress] = useState(false);
+
   // Controles de concurrencia para evitar solapamiento de red o interrumpir ediciones activas
   const isFetchingRef = useRef(false);
   const isFetchingLotesRef = useRef(false);
@@ -417,7 +441,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       sendingSlackRow !== null ||
       archivingZeroRows ||
       unlockTargetRow !== null ||
-      archiveZeroTargets !== null
+      archiveZeroTargets !== null ||
+      restoringInProgress
     );
   }, [
     editingNsRow,
@@ -431,7 +456,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     sendingSlackRow,
     archivingZeroRows,
     unlockTargetRow,
-    archiveZeroTargets
+    archiveZeroTargets,
+    restoringInProgress
   ]);
 
   const GOOGLE_SHEETS_URL =
@@ -512,6 +538,30 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     },
     [activeUserLabel]
   );
+
+  // Cargar registros de la Papelera ("ELIMINADOS EN 0")
+  const fetchTrashItems = useCallback(async (silent = false) => {
+    if (!silent) setLoadingTrash(true);
+    try {
+      const res = await updateSheetRowGAS({ action: 'GET_ARCHIVED_ZERO' });
+      if (res && res.success && Array.isArray(res.items)) {
+        setTrashItems(res.items);
+      }
+    } catch {
+      // Silencioso
+    } finally {
+      if (!silent) setLoadingTrash(false);
+    }
+  }, []);
+
+  const handleOpenTrashModal = () => {
+    setIsTrashModalOpen(true);
+    setTrashSearchTerm('');
+    setRestoringTrashItem(null);
+    setRestorePinInput('');
+    setRestorePinError(false);
+    fetchTrashItems(false);
+  };
 
   // Cargar y sincronizar metadatos de Digitado (quién y cuándo lo marcó) vía Supabase
   const loadDigitadoMeta = useCallback(async () => {
@@ -883,6 +933,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   useEffect(() => {
     fetchSheetData(false);
     fetchLotesActivos();
+    fetchTrashItems(true);
 
     const interval = setInterval(() => {
       fetchSheetData(true);
@@ -901,7 +952,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [fetchSheetData, fetchLotesActivos]);
+  }, [fetchSheetData, fetchLotesActivos, fetchTrashItems]);
 
   // Enviar alerta de descuadre directamente al canal #alerta-inventario-nave-6 en Slack y mover a Revisión
   const handleSendSlackAlert = async (row: SheetRowItem) => {
@@ -1074,6 +1125,83 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     const link = document.createElement('a');
     link.href = url;
     link.setAttribute('download', `${filePrefix}_${fechaStr}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Descargar Excel nativo de la Papelera ("ELIMINADOS EN 0")
+  const handleDownloadTrashExcel = () => {
+    if (trashItems.length === 0) return;
+
+    const escapeXML = (val: string | number) =>
+      String(val ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+
+    const headers = [
+      'Fila Original',
+      'Código Componente',
+      'Item NT/NS Descripción',
+      'NetSuite',
+      'Almacén',
+      'Ubicación',
+      'Comentarios',
+      'Eliminado Por',
+      'Fecha Eliminación'
+    ];
+
+    const headerCells = headers
+      .map((h) => `<Cell ss:StyleID="Header"><Data ss:Type="String">${escapeXML(h)}</Data></Cell>`)
+      .join('');
+
+    const dataRows = trashItems
+      .map(
+        (t) => `<Row>
+        <Cell><Data ss:Type="Number">${t.filaOriginal}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXML(t.codigo)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXML(t.item)}</Data></Cell>
+        <Cell><Data ss:Type="Number">${t.ns}</Data></Cell>
+        <Cell><Data ss:Type="Number">${t.almacen}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXML(t.ubicacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXML(t.comentario)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXML(t.eliminadoPor)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXML(t.fechaEliminacion)}</Data></Cell>
+      </Row>`
+      )
+      .join('');
+
+    const xmlExcel = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles>
+    <Style ss:ID="Header">
+      <Font ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Eliminados en 0">
+    <Table>
+      <Row>${headerCells}</Row>
+      ${dataRows}
+    </Table>
+  </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([xmlExcel], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const now = new Date();
+    const fechaStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Eliminados_En_0_Nave6_${fechaStr}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1454,7 +1582,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           usuario: activeUserLabel,
           items: targetsToMove.map((it) => ({
             rowNumber: it.rowNumber,
-            codigo: it.codigo,
+            codigo: it.colB_Codigo || it.codigo,
           })),
         }),
       });
@@ -1466,7 +1594,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
             : targetsToMove.map((t) => t.rowNumber)
         );
 
-        // Remover inmediatamente de la tabla local mientras se refresca el CSV desde Google Sheets
         setItems((prev) => prev.filter((it) => !movedRowSet.has(it.rowNumber)));
 
         setNotification({
@@ -1476,9 +1603,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
             `${targetsToMove.length} artículo(s) en 0 movido(s) a la pestaña "ELIMINADOS EN 0".`,
         });
 
-        // Recargar el CSV fresco tras 1.2s para sincronizar los nuevos números de fila
         setTimeout(() => {
           fetchSheetData(true);
+          fetchTrashItems(true);
         }, 1200);
       } else {
         setNotification({
@@ -1493,6 +1620,53 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       });
     } finally {
       setArchivingZeroRows(false);
+    }
+  };
+
+  // Restaurar un registro desde la Papelera ("ELIMINADOS EN 0") de vuelta a "PROGRESO"
+  const handleConfirmRestoreTrash = async () => {
+    if (restorePinInput.trim() !== MASTER_PIN || !restoringTrashItem) {
+      setRestorePinError(true);
+      return;
+    }
+
+    const target = restoringTrashItem;
+    setRestoringInProgress(true);
+    setRestorePinError(false);
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'RESTORE_ARCHIVED_ZERO',
+        payload: JSON.stringify({
+          trashRowNumber: target.trashRowNumber,
+          usuario: activeUserLabel
+        })
+      });
+
+      if (res && res.success) {
+        setRestoringTrashItem(null);
+        setRestorePinInput('');
+        setNotification({
+          type: 'success',
+          text: res.message || `Artículo ${target.codigo} restaurado a PROGRESO.`
+        });
+        await fetchTrashItems(true);
+        setTimeout(() => {
+          fetchSheetData(true);
+        }, 1000);
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudo restaurar el artículo desde la papelera.'
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        text: 'Error al restaurar artículo: ' + err.message
+      });
+    } finally {
+      setRestoringInProgress(false);
     }
   };
 
@@ -1651,6 +1825,18 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       return true;
     });
   }, [items, searchTerm, filterStatus]);
+
+  const filteredTrashItems = useMemo(() => {
+    const q = trashSearchTerm.trim().toLowerCase();
+    if (!q) return trashItems;
+    return trashItems.filter(
+      (t) =>
+        t.codigo.toLowerCase().includes(q) ||
+        t.item.toLowerCase().includes(q) ||
+        t.ubicacion.toLowerCase().includes(q) ||
+        t.eliminadoPor.toLowerCase().includes(q)
+    );
+  }, [trashItems, trashSearchTerm]);
 
   // Saltar al ítem anterior (-1) o siguiente (+1) de un lote activo (incluye cambio de página automático)
   const handleJumpToMatch = useCallback(
@@ -2559,13 +2745,29 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </table>
         </div>
 
-        {/* Paginación Inferior */}
+        {/* Paginación Inferior + Botón de Papelera ("ELIMINADOS EN 0") */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-3 border-t border-white/10 text-xs text-gray-400">
           <span>
             Mostrando <strong>{paginatedItems.length}</strong> de <strong>{filteredItems.length.toLocaleString()}</strong> artículos
           </span>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Botón Papelera para ver todos los eliminados en 0 */}
+            <button
+              type="button"
+              onClick={handleOpenTrashModal}
+              title='Ver historial de artículos movidos a "ELIMINADOS EN 0" o restaurar un registro'
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-black text-xs transition-all cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Papelera</span>
+              {trashItems.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-100 font-mono text-[10px]">
+                  {trashItems.length.toLocaleString()}
+                </span>
+              )}
+            </button>
+
             <div className="flex items-center gap-1.5">
               <span>Página</span>
               <input
@@ -2602,6 +2804,168 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal Papelera ("ELIMINADOS EN 0") */}
+      {isTrashModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#12161f] border border-rose-500/40 rounded-2xl w-full max-w-5xl max-h-[88vh] flex flex-col p-5 shadow-[0_0_40px_rgba(244,63,94,0.25)] space-y-4">
+            {/* Cabecera Papelera */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
+                    <span>Papelera • Artículos Archivados en Cero (ELIMINADOS EN 0)</span>
+                    <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[11px]">
+                      {trashItems.length.toLocaleString()}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    Registro histórico de artículos depurados con NetSuite = 0 y Newsoft = 0
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Buscar código, ítem, ubicación o usuario..."
+                    value={trashSearchTerm}
+                    onChange={(e) => setTrashSearchTerm(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-xl bg-[#0d1017] border border-white/15 text-xs text-white placeholder-gray-500 focus:border-rose-400 outline-none w-56 sm:w-64"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadTrashExcel}
+                  disabled={trashItems.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-black border border-emerald-500/40 text-xs font-black transition-all cursor-pointer disabled:opacity-40"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fetchTrashItems(false)}
+                  disabled={loadingTrash}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 text-xs font-bold transition-all cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingTrash ? 'animate-spin text-rose-400' : ''}`} />
+                  <span>Refrescar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsTrashModalOpen(false)}
+                  className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-barra de confirmación PIN para restaurar un registro */}
+            {restoringTrashItem && (
+              <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="text-amber-200">
+                  Restaurar <strong className="font-mono text-white">{restoringTrashItem.codigo}</strong> ({restoringTrashItem.item}) a la hoja <strong>PROGRESO</strong>:
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    maxLength={6}
+                    placeholder="PIN 030621"
+                    value={restorePinInput}
+                    onChange={(e) => { setRestorePinInput(e.target.value); setRestorePinError(false); }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleConfirmRestoreTrash()}
+                    className="w-28 px-2.5 py-1 text-center font-mono text-white bg-[#0d1017] border border-amber-400/50 rounded-lg outline-none"
+                    autoFocus
+                  />
+                  {restorePinError && <span className="text-rose-400 font-bold">PIN inválido</span>}
+                  <button
+                    type="button"
+                    disabled={restoringInProgress}
+                    onClick={handleConfirmRestoreTrash}
+                    className="px-3.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-black cursor-pointer disabled:opacity-50"
+                  >
+                    {restoringInProgress ? 'Restaurando...' : 'Confirmar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRestoringTrashItem(null); setRestorePinInput(''); setRestorePinError(false); }}
+                    className="px-2.5 py-1 rounded-lg border border-white/15 text-gray-300 hover:text-white cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tabla de la Papelera */}
+            <div className="overflow-auto flex-1 custom-scrollbar border border-white/10 rounded-xl">
+              {loadingTrash ? (
+                <div className="py-16 text-center text-gray-400 text-xs flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-rose-400" />
+                  <span>Cargando artículos de la papelera...</span>
+                </div>
+              ) : filteredTrashItems.length > 0 ? (
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="sticky top-0 bg-[#0d1017] z-10">
+                    <tr className="border-b border-white/10 text-gray-400 font-bold uppercase text-[10px]">
+                      <th className="py-2.5 px-3 text-center">Fila Orig.</th>
+                      <th className="py-2.5 px-3">Código</th>
+                      <th className="py-2.5 px-3">Item NT/NS Descripción</th>
+                      <th className="py-2.5 px-3">Ubicación</th>
+                      <th className="py-2.5 px-3">Eliminado Por</th>
+                      <th className="py-2.5 px-3">Fecha / Hora</th>
+                      <th className="py-2.5 px-3 text-center">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filteredTrashItems.map((t) => (
+                      <tr key={t.trashRowNumber} className="hover:bg-white/5">
+                        <td className="py-2 px-3 text-center font-mono text-gray-400">#{t.filaOriginal}</td>
+                        <td className="py-2 px-3 font-mono font-bold text-amber-400">{t.codigo}</td>
+                        <td className="py-2 px-3 text-white font-semibold">{t.item}</td>
+                        <td className="py-2 px-3 font-mono text-gray-300">{t.ubicacion}</td>
+                        <td className="py-2 px-3 font-bold text-cyan-300 uppercase">{t.eliminadoPor}</td>
+                        <td className="py-2 px-3 font-mono text-[11px] text-gray-400">{t.fechaEliminacion}</td>
+                        <td className="py-2 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRestoringTrashItem(t);
+                              setRestorePinInput('');
+                              setRestorePinError(false);
+                            }}
+                            title="Devolver este artículo a la hoja PROGRESO"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-black border border-emerald-500/40 text-[11px] font-bold transition-all cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Restaurar</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="py-16 text-center text-gray-500 text-xs space-y-1">
+                  <Archive className="w-8 h-8 mx-auto opacity-30" />
+                  <p className="font-bold text-gray-400">La papelera está vacía</p>
+                  <p>Aquí aparecerán todos los artículos en 0 que muevas a la pestaña "ELIMINADOS EN 0".</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal PIN 1501 para abrir Google Sheets */}
       {isPinModalOpen && (
