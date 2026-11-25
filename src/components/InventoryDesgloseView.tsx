@@ -220,7 +220,10 @@ function parseLoteTarget(loteText: string): { qty: number | null; locationFilter
 
 const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
+const PAPELERA_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/1O50UJ3-W1JZmY0jPSOjAnC5SXpBxcvqISgJbtDQ-52c/edit?usp=sharing';
 const MASTER_PIN = '030621';
+const MAX_ARCHIVE_BATCH = 50; // Seguro estricto: máximo 50 filas por operación
 const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
 const LOTES_CACHE_KEY = 'nave6_lotes_activos_cache_v1';
@@ -408,12 +411,12 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [unlockPinInput, setUnlockPinInput] = useState('');
   const [unlockPinError, setUnlockPinError] = useState(false);
 
-  // Modal de confirmación + PIN 030621 para mover artículos en 0 a "ELIMINADOS EN 0"
+  // Modal de confirmación + PIN 030621 para mover artículos en 0 a Papelera Externa
   const [archiveZeroTargets, setArchiveZeroTargets] = useState<SheetRowItem[] | null>(null);
   const [archiveZeroPinInput, setArchiveZeroPinInput] = useState('');
   const [archiveZeroPinError, setArchiveZeroPinError] = useState(false);
 
-  // Estados de la Papelera ("ELIMINADOS EN 0")
+  // Estados de la Papelera Externa
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [trashItems, setTrashItems] = useState<ArchivedZeroItem[]>([]);
   const [loadingTrash, setLoadingTrash] = useState(false);
@@ -539,7 +542,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     [activeUserLabel]
   );
 
-  // Cargar registros de la Papelera ("ELIMINADOS EN 0")
+  // Cargar registros de la Papelera Externa
   const fetchTrashItems = useCallback(async (silent = false) => {
     if (!silent) setLoadingTrash(true);
     try {
@@ -587,7 +590,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
   useEffect(() => {
     loadDigitadoMeta();
-    const interval = setInterval(loadDigitadoMeta, 8000);
+    const interval = setInterval(loadDigitadoMeta, 10000);
     return () => clearInterval(interval);
   }, [loadDigitadoMeta]);
 
@@ -860,8 +863,23 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
     try {
       const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) return;
+
       const csvText = await res.text();
+      // ESCUDO ANTI-HTML: Si Google devuelve una página HTML de error temporal, conservar los datos actuales
+      if (!csvText || csvText.trim().startsWith('<')) {
+        return;
+      }
+
       const allRows = parseCSVExact(csvText);
+      if (allRows.length < 4) return;
+
+      // Verificar que el encabezado de fila 3 corresponda realmente a la tabla de inventario
+      const headerLine = (allRows[2] || []).join(' ').toUpperCase();
+      if (!headerLine.includes('CODIGO') && !headerLine.includes('VALIDADO') && !headerLine.includes('NETSUITE')) {
+        return;
+      }
+
       const parsedItems: SheetRowItem[] = [];
 
       // El índice 3 corresponde exactamente a la fila 4 de Google Sheets
@@ -922,14 +940,14 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         setLastSync(new Date().toLocaleTimeString());
       }
     } catch {
-      if (!silent) setItems([]);
+      // Conservar datos previos si hay micro-corte de red
     } finally {
       isFetchingRef.current = false;
       if (!silent) setLoading(false);
     }
   }, [CSV_URL]);
 
-  // Carga inicial + Sincronización en tiempo real cada 2 segundos
+  // Carga inicial + Sincronización cada 6s (evita bloqueo 429 de Google Sheets)
   useEffect(() => {
     fetchSheetData(false);
     fetchLotesActivos();
@@ -938,7 +956,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     const interval = setInterval(() => {
       fetchSheetData(true);
       if (!document.hidden) fetchLotesActivos();
-    }, 2000);
+    }, 6000);
 
     const onVisibilityChange = () => {
       if (!document.hidden) {
@@ -1131,7 +1149,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Descargar Excel nativo de la Papelera ("ELIMINADOS EN 0")
+  // Descargar Excel nativo de la Papelera Externa
   const handleDownloadTrashExcel = () => {
     if (trashItems.length === 0) return;
 
@@ -1546,9 +1564,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     return (Number(row.ns) || 0) === 0 && (Number(row.newsoft) || 0) === 0;
   };
 
-  // Abrir modal de confirmación para mover artículos en 0 a la pestaña "ELIMINADOS EN 0"
+  // Seguro estricto: limitar selección máxima a 50 artículos por movimiento
   const handlePromptArchiveZero = (targets: SheetRowItem[]) => {
-    const validZeroTargets = targets.filter(estaEnCeroTotal);
+    const validZeroTargets = targets.filter(estaEnCeroTotal).slice(0, MAX_ARCHIVE_BATCH);
     if (validZeroTargets.length === 0) {
       setNotification({
         type: 'error',
@@ -1561,17 +1579,17 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setArchiveZeroPinError(false);
   };
 
-  // Ejecutar traslado a "ELIMINADOS EN 0" con desaparición instantánea en pantalla (0ms) y envío rápido en bloque
+  // Ejecutar traslado de hasta 50 artículos hacia el Google Sheet externo de Papelera
   const handleConfirmArchiveZero = async () => {
     if (archiveZeroPinInput.trim() !== MASTER_PIN || !archiveZeroTargets) {
       setArchiveZeroPinError(true);
       return;
     }
 
-    const targetsToMove = [...archiveZeroTargets];
+    const targetsToMove = archiveZeroTargets.slice(0, MAX_ARCHIVE_BATCH);
     const targetRowSet = new Set<number>(targetsToMove.map((t) => t.rowNumber));
 
-    // 1. DESAPARICIÓN INSTANTÁNEA EN PANTALLA (0ms) ANTES DE ESPERAR AL SERVIDOR
+    // Desaparición instantánea en pantalla (0ms)
     setItems((prev) => prev.filter((it) => !targetRowSet.has(it.rowNumber)));
     setArchiveZeroTargets(null);
     setArchiveZeroPinInput('');
@@ -1579,51 +1597,38 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setArchivingZeroRows(true);
     setNotification({
       type: 'success',
-      text: `${targetsToMove.length} artículo(s) en 0 retirados de la vista. Sincronizando con Google Sheets...`,
+      text: `Moviendo lote seguro de ${targetsToMove.length} artículo(s) a la Papelera externa...`,
     });
 
-    const BATCH_SIZE = 150;
-    let totalMoved = 0;
-
     try {
-      for (let i = 0; i < targetsToMove.length; i += BATCH_SIZE) {
-        const chunk = targetsToMove.slice(i, i + BATCH_SIZE);
+      const res = await updateSheetRowGAS({
+        action: 'ARCHIVE_ZERO_ITEMS',
+        payload: JSON.stringify({
+          usuario: activeUserLabel,
+          items: targetsToMove.map((it) => ({
+            rowNumber: it.rowNumber,
+            codigo: it.codigo,
+          })),
+        }),
+      });
 
-        const res = await updateSheetRowGAS({
-          action: 'ARCHIVE_ZERO_ITEMS',
-          payload: JSON.stringify({
-            usuario: activeUserLabel,
-            items: chunk.map((it) => ({
-              rowNumber: it.rowNumber,
-              codigo: it.codigo,
-            })),
-          }),
-        });
-
-        if (res && res.success) {
-          totalMoved += Number(res.deletedCount) || chunk.length;
-        } else {
-          setNotification({
-            type: 'error',
-            text:
-              res?.error ||
-              `Se movieron ${totalMoved} artículo(s), pero ocurrió un error al sincronizar con Sheets.`,
-          });
-          await fetchSheetData(true);
-          return;
-        }
-      }
-
-      if (totalMoved > 0) {
+      if (res && res.success) {
+        const movedCount = Number(res.deletedCount) || targetsToMove.length;
         setNotification({
           type: 'success',
-          text: `${totalMoved} artículo(s) en 0 movido(s) a la pestaña "ELIMINADOS EN 0".`,
+          text: `${movedCount} artículo(s) en 0 movido(s) al documento externo de Papelera.`,
         });
 
         setTimeout(() => {
           fetchSheetData(true);
           fetchTrashItems(true);
         }, 800);
+      } else {
+        setNotification({
+          type: 'error',
+          text: res?.error || 'No se pudieron mover los artículos en 0.',
+        });
+        await fetchSheetData(true);
       }
     } catch (err: any) {
       setNotification({
@@ -1636,7 +1641,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
   };
 
-  // Restaurar un registro desde la Papelera ("ELIMINADOS EN 0") de vuelta a "PROGRESO"
+  // Restaurar un registro desde la Papelera Externa de vuelta a "PROGRESO"
   const handleConfirmRestoreTrash = async () => {
     if (restorePinInput.trim() !== MASTER_PIN || !restoringTrashItem) {
       setRestorePinError(true);
@@ -1938,6 +1943,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
   };
 
+  const safeBatchCount = Math.min(filteredItems.length, MAX_ARCHIVE_BATCH);
+
   return (
     <div className="space-y-4 pb-12">
       {/* Barra Superior con Controles */}
@@ -1951,7 +1958,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               <span>DESGLOSE OPERATIVO COMPLETO (NAVE 6)</span>
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                En Vivo (2s)
+                En Vivo
               </span>
             </h2>
             <span className="text-xs text-gray-400">
@@ -2224,7 +2231,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
               <button
                 onClick={() => { setFilterStatus('ENCERO'); setCurrentPage(1); }}
-                title="Artículos con NetSuite = 0 y Balance Newsoft = 0 listos para archivar en ELIMINADOS EN 0"
+                title="Artículos con NetSuite = 0 y Balance Newsoft = 0 listos para archivar en Papelera"
                 className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   filterStatus === 'ENCERO'
                     ? 'bg-slate-600/40 text-slate-200 border border-slate-400/50'
@@ -2254,7 +2261,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 type="button"
                 disabled={archivingZeroRows}
                 onClick={() => handlePromptArchiveZero(filteredItems)}
-                title='Mover todos los artículos visibles en 0 a la pestaña "ELIMINADOS EN 0" en Google Sheets'
+                title={`Seguro activo: mueve máximo ${MAX_ARCHIVE_BATCH} artículos por operación hacia el Google Sheet externo de Papelera`}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40 font-black text-xs transition-all cursor-pointer disabled:opacity-50"
               >
                 {archivingZeroRows ? (
@@ -2264,8 +2271,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 )}
                 <span>
                   {archivingZeroRows
-                    ? 'Sincronizando...'
-                    : `Mover todos a "ELIMINADOS EN 0" (${filteredItems.length.toLocaleString()})`}
+                    ? 'Moviendo lote...'
+                    : `Mover lote seguro de ${safeBatchCount} a Papelera (Total: ${filteredItems.length.toLocaleString()})`}
                 </span>
               </button>
             )}
@@ -2719,7 +2726,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* ACCIÓN: ENVIAR DESCUADRE A SLACK O MOVER ÍTEM EN 0 A PESTAÑA "ELIMINADOS EN 0" */}
+                    {/* ACCIÓN: ENVIAR DESCUADRE A SLACK O MOVER ÍTEM EN 0 A PAPELERA EXTERNA */}
                     <td className="py-2.5 px-3 text-center">
                       {!isDifCero ? (
                         <button
@@ -2741,11 +2748,11 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                           type="button"
                           disabled={archivingZeroRows}
                           onClick={() => handlePromptArchiveZero([row])}
-                          title='Eliminar de PROGRESO y guardar en la pestaña "ELIMINADOS EN 0" (NetSuite = 0 y Newsoft = 0)'
+                          title='Eliminar de PROGRESO y guardar en el Google Sheet externo de Papelera'
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-700/60 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-500/40 hover:border-rose-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
                         >
                           <Archive className="w-3 h-3" />
-                          <span>A Pestaña 0</span>
+                          <span>A Papelera</span>
                         </button>
                       ) : (
                         <span className="text-[10px] text-gray-600 font-mono">—</span>
@@ -2758,7 +2765,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </table>
         </div>
 
-        {/* Paginación Inferior + Botón de Papelera ("ELIMINADOS EN 0") */}
+        {/* Paginación Inferior + Botón de Papelera Externa */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-3 border-t border-white/10 text-xs text-gray-400">
           <span>
             Mostrando <strong>{paginatedItems.length}</strong> de <strong>{filteredItems.length.toLocaleString()}</strong> artículos
@@ -2769,7 +2776,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
             <button
               type="button"
               onClick={handleOpenTrashModal}
-              title='Ver historial de artículos movidos a "ELIMINADOS EN 0" o restaurar un registro'
+              title='Ver historial de artículos archivados en el documento externo de Papelera o restaurar un registro'
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-black text-xs transition-all cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -2818,7 +2825,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         </div>
       </div>
 
-      {/* Modal Papelera ("ELIMINADOS EN 0") */}
+      {/* Modal Papelera (Google Sheet Externo) */}
       {isTrashModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-[#12161f] border border-rose-500/40 rounded-2xl w-full max-w-5xl max-h-[88vh] flex flex-col p-5 shadow-[0_0_40px_rgba(244,63,94,0.25)] space-y-4">
@@ -2830,13 +2837,13 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
-                    <span>Papelera • Artículos Archivados en Cero (ELIMINADOS EN 0)</span>
+                    <span>Papelera Externa • Artículos Archivados en Cero</span>
                     <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[11px]">
                       {trashItems.length.toLocaleString()}
                     </span>
                   </h3>
                   <p className="text-[11px] text-gray-400">
-                    Registro histórico de artículos depurados con NetSuite = 0 y Newsoft = 0
+                    Almacenados en documento independiente para mantener PROGRESO liviano
                   </p>
                 </div>
               </div>
@@ -2852,6 +2859,16 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                     className="pl-8 pr-3 py-1.5 rounded-xl bg-[#0d1017] border border-white/15 text-xs text-white placeholder-gray-500 focus:border-rose-400 outline-none w-56 sm:w-64"
                   />
                 </div>
+
+                <a
+                  href={PAPELERA_SHEET_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 text-xs font-black transition-all"
+                >
+                  <span>Abrir Sheet Papelera</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
 
                 <button
                   type="button"
@@ -2972,7 +2989,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 <div className="py-16 text-center text-gray-500 text-xs space-y-1">
                   <Archive className="w-8 h-8 mx-auto opacity-30" />
                   <p className="font-bold text-gray-400">La papelera está vacía</p>
-                  <p>Aquí aparecerán todos los artículos en 0 que muevas a la pestaña "ELIMINADOS EN 0".</p>
+                  <p>Aquí aparecerán los artículos en 0 movidos al Google Sheet de Papelera.</p>
                 </div>
               )}
             </div>
@@ -3073,13 +3090,13 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         </div>
       )}
 
-      {/* Modal Confirmación + PIN 030621 para Mover Artículos en 0 a "ELIMINADOS EN 0" */}
+      {/* Modal Confirmación + PIN 030621 para Mover Lote Seguro de hasta 50 Artículos en 0 */}
       {archiveZeroTargets && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-[#12161f] border border-amber-500/50 rounded-2xl w-full max-w-md p-6 shadow-[0_0_35px_rgba(245,158,11,0.25)] space-y-4">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <span className="text-xs font-black uppercase text-amber-400 flex items-center gap-2">
-                <Archive className="w-4 h-4" /> Mover a Pestaña "ELIMINADOS EN 0"
+                <Archive className="w-4 h-4" /> Mover a Papelera Externa (Máx. {MAX_ARCHIVE_BATCH})
               </span>
               <button
                 onClick={() => { setArchiveZeroTargets(null); setArchiveZeroPinInput(''); setArchiveZeroPinError(false); }}
@@ -3091,11 +3108,11 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
             <div className="text-xs text-gray-300 space-y-2">
               <p>
-                Se moverán <strong className="text-white">{archiveZeroTargets.length.toLocaleString()}</strong> artículo(s) con{' '}
+                Se moverá un lote seguro de <strong className="text-white">{archiveZeroTargets.length}</strong> artículo(s) con{' '}
                 <strong className="text-cyan-300">NetSuite = 0</strong> y{' '}
-                <strong className="text-cyan-300">Balance Newsoft = 0</strong> desde la hoja{' '}
-                <strong className="text-white">PROGRESO</strong> hacia la pestaña de respaldo{' '}
-                <strong className="text-amber-300">ELIMINADOS EN 0</strong> en Google Sheets.
+                <strong className="text-cyan-300">Balance Newsoft = 0</strong> desde{' '}
+                <strong className="text-white">PROGRESO</strong> hacia el libro externo{' '}
+                <strong className="text-amber-300">PAPELERA INVENTARIO NAVE 6</strong>.
               </p>
 
               {archiveZeroTargets.length === 1 && (
