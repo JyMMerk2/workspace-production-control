@@ -24,7 +24,8 @@ import {
   Plus,
   Archive,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  PackagePlus
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -280,7 +281,7 @@ function parseCSVExact(text: string): string[][] {
   return rows;
 }
 
-// Cliente híbrido para actualizar celdas, mover ítems en 0 o enviar alertas en Google Apps Script sin problemas de CORS
+// Cliente híbrido para actualizar celdas, crear ítems, mover ítems en 0 o enviar alertas en Google Apps Script sin problemas de CORS
 async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
   const query = new URLSearchParams(params).toString();
   const url = `${APPS_SCRIPT_URL}?${query}`;
@@ -426,6 +427,20 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [restorePinError, setRestorePinError] = useState(false);
   const [restoringInProgress, setRestoringInProgress] = useState(false);
 
+  // Estados del Modal "Nuevo Ítem" con detección anti-duplicados
+  const [isNewItemModalOpen, setIsNewItemModalOpen] = useState(false);
+  const [newCodigo, setNewCodigo] = useState('');
+  const [newItemDesc, setNewItemDesc] = useState('');
+  const [newNs, setNewNs] = useState('0');
+  const [newAlmacen, setNewAlmacen] = useState('0');
+  const [newSalida, setNewSalida] = useState('0');
+  const [newNave7, setNewNave7] = useState('0');
+  const [newUbicacion, setNewUbicacion] = useState('');
+  const [newComentario, setNewComentario] = useState('');
+  const [newValidado, setNewValidado] = useState(false);
+  const [savingNewItem, setSavingNewItem] = useState(false);
+  const [newItemServerError, setNewItemServerError] = useState<string | null>(null);
+
   // Controles de concurrencia para evitar solapamiento de red o interrumpir ediciones activas
   const isFetchingRef = useRef(false);
   const isFetchingLotesRef = useRef(false);
@@ -445,7 +460,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       archivingZeroRows ||
       unlockTargetRow !== null ||
       archiveZeroTargets !== null ||
-      restoringInProgress
+      restoringInProgress ||
+      isNewItemModalOpen
     );
   }, [
     editingNsRow,
@@ -460,7 +476,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     archivingZeroRows,
     unlockTargetRow,
     archiveZeroTargets,
-    restoringInProgress
+    restoringInProgress,
+    isNewItemModalOpen
   ]);
 
   const GOOGLE_SHEETS_URL =
@@ -541,6 +558,135 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     },
     [activeUserLabel]
   );
+
+  // Detección instantánea de duplicados en el formulario "Nuevo Ítem"
+  const newItemDuplicateMatch = useMemo(() => {
+    const codeNorm = newCodigo.trim().toLowerCase();
+    const descNorm = newItemDesc.trim().toLowerCase();
+    const ubiNorm = newUbicacion.trim().toLowerCase();
+
+    if (!codeNorm && !descNorm) return null;
+
+    for (const it of items) {
+      if (codeNorm && it.codigo.trim().toLowerCase() === codeNorm) {
+        return {
+          reason: `El código "${it.codigo}" ya existe en la fila #${it.rowNumber} (${it.item} • Ubi: ${it.ubicacion}).`,
+          item: it
+        };
+      }
+      if (descNorm && ubiNorm && it.item.trim().toLowerCase() === descNorm && it.ubicacion.trim().toLowerCase() === ubiNorm) {
+        return {
+          reason: `El ítem "${it.item}" en ubicación "${it.ubicacion}" ya existe en la fila #${it.rowNumber} (Cód: ${it.codigo}).`,
+          item: it
+        };
+      }
+    }
+    return null;
+  }, [newCodigo, newItemDesc, newUbicacion, items]);
+
+  const handleOpenNewItemModal = () => {
+    setNewCodigo('');
+    setNewItemDesc('');
+    setNewNs('0');
+    setNewAlmacen('0');
+    setNewSalida('0');
+    setNewNave7('0');
+    setNewUbicacion('');
+    setNewComentario('');
+    setNewValidado(false);
+    setNewItemServerError(null);
+    setIsNewItemModalOpen(true);
+  };
+
+  const handleCreateNewItem = async () => {
+    const codigoClean = newCodigo.trim();
+    const descClean = newItemDesc.trim();
+
+    if (!codigoClean || !descClean) {
+      setNewItemServerError('El Código Componente y la Descripción del Ítem son obligatorios.');
+      return;
+    }
+
+    if (newItemDuplicateMatch) {
+      setNewItemServerError(newItemDuplicateMatch.reason);
+      return;
+    }
+
+    const nsNum = parseFloat(newNs) || 0;
+    const almNum = parseFloat(newAlmacen) || 0;
+    const salNum = parseFloat(newSalida) || 0;
+    const nav7Num = parseFloat(newNave7) || 0;
+    const ubiClean = newUbicacion.trim().toUpperCase() || '-';
+    const comClean = newComentario.trim();
+
+    setSavingNewItem(true);
+    setNewItemServerError(null);
+
+    try {
+      const res = await updateSheetRowGAS({
+        action: 'CREATE_ITEM',
+        payload: JSON.stringify({
+          codigo: codigoClean,
+          item: descClean,
+          ns: nsNum,
+          almacen: almNum,
+          salida: salNum,
+          nave7: nav7Num,
+          ubicacion: ubiClean,
+          comentario: comClean,
+          validado: newValidado,
+          usuario: activeUserLabel
+        })
+      });
+
+      if (res && res.success) {
+        const balNewsoft = Number(res.newsoft ?? ((almNum - salNum) + nav7Num));
+        const difVal = Number(res.dif ?? (balNewsoft - nsNum));
+        const newRowNum = Number(res.rowNumber) || (items.length + 4);
+
+        const createdItem: SheetRowItem = {
+          rowNumber: newRowNum,
+          validado: newValidado,
+          candado: false,
+          digitado: false,
+          enRevision: false,
+          codigo: codigoClean,
+          item: descClean,
+          ns: nsNum,
+          almacen: almNum,
+          salida: salNum,
+          nave7: nav7Num,
+          newsoft: balNewsoft,
+          dif: difVal,
+          ubicacion: ubiClean,
+          comentario: comClean
+        };
+
+        setItems((prev) => [createdItem, ...prev]);
+        setIsNewItemModalOpen(false);
+        setHighlightedRowNum(newRowNum);
+        setFilterStatus('ALL');
+        setCurrentPage(1);
+
+        recordOperatorActivity(newValidado ? 'VALIDADO' : 'EDICION', createdItem, balNewsoft);
+
+        setNotification({
+          type: 'success',
+          text: res.message || `Artículo nuevo "${codigoClean} - ${descClean}" guardado en Google Sheets (Fila #${newRowNum}).`
+        });
+
+        setTimeout(() => {
+          fetchSheetData(true);
+        }, 1200);
+      } else {
+        setNewItemServerError(res?.error || 'No se pudo guardar el artículo nuevo (posible duplicado en Google Sheets).');
+      }
+    } catch (err: any) {
+      setNewItemServerError('Error de conexión con Google Sheets: ' + err.message);
+    } finally {
+      setSavingNewItem(false);
+    }
+  };
 
   // Cargar registros de la Papelera Externa
   const fetchTrashItems = useCallback(async (silent = false) => {
@@ -1945,6 +2091,10 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
   const safeBatchCount = Math.min(filteredItems.length, MAX_ARCHIVE_BATCH);
 
+  // Cálculos en vivo dentro del modal "Nuevo Ítem"
+  const previewNewsoft = ((parseFloat(newAlmacen) || 0) - (parseFloat(newSalida) || 0)) + (parseFloat(newNave7) || 0);
+  const previewDif = previewNewsoft - (parseFloat(newNs) || 0);
+
   return (
     <div className="space-y-4 pb-12">
       {/* Barra Superior con Controles */}
@@ -1969,6 +2119,17 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Botón Nuevo Ítem con validación anti-duplicados */}
+          <button
+            type="button"
+            onClick={handleOpenNewItemModal}
+            title="Agregar un artículo nuevo que no exista en Google Sheets"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#00f2fe] hover:bg-[#00f2fe]/85 text-[#0b0e14] font-black text-xs transition-all cursor-pointer shadow-[0_0_15px_rgba(0,242,254,0.25)]"
+          >
+            <PackagePlus className="w-4 h-4" />
+            <span>Nuevo Ítem</span>
+          </button>
+
           <button
             onClick={handleDownloadNave7Excel}
             disabled={counts.nave7 === 0}
@@ -2824,6 +2985,215 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal Nuevo Ítem con Validación Anti-Duplicados */}
+      {isNewItemModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#12161f] border border-[#00f2fe]/45 rounded-2xl w-full max-w-lg p-6 shadow-[0_0_40px_rgba(0,242,254,0.25)] space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs font-black uppercase text-[#00f2fe] flex items-center gap-2">
+                <PackagePlus className="w-4 h-4" /> Agregar Artículo Nuevo a PROGRESO
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsNewItemModalOpen(false)}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Aviso inmediato si el código o descripción+ubicación ya existen */}
+            {(newItemDuplicateMatch || newItemServerError) && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-black uppercase text-rose-300 text-[11px]">
+                    ¡Registro Duplicado Detectado!
+                  </div>
+                  <p>{newItemDuplicateMatch ? newItemDuplicateMatch.reason : newItemServerError}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-400 mb-1">
+                  Código Componente (Col B) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. 1054890"
+                  value={newCodigo}
+                  onChange={(e) => {
+                    setNewCodigo(e.target.value);
+                    setNewItemServerError(null);
+                  }}
+                  autoFocus
+                  className={`w-full px-3 py-2 rounded-xl bg-[#0d1017] border text-white font-mono font-bold outline-none ${
+                    newItemDuplicateMatch ? 'border-rose-500 focus:border-rose-400' : 'border-white/15 focus:border-[#00f2fe]'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-400 mb-1">
+                  Ubicación (Col H)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. B-12-1"
+                  value={newUbicacion}
+                  onChange={(e) => {
+                    setNewUbicacion(e.target.value.toUpperCase());
+                    setNewItemServerError(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-[#00f2fe] text-white font-mono uppercase outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-gray-400 mb-1">
+                  Descripción del Ítem NT/NS (Col C) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. BM-11002-14 RD/W-L"
+                  value={newItemDesc}
+                  onChange={(e) => {
+                    setNewItemDesc(e.target.value);
+                    setNewItemServerError(null);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-[#00f2fe] text-white font-semibold outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-gray-400 mb-1">
+                  Cantidad NetSuite (Col D)
+                </label>
+                <input
+                  type="number"
+                  value={newNs}
+                  onChange={(e) => setNewNs(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-indigo-400 text-white font-mono text-right outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-emerald-400 mb-1">
+                  Cantidad Inventario / Almacén (Col E)
+                </label>
+                <input
+                  type="number"
+                  value={newAlmacen}
+                  onChange={(e) => setNewAlmacen(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-emerald-400 text-white font-mono text-right outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-rose-400 mb-1">
+                  Salida (Col G)
+                </label>
+                <input
+                  type="number"
+                  value={newSalida}
+                  onChange={(e) => setNewSalida(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-rose-400 text-white font-mono text-right outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-purple-400 mb-1">
+                  Nave 7 (Col N)
+                </label>
+                <input
+                  type="number"
+                  value={newNave7}
+                  onChange={(e) => setNewNave7(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-purple-400 text-white font-mono text-right outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-gray-400 mb-1">
+                  Comentarios (Col L)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Observación opcional..."
+                  value={newComentario}
+                  onChange={(e) => setNewComentario(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#0d1017] border border-white/15 focus:border-amber-400 text-white outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Vista previa de Balance Newsoft y Diferencia */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-[#0d1017] border border-white/10 text-xs">
+              <label className="inline-flex items-center gap-2 cursor-pointer text-gray-200 font-bold">
+                <input
+                  type="checkbox"
+                  checked={newValidado}
+                  onChange={(e) => setNewValidado(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-400 rounded"
+                />
+                <span>Marcar como Validado OK (Col A)</span>
+              </label>
+
+              <div className="flex items-center gap-4 font-mono">
+                <div>
+                  <span className="text-gray-400">Bal. Newsoft: </span>
+                  <strong className="text-[#00f2fe]">{previewNewsoft.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span className="text-gray-400">Diferencia: </span>
+                  <strong
+                    className={
+                      previewDif === 0
+                        ? 'text-emerald-400'
+                        : previewDif > 0
+                        ? 'text-amber-400'
+                        : 'text-rose-400'
+                    }
+                  >
+                    {previewDif > 0 ? `+${previewDif}` : previewDif}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setIsNewItemModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-gray-300 hover:bg-white/5 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={savingNewItem || Boolean(newItemDuplicateMatch) || !newCodigo.trim() || !newItemDesc.trim()}
+                onClick={handleCreateNewItem}
+                className="px-5 py-2 bg-[#00f2fe] hover:bg-[#00f2fe]/85 text-[#0b0e14] font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingNewItem ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Verificando y Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Guardar Ítem Nuevo</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Papelera (Google Sheet Externo) */}
       {isTrashModalOpen && (
