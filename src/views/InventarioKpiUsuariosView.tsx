@@ -238,7 +238,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
   });
 
   const [loading, setLoading] = useState<boolean>(true);
-  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>('SEASON');
+  const [dateRangeFilter, setDateRangeFilter] = useState<DateRangeFilter>('TODAY');
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('ALL');
   const [actionFilter, setActionFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
