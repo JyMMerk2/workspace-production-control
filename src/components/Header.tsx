@@ -71,10 +71,20 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTheme,
   metrics = {}
 }) => {
-  const appVersion = useAppVersion();
+  const liveAppVersion = useAppVersion();
+  const [loadedAppVersion, setLoadedAppVersion] = useState<string>(() => liveAppVersion || '');
   const { updateAvailable, applyUpdate } = useUpdateChecker();
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'neon' | 'corporate'>('neon');
+
+  // Congelar la versión con la que cargó esta pestaña hasta que el usuario reinicie o pulse Ctrl+F5
+  useEffect(() => {
+    if (!loadedAppVersion && liveAppVersion && liveAppVersion !== 'v...') {
+      setLoadedAppVersion(liveAppVersion);
+    }
+  }, [liveAppVersion, loadedAppVersion]);
+
+  const appVersion = loadedAppVersion || liveAppVersion;
 
   // Estado para el menú desplegable de Compartir / Enviar por Correo
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
@@ -204,7 +214,7 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Header</span>
           </button>
 
-          {/* Badge Boombah + Versión Dinámica */}
+          {/* Badge Boombah + Versión Fija de Sesión */}
           <div className="flex items-center gap-2 pl-1">
             <div className="relative flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-[#00f2fe]/20 to-[#ff007f]/20 border border-[#00f2fe]/50 shadow-[0_0_12px_rgba(0,242,254,0.3)]">
               <span className="text-xs font-black italic tracking-tighter text-[#00f2fe]">B</span>
@@ -214,7 +224,10 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="text-[11px] font-black tracking-widest text-[#00f2fe] uppercase leading-tight">
                   BOOMBAH
                 </span>
-                <span className="text-[9px] font-mono font-black px-1.5 py-0.2 rounded bg-[#00f2fe]/15 text-[#00f2fe] border border-[#00f2fe]/35">
+                <span
+                  title="Versión activa en esta pestaña (actualiza con Update • Reiniciar o Ctrl+F5)"
+                  className="text-[9px] font-mono font-black px-1.5 py-0.2 rounded bg-[#00f2fe]/15 text-[#00f2fe] border border-[#00f2fe]/35"
+                >
                   {appVersion}
                 </span>
               </div>
@@ -222,7 +235,10 @@ export const Header: React.FC<HeaderProps> = ({
                 PRODUCTION CONTROL
               </span>
             </div>
-            <span className="2xl:hidden text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-[#00f2fe]/15 text-[#00f2fe] border border-[#00f2fe]/35">
+            <span
+              title="Versión activa en esta pestaña (actualiza con Update • Reiniciar o Ctrl+F5)"
+              className="2xl:hidden text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-[#00f2fe]/15 text-[#00f2fe] border border-[#00f2fe]/35"
+            >
               {appVersion}
             </span>
           </div>
