@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Search, 
   Lock, 
@@ -172,6 +172,15 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const [ubicacionesList, setUbicacionesList] = useState<string[]>([]);
   const [showUbiDropdown, setShowUbiDropdown] = useState(false);
 
+  // Control de candados de localidades:
+  // - closedUbicacionesSet: localidades donde el 100% de sus ítems tienen Col A y Col I cerrados
+  // - unlockedUbicaciones: localidades cerradas que el operador abrió manualmente con su candado
+  // - forceClosedUbicaciones: localidades cerradas manualmente por el operador
+  const [closedUbicacionesSet, setClosedUbicacionesSet] = useState<Set<string>>(new Set());
+  const [ubiStatsMap, setUbiStatsMap] = useState<Record<string, { total: number; closed: number }>>({});
+  const [unlockedUbicaciones, setUnlockedUbicaciones] = useState<string[]>([]);
+  const [forceClosedUbicaciones, setForceClosedUbicaciones] = useState<string[]>([]);
+
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sendingSlack, setSendingSlack] = useState(false);
@@ -221,6 +230,109 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   useEffect(() => {
     selectedUbicacionesRef.current = selectedUbicaciones;
   }, [selectedUbicaciones]);
+
+  // Calcular qué localidades están cerradas al 100% a partir de una lista de ítems
+  const recomputeUbicacionesEstado = useCallback((items: InventoryItem[]) => {
+    const setUbis = new Set<string>();
+    const stats: Record<string, { total: number; closed: number }> = {};
+
+    for (const it of items) {
+      const ubi = String(it.colH_Ubicacion || '').trim();
+      if (!ubi || ubi === '-' || ubi.toUpperCase() === 'UBICACION' || ubi.toUpperCase() === 'LOCATION') {
+        continue;
+      }
+      setUbis.add(ubi);
+      const key = ubi.toUpperCase();
+      if (!stats[key]) stats[key] = { total: 0, closed: 0 };
+      stats[key].total += 1;
+      if (it.colA_Validado && it.colI_Candado) {
+        stats[key].closed += 1;
+      }
+    }
+
+    const autoClosed = new Set<string>();
+    Object.entries(stats).forEach(([key, st]) => {
+      if (st.total > 0 && st.closed === st.total) {
+        autoClosed.add(key);
+      }
+    });
+
+    setUbicacionesList(Array.from(setUbis).sort());
+    setUbiStatsMap(stats);
+    setClosedUbicacionesSet(autoClosed);
+  }, []);
+
+  // Determina si una localidad específica está actualmente cerrada (bloqueada)
+  const isUbicacionLocked = useCallback(
+    (ubi: string) => {
+      const key = ubi.trim().toUpperCase();
+      if (unlockedUbicaciones.includes(key)) return false;
+      if (forceClosedUbicaciones.includes(key)) return true;
+      return closedUbicacionesSet.has(key);
+    },
+    [closedUbicacionesSet, unlockedUbicaciones, forceClosedUbicaciones]
+  );
+
+  // Abrir o volver a cerrar el candado de una localidad individual
+  const handleToggleLockUbicacion = (ubi: string) => {
+    const key = ubi.trim().toUpperCase();
+    const currentlyLocked = isUbicacionLocked(ubi);
+
+    if (currentlyLocked) {
+      // Abrir candado de la localidad para permitir seleccionarla
+      setUnlockedUbicaciones((prev) => (prev.includes(key) ? prev : [...prev, key]));
+      setForceClosedUbicaciones((prev) => prev.filter((u) => u !== key));
+      setNotification({
+        type: 'success',
+        text: `Candado de la localidad ${ubi} abierto. Ya puedes seleccionarla.`,
+      });
+    } else {
+      // Cerrar candado de la localidad
+      setUnlockedUbicaciones((prev) => prev.filter((u) => u !== key));
+      setForceClosedUbicaciones((prev) => (prev.includes(key) ? prev : [...prev, key]));
+
+      // Si estaba seleccionada, desmarcarla al cerrarla
+      const wasSelected = selectedUbicaciones.some((s) => s.trim().toUpperCase() === key);
+      if (wasSelected) {
+        const nextList = selectedUbicaciones.filter((s) => s.trim().toUpperCase() !== key);
+        setSelectedUbicaciones(nextList);
+        if (selectedItem && selectedItem.colH_Ubicacion.trim().toUpperCase() === key) {
+          setSelectedItem(null);
+        }
+        ejecutarBusqueda('', nextList);
+      }
+
+      setNotification({
+        type: 'success',
+        text: `Localidad ${ubi} cerrada con candado.`,
+      });
+    }
+  };
+
+  // Cerrar TODAS las localidades (restaura todos los candados)
+  const handleCloseAllUbicaciones = () => {
+    const allKeys = ubicacionesList.map((u) => u.trim().toUpperCase());
+    setUnlockedUbicaciones([]);
+    setForceClosedUbicaciones(allKeys);
+    setSelectedUbicaciones([]);
+    setSelectedItem(null);
+    setItemsList([]);
+    setNotification({
+      type: 'success',
+      text: `Todas las localidades (${allKeys.length}) han sido cerradas con candado.`,
+    });
+  };
+
+  // Abrir TODAS las localidades cerradas
+  const handleOpenAllUbicaciones = () => {
+    const allKeys = ubicacionesList.map((u) => u.trim().toUpperCase());
+    setUnlockedUbicaciones(allKeys);
+    setForceClosedUbicaciones([]);
+    setNotification({
+      type: 'success',
+      text: 'Todas las localidades han sido desbloqueadas. Ya puedes seleccionar cualquiera.',
+    });
+  };
 
   // Etiqueta resumida de las ubicaciones seleccionadas (para presencia, encabezado e impresión)
   const ubicacionesLabel =
@@ -412,7 +524,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       const allRows = parseCSVExact(csvText);
 
       const parsedAll: InventoryItem[] = [];
-      const setUbis = new Set<string>();
 
       for (let i = 3; i < allRows.length; i++) {
         const cols = allRows[i];
@@ -428,10 +539,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         const isColA = rawA === 'TRUE' || rawA === 'VERDADERO' || rawA === 'OK' || rawA === '1';
         const isColI = rawI === 'TRUE' || rawI === 'VERDADERO' || rawI === 'OK' || rawI === '1';
         const ubi = String(cols[7] || '').trim();
-
-        if (ubi && ubi !== '-' && ubi.toUpperCase() !== 'UBICACION' && ubi.toUpperCase() !== 'LOCATION') {
-          setUbis.add(ubi);
-        }
 
         parsedAll.push({
           rowNumber: i + 1,
@@ -453,7 +560,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       if (parsedAll.length > 0) {
         allInventoryRef.current = parsedAll;
         setBaseListaEnMemoria(true);
-        setUbicacionesList(Array.from(setUbis).sort());
+        recomputeUbicacionesEstado(parsedAll);
 
         // Si hay ubicaciones seleccionadas, mantener su lista izquierda actualizada en vivo
         const ubisActivas = selectedUbicacionesRef.current.map((u) => u.trim().toLowerCase());
@@ -472,7 +579,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     } finally {
       isSyncingRef.current = false;
     }
-  }, [saving, archivingZeroRows]);
+  }, [saving, archivingZeroRows, recomputeUbicacionesEstado]);
 
   useEffect(() => {
     syncInventarioEnMemoria();
@@ -649,8 +756,16 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
     }
   };
 
-  // Marcar o desmarcar una ubicación individual con su casilla (permite seleccionar varias a la vez)
+  // Marcar o desmarcar una ubicación individual con su casilla (requiere abrir el candado si está cerrada)
   const handleToggleUbicacion = (ubi: string) => {
+    if (isUbicacionLocked(ubi)) {
+      setNotification({
+        type: 'error',
+        text: `La localidad ${ubi} está cerrada (todos sus ítems están cerrados). Haz clic en su candado 🔒 para abrirla primero.`,
+      });
+      return;
+    }
+
     const exists = selectedUbicaciones.some((u) => u.toLowerCase() === ubi.toLowerCase());
     const nextList = exists
       ? selectedUbicaciones.filter((u) => u.toLowerCase() !== ubi.toLowerCase())
@@ -728,6 +843,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         allInventoryRef.current = allInventoryRef.current.filter(
           (it) => !movedRowSet.has(it.rowNumber)
         );
+        recomputeUbicacionesEstado(allInventoryRef.current);
 
         if (selectedItem && movedRowSet.has(selectedItem.rowNumber)) {
           setSelectedItem(null);
@@ -998,6 +1114,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         allInventoryRef.current = allInventoryRef.current.map((it) =>
           it.rowNumber === selectedItem.rowNumber ? updatedItem : it
         );
+        recomputeUbicacionesEstado(allInventoryRef.current);
 
         recordOperatorActivity('SLACK', {
           codigo: colB,
@@ -1067,7 +1184,6 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
       if (data && data.success) {
         setColL(comentarioFinal);
-        setNotification({ type: 'success', text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.` });
 
         const actividadMeta = {
           codigo: colB,
@@ -1099,10 +1215,36 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
         };
         setSelectedItem(updatedItem);
 
-        setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? updatedItem : it));
-        allInventoryRef.current = allInventoryRef.current.map(it =>
+        const nextAll = allInventoryRef.current.map(it =>
           it.rowNumber === selectedItem.rowNumber ? updatedItem : it
         );
+        allInventoryRef.current = nextAll;
+        recomputeUbicacionesEstado(nextAll);
+
+        const ubiKey = colH.trim().toUpperCase();
+        const itemsEnEsaUbi = nextAll.filter((it) => it.colH_Ubicacion.trim().toUpperCase() === ubiKey);
+        const localidadCompletaCerrada =
+          itemsEnEsaUbi.length > 0 && itemsEnEsaUbi.every((it) => it.colA_Validado && it.colI_Candado);
+
+        if (localidadCompletaCerrada) {
+          // Si todos los ítems de la localidad acaban de cerrarse, cerrar también la localidad automáticamente
+          setUnlockedUbicaciones((prev) => prev.filter((u) => u !== ubiKey));
+          setForceClosedUbicaciones((prev) => (prev.includes(ubiKey) ? prev : [...prev, ubiKey]));
+          setSelectedUbicaciones((prev) => prev.filter((u) => u.trim().toUpperCase() !== ubiKey));
+          setItemsList((prev) => prev.filter((it) => it.colH_Ubicacion.trim().toUpperCase() !== ubiKey));
+          setSelectedItem(null);
+          setNotification({
+            type: 'success',
+            text: `Ítem ${colB} guardado. ¡Localidad ${colH} completada al 100% y cerrada automáticamente!`,
+          });
+        } else {
+          setItemsList(prev => prev.map(it => it.rowNumber === selectedItem.rowNumber ? updatedItem : it));
+          setNotification({
+            type: 'success',
+            text: `Ítem ${colB} guardado exitosamente en fila ${selectedItem.rowNumber}.`,
+          });
+        }
+
         setIsUnlockedByPin(false);
       } else {
         setNotification({ type: 'error', text: data?.error || 'No se pudo guardar el registro.' });
@@ -1140,6 +1282,11 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
   const ubicacionesFiltradas = ubicacionesList.filter((u) =>
     u.toLowerCase().includes(ubicacionInput.toLowerCase())
+  );
+
+  const totalCerradasCount = useMemo(
+    () => ubicacionesList.filter((u) => isUbicacionLocked(u)).length,
+    [ubicacionesList, isUbicacionLocked]
   );
 
   return (
@@ -1196,21 +1343,23 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-4 shadow-lg space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           
-          {/* Ubicación Escribible con Selección Múltiple por Casilla */}
+          {/* Ubicación Escribible con Selección Múltiple y Candado por Localidad */}
           <div className="relative" ref={ubiContainerRef}>
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between gap-2 mb-1">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                 Buscar o Marcar Ubicaciones (Rack)
               </label>
-              {selectedUbicaciones.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearUbicaciones}
-                  className="text-[10px] font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
-                >
-                  Limpiar ({selectedUbicaciones.length})
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {selectedUbicaciones.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearUbicaciones}
+                    className="text-[10px] font-bold text-amber-400 hover:text-amber-300 cursor-pointer"
+                  >
+                    Limpiar ({selectedUbicaciones.length})
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="relative">
@@ -1237,6 +1386,11 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                       if (exactMatch) {
                         handleToggleUbicacion(exactMatch);
                         setUbicacionInput('');
+                      } else if (isUbicacionLocked(typed)) {
+                        setNotification({
+                          type: 'error',
+                          text: `La localidad ${typed} está cerrada. Abre su candado 🔒 primero para seleccionarla.`,
+                        });
                       } else {
                         setSelectedUbicaciones([typed]);
                         ejecutarBusqueda('', [typed]);
@@ -1280,50 +1434,132 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
               </div>
             )}
 
-            {/* Dropdown Predictivo con Casillas de Verificación */}
+            {/* Dropdown Predictivo con Casillas + Candado por Localidad + Abrir/Cerrar Todo */}
             {showUbiDropdown && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-[#0d1017] border border-amber-500/30 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-40 custom-scrollbar">
-                <div className="px-3 py-2 text-xs text-gray-300 bg-[#12161f] border-b border-white/10 flex items-center justify-between sticky top-0 z-10">
+              <div className="absolute left-0 right-0 top-full mt-1 bg-[#0d1017] border border-amber-500/30 rounded-xl shadow-2xl max-h-72 overflow-y-auto z-40 custom-scrollbar">
+                <div className="px-3 py-2 text-xs text-gray-300 bg-[#12161f] border-b border-white/10 flex flex-wrap items-center justify-between gap-1.5 sticky top-0 z-10">
                   <button
                     type="button"
                     onClick={handleClearUbicaciones}
-                    className="font-bold text-gray-300 hover:text-white cursor-pointer"
+                    className="font-bold text-gray-300 hover:text-white cursor-pointer text-[11px]"
                   >
-                    Todas las Ubicaciones ({ubicacionesList.length})
+                    Ubicaciones ({ubicacionesList.length})
+                    {totalCerradasCount > 0 && (
+                      <span className="ml-1 text-[10px] font-mono text-rose-400">
+                        • {totalCerradasCount} cerradas
+                      </span>
+                    )}
                   </button>
-                  {selectedUbicaciones.length > 0 && (
+
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={handleClearUbicaciones}
-                      className="text-[10px] font-black text-rose-400 hover:underline cursor-pointer"
+                      onClick={handleOpenAllUbicaciones}
+                      title="Abrir el candado de todas las localidades cerradas"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-black border border-emerald-500/40 text-[10px] font-black cursor-pointer transition-colors"
                     >
-                      Desmarcar ({selectedUbicaciones.length})
+                      <Unlock className="w-2.5 h-2.5" />
+                      <span>Abrir Todo</span>
                     </button>
-                  )}
+
+                    <button
+                      type="button"
+                      onClick={handleCloseAllUbicaciones}
+                      title="Cerrar todas las localidades con candado"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40 text-[10px] font-black cursor-pointer transition-colors"
+                    >
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>Cerrar Todas</span>
+                    </button>
+
+                    {selectedUbicaciones.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearUbicaciones}
+                        className="text-[10px] font-black text-amber-300 hover:underline cursor-pointer ml-1"
+                      >
+                        Desmarcar ({selectedUbicaciones.length})
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {ubicacionesFiltradas.length > 0 ? (
-                  ubicacionesFiltradas.slice(0, 60).map((ubi) => {
+                  ubicacionesFiltradas.slice(0, 80).map((ubi) => {
                     const isChecked = selectedUbicaciones.some(
                       (s) => s.toLowerCase() === ubi.toLowerCase()
                     );
+                    const ubiLocked = isUbicacionLocked(ubi);
+                    const stat = ubiStatsMap[ubi.trim().toUpperCase()];
+
                     return (
-                      <label
+                      <div
                         key={ubi}
-                        className={`px-3 py-1.5 text-xs font-mono cursor-pointer transition-colors flex items-center gap-2.5 select-none ${
-                          isChecked
+                        className={`px-3 py-1.5 text-xs font-mono transition-colors flex items-center justify-between gap-2 select-none border-b border-white/5 last:border-b-0 ${
+                          ubiLocked
+                            ? 'bg-rose-500/10 text-rose-300/80'
+                            : isChecked
                             ? 'bg-amber-500/20 text-amber-300 font-bold'
                             : 'text-gray-300 hover:bg-white/5'
                         }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleToggleUbicacion(ubi)}
-                          className="w-3.5 h-3.5 accent-amber-400 rounded cursor-pointer shrink-0"
-                        />
-                        <span className="truncate">{ubi}</span>
-                      </label>
+                        <label
+                          className={`flex items-center gap-2.5 flex-1 truncate ${
+                            ubiLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={ubiLocked}
+                            onChange={() => handleToggleUbicacion(ubi)}
+                            className="w-3.5 h-3.5 accent-amber-400 rounded cursor-pointer shrink-0 disabled:cursor-not-allowed"
+                          />
+                          <span className="truncate">{ubi}</span>
+                          {stat && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded ${
+                                ubiLocked
+                                  ? 'bg-rose-500/20 text-rose-300'
+                                  : 'bg-white/5 text-gray-400'
+                              }`}
+                            >
+                              {stat.closed}/{stat.total}
+                            </span>
+                          )}
+                        </label>
+
+                        {/* Candado de localidad: obligatorio abrirlo antes de poder seleccionar una localidad cerrada */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleLockUbicacion(ubi);
+                          }}
+                          title={
+                            ubiLocked
+                              ? `Localidad ${ubi} cerrada. Clic aquí para abrir candado y permitir seleccionarla`
+                              : `Clic para cerrar la localidad ${ubi} con candado`
+                          }
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-sans font-bold transition-colors cursor-pointer shrink-0 ${
+                            ubiLocked
+                              ? 'bg-rose-500/20 hover:bg-emerald-500/25 text-rose-300 hover:text-emerald-300 border-rose-500/40 hover:border-emerald-400/50'
+                              : 'bg-emerald-500/15 hover:bg-rose-500/20 text-emerald-300 hover:text-rose-300 border-emerald-500/35 hover:border-rose-500/40'
+                          }`}
+                        >
+                          {ubiLocked ? (
+                            <>
+                              <Lock className="w-3 h-3" />
+                              <span>Abrir</span>
+                            </>
+                          ) : (
+                            <>
+                              <Unlock className="w-3 h-3" />
+                              <span>Cerrar</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     );
                   })
                 ) : (
