@@ -281,7 +281,7 @@ function parseCSVExact(text: string): string[][] {
   return rows;
 }
 
-// Cliente híbrido para actualizar celdas, crear ítems, mover ítems en 0 o enviar alertas en Google Apps Script sin problemas de CORS
+// Cliente híbrido para actualizar celdas, crear ítems, mover ítems a papelera o enviar alertas en Google Apps Script sin problemas de CORS
 async function updateSheetRowGAS(params: Record<string, string>): Promise<any> {
   const query = new URLSearchParams(params).toString();
   const url = `${APPS_SCRIPT_URL}?${query}`;
@@ -412,7 +412,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [unlockPinInput, setUnlockPinInput] = useState('');
   const [unlockPinError, setUnlockPinError] = useState(false);
 
-  // Modal de confirmación + PIN 030621 para mover artículos en 0 a Papelera Externa
+  // Modal de confirmación + PIN 030621 para mover artículos a Papelera Externa
   const [archiveZeroTargets, setArchiveZeroTargets] = useState<SheetRowItem[] | null>(null);
   const [archiveZeroPinInput, setArchiveZeroPinInput] = useState('');
   const [archiveZeroPinError, setArchiveZeroPinError] = useState(false);
@@ -679,7 +679,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           fetchSheetData(true);
         }, 1200);
       } else {
-        setNewItemServerError(res?.error || 'No se pudo guardar el artículo nuevo (posible duplicado en Google Sheets).');
+        setNewItemServerError(res?.error || 'No se pudo guardar el artículo nuevo.');
       }
     } catch (err: any) {
       setNewItemServerError('Error de conexión con Google Sheets: ' + err.message);
@@ -1365,7 +1365,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Eliminados_En_0_Nave6_${fechaStr}.xls`);
+    link.setAttribute('download', `Papelera_Inventario_Nave6_${fechaStr}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1705,22 +1705,17 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     return row.newsoft === row.ns;
   };
 
-  // Verificar si un registro está completamente en 0 (NetSuite = 0 y Total Balance Disponible Newsoft = 0)
-  const estaEnCeroTotal = (row: SheetRowItem): boolean => {
-    return (Number(row.ns) || 0) === 0 && (Number(row.newsoft) || 0) === 0;
-  };
-
-  // Seguro estricto: limitar selección máxima a 50 artículos por movimiento
+  // Permitir mover cualquier artículo seleccionado a la Papelera externa (máximo 50 por lote)
   const handlePromptArchiveZero = (targets: SheetRowItem[]) => {
-    const validZeroTargets = targets.filter(estaEnCeroTotal).slice(0, MAX_ARCHIVE_BATCH);
-    if (validZeroTargets.length === 0) {
+    const validTargets = targets.slice(0, MAX_ARCHIVE_BATCH);
+    if (validTargets.length === 0) {
       setNotification({
         type: 'error',
-        text: 'No hay artículos con NetSuite = 0 y Balance Newsoft = 0 para mover.'
+        text: 'No hay artículos seleccionados para mover a la papelera.'
       });
       return;
     }
-    setArchiveZeroTargets(validZeroTargets);
+    setArchiveZeroTargets(validTargets);
     setArchiveZeroPinInput('');
     setArchiveZeroPinError(false);
   };
@@ -1743,7 +1738,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     setArchivingZeroRows(true);
     setNotification({
       type: 'success',
-      text: `Moviendo lote seguro de ${targetsToMove.length} artículo(s) a la Papelera externa...`,
+      text: `Moviendo ${targetsToMove.length} artículo(s) a la Papelera externa...`,
     });
 
     try {
@@ -1762,7 +1757,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         const movedCount = Number(res.deletedCount) || targetsToMove.length;
         setNotification({
           type: 'success',
-          text: `${movedCount} artículo(s) en 0 movido(s) al documento externo de Papelera.`,
+          text: `${movedCount} artículo(s) movido(s) al documento externo de Papelera.`,
         });
 
         setTimeout(() => {
@@ -1772,14 +1767,14 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       } else {
         setNotification({
           type: 'error',
-          text: res?.error || 'No se pudieron mover los artículos en 0.',
+          text: res?.error || 'No se pudieron mover los artículos a la papelera.',
         });
         await fetchSheetData(true);
       }
     } catch (err: any) {
       setNotification({
         type: 'error',
-        text: 'Error al mover artículos en 0: ' + err.message,
+        text: 'Error al mover artículos a la papelera: ' + err.message,
       });
       await fetchSheetData(true);
     } finally {
@@ -2297,7 +2292,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         )}
       </div>
 
-      {/* Notificaciones de Candado / Guardado / Slack / Archivo en 0 */}
+      {/* Notificaciones */}
       {notification && (
         <div
           className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 ${
@@ -2392,7 +2387,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
               <button
                 onClick={() => { setFilterStatus('ENCERO'); setCurrentPage(1); }}
-                title="Artículos con NetSuite = 0 y Balance Newsoft = 0 listos para archivar en Papelera"
+                title="Artículos con NetSuite = 0 y Balance Newsoft = 0"
                 className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                   filterStatus === 'ENCERO'
                     ? 'bg-slate-600/40 text-slate-200 border border-slate-400/50'
@@ -2472,13 +2467,12 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 <th className="py-3 px-3 text-right">Diferencia</th>
                 <th className="py-3 px-3">Ubicación</th>
                 <th className="py-3 px-3">Comentarios</th>
-                <th className="py-3 px-3 text-center">Slack / En 0</th>
+                <th className="py-3 px-3 text-center">Slack / Papelera</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 font-medium">
               {paginatedItems.map((row) => {
                 const isDifCero = tieneDiferenciaCero(row);
-                const isEnCero = estaEnCeroTotal(row);
                 const isRowUpdating = updatingRow === row.rowNumber;
                 const isDigitadoUpdating = updatingDigitadoRow === row.rowNumber;
                 const isSendingSlack = sendingSlackRow === row.rowNumber;
@@ -2887,37 +2881,37 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                       )}
                     </td>
 
-                    {/* ACCIÓN: ENVIAR DESCUADRE A SLACK O MOVER ÍTEM EN 0 A PAPELERA EXTERNA */}
+                    {/* ACCIÓN: ENVIAR DESCUADRE A SLACK Y/O MOVER CUALQUIER ÍTEM A PAPELERA EXTERNA */}
                     <td className="py-2.5 px-3 text-center">
-                      {!isDifCero ? (
-                        <button
-                          type="button"
-                          disabled={isSendingSlack}
-                          onClick={() => handleSendSlackAlert(row)}
-                          title="Reportar este descuadre en Slack (#alerta-inventario-nave-6) y mover a Revisión"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4A154B]/60 hover:bg-[#611f69] text-purple-200 hover:text-white border border-purple-400/30 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {isSendingSlack ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Send className="w-3 h-3" />
-                          )}
-                          <span>Alertar</span>
-                        </button>
-                      ) : isEnCero ? (
+                      <div className="inline-flex items-center justify-center gap-1.5">
+                        {!isDifCero && (
+                          <button
+                            type="button"
+                            disabled={isSendingSlack}
+                            onClick={() => handleSendSlackAlert(row)}
+                            title="Reportar este descuadre en Slack (#alerta-inventario-nave-6) y mover a Revisión"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#4A154B]/60 hover:bg-[#611f69] text-purple-200 hover:text-white border border-purple-400/30 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            {isSendingSlack ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Send className="w-3 h-3" />
+                            )}
+                            <span>Alertar</span>
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           disabled={archivingZeroRows}
                           onClick={() => handlePromptArchiveZero([row])}
-                          title='Eliminar de PROGRESO y guardar en el Google Sheet externo de Papelera'
+                          title="Eliminar de PROGRESO y guardar respaldo en el Google Sheet externo de Papelera (requiere PIN 030621)"
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-700/60 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-500/40 hover:border-rose-400 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50"
                         >
-                          <Archive className="w-3 h-3" />
-                          <span>A Papelera</span>
+                          <Trash2 className="w-3 h-3" />
+                          <span>Papelera</span>
                         </button>
-                      ) : (
-                        <span className="text-[10px] text-gray-600 font-mono">—</span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -2933,11 +2927,11 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </span>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Botón Papelera para ver todos los eliminados en 0 */}
+            {/* Botón Papelera para ver todos los eliminados */}
             <button
               type="button"
               onClick={handleOpenTrashModal}
-              title='Ver historial de artículos archivados en el documento externo de Papelera o restaurar un registro'
+              title="Ver historial de artículos archivados en el documento externo de Papelera o restaurar un registro"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-black text-xs transition-all cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -3003,13 +2997,15 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               </button>
             </div>
 
-            {/* Aviso inmediato si el código o descripción+ubicación ya existen */}
+            {/* Aviso inmediato si el código o descripción+ubicación ya existen o hay error */}
             {(newItemDuplicateMatch || newItemServerError) && (
               <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2.5">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
                   <div className="font-black uppercase text-rose-300 text-[11px]">
-                    ¡Registro Duplicado Detectado!
+                    {newItemDuplicateMatch || (newItemServerError && newItemServerError.includes('DUPLICADO'))
+                      ? '¡Registro Duplicado Detectado!'
+                      : 'Error al Guardar Artículo'}
                   </div>
                   <p>{newItemDuplicateMatch ? newItemDuplicateMatch.reason : newItemServerError}</p>
                 </div>
@@ -3207,7 +3203,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
-                    <span>Papelera Externa • Artículos Archivados en Cero</span>
+                    <span>Papelera Externa • Artículos Archivados</span>
                     <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[11px]">
                       {trashItems.length.toLocaleString()}
                     </span>
@@ -3359,7 +3355,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 <div className="py-16 text-center text-gray-500 text-xs space-y-1">
                   <Archive className="w-8 h-8 mx-auto opacity-30" />
                   <p className="font-bold text-gray-400">La papelera está vacía</p>
-                  <p>Aquí aparecerán los artículos en 0 movidos al Google Sheet de Papelera.</p>
+                  <p>Aquí aparecerán los artículos movidos al Google Sheet de Papelera.</p>
                 </div>
               )}
             </div>
@@ -3460,7 +3456,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         </div>
       )}
 
-      {/* Modal Confirmación + PIN 030621 para Mover Lote Seguro de hasta 50 Artículos en 0 */}
+      {/* Modal Confirmación + PIN 030621 para Mover Artículo(s) a Papelera Externa */}
       {archiveZeroTargets && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
           <div className="bg-[#12161f] border border-amber-500/50 rounded-2xl w-full max-w-md p-6 shadow-[0_0_35px_rgba(245,158,11,0.25)] space-y-4">
@@ -3478,9 +3474,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
             <div className="text-xs text-gray-300 space-y-2">
               <p>
-                Se moverá un lote seguro de <strong className="text-white">{archiveZeroTargets.length}</strong> artículo(s) con{' '}
-                <strong className="text-cyan-300">NetSuite = 0</strong> y{' '}
-                <strong className="text-cyan-300">Balance Newsoft = 0</strong> desde{' '}
+                Se moverá(n) <strong className="text-white">{archiveZeroTargets.length}</strong> artículo(s) desde{' '}
                 <strong className="text-white">PROGRESO</strong> hacia el libro externo{' '}
                 <strong className="text-amber-300">PAPELERA INVENTARIO NAVE 6</strong>.
               </p>
@@ -3489,7 +3483,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
                 <div className="p-2.5 rounded-xl bg-[#0d1017] border border-white/10 font-mono text-[11px]">
                   <span className="text-amber-400 font-bold">{archiveZeroTargets[0].codigo}</span> •{' '}
                   <span className="text-white">{archiveZeroTargets[0].item}</span> (Ubi:{' '}
-                  {archiveZeroTargets[0].ubicacion})
+                  {archiveZeroTargets[0].ubicacion} • NS: {archiveZeroTargets[0].ns} • Newsoft:{' '}
+                  {archiveZeroTargets[0].newsoft})
                 </div>
               )}
 
