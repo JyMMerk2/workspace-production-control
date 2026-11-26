@@ -404,7 +404,11 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
 
     try {
       const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) return;
+
       const csvText = await res.text();
+      if (!csvText || csvText.trim().startsWith('<')) return;
+
       const allRows = parseCSVExact(csvText);
 
       const parsedAll: InventoryItem[] = [];
