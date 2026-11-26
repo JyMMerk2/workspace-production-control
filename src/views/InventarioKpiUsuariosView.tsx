@@ -63,6 +63,7 @@ const APPS_SCRIPT_URL =
 const CSV_URL =
   'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 const MASTER_PIN = '030621';
+const UNDEFINED_OPERATOR_NAME = 'USUARIO NO DEFINIDO';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
 const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
 const KNOWN_OPERATORS_CACHE_KEY = 'nave6_known_operators_v1';
@@ -834,6 +835,45 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     });
   }, [events, dateRangeFilter]);
 
+  // Cálculo automático de registros sin usuario definido (acciones directas en Sheet / carga inicial)
+  const undefinedOperatorSummary = useMemo(() => {
+    let trackedValidados = 0;
+    let trackedCerrados = 0;
+    let trackedDigitados = 0;
+    const trackedSkus = new Set<string>();
+
+    for (const ev of events) {
+      if (ev.codigo) trackedSkus.add(ev.codigo);
+      if (ev.accion === 'VALIDADO') trackedValidados++;
+      else if (ev.accion === 'CERRADO') trackedCerrados++;
+      else if (ev.accion === 'DIGITADO') trackedDigitados++;
+    }
+
+    const diffValidados = Math.max(0, sheetStats.validados - trackedValidados);
+    const diffCerrados = Math.max(0, sheetStats.cerrados - trackedCerrados);
+    const diffDigitados = Math.max(0, sheetStats.digitados - trackedDigitados);
+    const totalSinUsuario = diffValidados + diffCerrados + diffDigitados;
+    const skusEstimadosSinUsuario = Math.max(
+      0,
+      Math.max(sheetStats.validados, sheetStats.digitados) - trackedSkus.size
+    );
+
+    return {
+      usuario: UNDEFINED_OPERATOR_NAME,
+      totalAcciones: totalSinUsuario,
+      validados: diffValidados,
+      cerrados: diffCerrados,
+      digitados: diffDigitados,
+      ediciones: 0,
+      alertasSlack: 0,
+      unidadesProcesadas: 0,
+      codigosUnicosCount: skusEstimadosSinUsuario,
+      ultimaActividad: 'Carga inicial / Edición directa en Google Sheet',
+      estaActivoAhora: false,
+      isUndefinedBucket: true,
+    };
+  }, [events, sheetStats]);
+
   // Resumen consolidado exacto del período seleccionado (Hoy, Ayer, Esta Semana o Temporada)
   const periodSummary = useMemo(() => {
     let totalAcciones = 0;
@@ -860,6 +900,18 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       else if (ev.accion === 'SLACK') alertasSlack++;
     }
 
+    // En vista de Temporada completa, sumar también los movimientos de "USUARIO NO DEFINIDO" si está visible
+    if (
+      dateRangeFilter === 'SEASON' &&
+      !hiddenOperatorsSet.has(UNDEFINED_OPERATOR_NAME) &&
+      undefinedOperatorSummary.totalAcciones > 0
+    ) {
+      totalAcciones += undefinedOperatorSummary.totalAcciones;
+      digitados += undefinedOperatorSummary.digitados;
+      cerrados += undefinedOperatorSummary.cerrados;
+      validados += undefinedOperatorSummary.validados;
+    }
+
     const label =
       dateRangeFilter === 'TODAY'
         ? 'Hoy'
@@ -872,7 +924,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     return {
       label,
       totalAcciones,
-      skusUnicos: skusUnicos.size,
+      skusUnicos:
+        dateRangeFilter === 'SEASON' && !hiddenOperatorsSet.has(UNDEFINED_OPERATOR_NAME)
+          ? skusUnicos.size + undefinedOperatorSummary.codigosUnicosCount
+          : skusUnicos.size,
       digitados,
       cerrados,
       validados,
@@ -880,7 +935,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       alertasSlack,
       unidadesMovidas,
     };
-  }, [eventsByDateRange, hiddenOperatorsSet, dateRangeFilter]);
+  }, [eventsByDateRange, hiddenOperatorsSet, dateRangeFilter, undefinedOperatorSummary]);
 
   // Operadores activos en vivo (excluye los retirados desde Config)
   const activeLiveOperators = useMemo(() => {
@@ -955,7 +1010,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     return Array.from(map.values()).sort((a, b) => a.usuario.localeCompare(b.usuario));
   }, [lotesActivos, paseSessions, events, hiddenOperatorsSet]);
 
-  // Todos los resúmenes de operadores (incluyendo retirados para poder gestionarlos en Config.)
+  // Todos los resúmenes de operadores (incluyendo retirados y "USUARIO NO DEFINIDO" para gestión en Config.)
   const allOperatorSummaries = useMemo(() => {
     const map = new Map<
       string,
@@ -968,18 +1023,21 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         ediciones: number;
         alertasSlack: number;
         unidadesProcesadas: number;
-        codigosUnicos: Set<string>;
+        codigosUnicosCount: number;
         ultimaActividad: string;
         ultimoTimestamp: number;
         estaActivoAhora: boolean;
+        isUndefinedBucket?: boolean;
       }
     >();
 
+    const codigosPorUsuario = new Map<string, Set<string>>();
     const activeSet = new Set(activeLiveOperators.map((a) => a.usuario));
 
     const ensureUser = (rawName: string) => {
       const user = normalizeOperatorName(rawName);
       if (!map.has(user)) {
+        codigosPorUsuario.set(user, new Set<string>());
         map.set(user, {
           usuario: user,
           totalAcciones: 0,
@@ -989,7 +1047,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           ediciones: 0,
           alertasSlack: 0,
           unidadesProcesadas: 0,
-          codigosUnicos: new Set<string>(),
+          codigosUnicosCount: 0,
           ultimaActividad: 'Sin acciones en este período',
           ultimoTimestamp: 0,
           estaActivoAhora: activeSet.has(user),
@@ -1007,8 +1065,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
 
     for (const ev of eventsByDateRange) {
       const stat = ensureUser(ev.usuario);
+      const userCodes = codigosPorUsuario.get(stat.usuario)!;
       stat.totalAcciones++;
-      if (ev.codigo) stat.codigosUnicos.add(ev.codigo);
+      if (ev.codigo) userCodes.add(ev.codigo);
+      stat.codigosUnicosCount = userCodes.size;
       stat.unidadesProcesadas += Number(ev.cantidad) || 0;
 
       if (ev.accion === 'VALIDADO') stat.validados++;
@@ -1023,11 +1083,31 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
     }
 
-    return Array.from(map.values()).sort((a, b) => {
+    const list = Array.from(map.values()).sort((a, b) => {
       if (b.totalAcciones !== a.totalAcciones) return b.totalAcciones - a.totalAcciones;
       return a.usuario.localeCompare(b.usuario);
     });
-  }, [knownOperators, activeLiveOperators, eventsByDateRange]);
+
+    // Incluir "USUARIO NO DEFINIDO" en Temporada (o en el modal Config.) si hay registros previos en el Sheet
+    if (
+      undefinedOperatorSummary.totalAcciones > 0 &&
+      (dateRangeFilter === 'SEASON' || isConfigModalOpen)
+    ) {
+      list.push({
+        ...undefinedOperatorSummary,
+        ultimoTimestamp: 0,
+      });
+    }
+
+    return list;
+  }, [
+    knownOperators,
+    activeLiveOperators,
+    eventsByDateRange,
+    undefinedOperatorSummary,
+    dateRangeFilter,
+    isConfigModalOpen,
+  ]);
 
   // Tarjetas visibles de operadores (filtra los retirados en Config.)
   const permanentUserSummaries = useMemo(
@@ -1262,11 +1342,13 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-[#00f2fe]" />
             <h2 className="text-xs font-black uppercase tracking-wider text-white">
-              Resumen de Actividad en App • Período: <span className="text-[#00f2fe]">{periodSummary.label}</span>
+              Resumen de Actividad • Período: <span className="text-[#00f2fe]">{periodSummary.label}</span>
             </h2>
           </div>
           <span className="text-[11px] text-gray-400">
-            Total procesado por los operadores en el rango seleccionado
+            {dateRangeFilter === 'SEASON'
+              ? 'Cuadre 100% de la temporada (Operadores + Usuario No Definido)'
+              : 'Total procesado por los operadores en el rango seleccionado'}
           </span>
         </div>
 
@@ -1388,49 +1470,78 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
 
       {/* BLOQUE 2 (PERMANENTE): RENDIMIENTO ACUMULADO POR OPERADOR */}
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-4 shadow-lg space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-[#00f2fe]" />
             <h2 className="text-xs font-black uppercase tracking-wider text-white">
               Rendimiento por Operador • {periodSummary.label} (Qué y qué cantidad hizo cada quien)
             </h2>
           </div>
-          {selectedUserFilter !== 'ALL' && (
-            <button
-              type="button"
-              onClick={() => setSelectedUserFilter('ALL')}
-              className="text-[11px] font-bold text-[#00f2fe] hover:underline cursor-pointer"
-            >
-              Ver todos los usuarios
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {dateRangeFilter !== 'SEASON' && undefinedOperatorSummary.totalAcciones > 0 && (
+              <button
+                type="button"
+                onClick={() => setDateRangeFilter('SEASON')}
+                className="text-[11px] font-bold text-amber-300 hover:underline cursor-pointer"
+              >
+                Ver cuadrando al 100% con Usuario No Definido (Temporada)
+              </button>
+            )}
+            {selectedUserFilter !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedUserFilter('ALL')}
+                className="text-[11px] font-bold text-[#00f2fe] hover:underline cursor-pointer"
+              >
+                Ver todos los usuarios
+              </button>
+            )}
+          </div>
         </div>
 
         {permanentUserSummaries.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {permanentUserSummaries.map((u, idx) => {
               const isSelected = selectedUserFilter === u.usuario;
+              const isUndefined = Boolean(u.isUndefinedBucket);
+
               return (
                 <div
                   key={u.usuario}
-                  onClick={() =>
-                    setSelectedUserFilter(isSelected ? 'ALL' : u.usuario)
-                  }
-                  className={`p-4 rounded-2xl border transition-colors cursor-pointer space-y-3 ${
-                    isSelected
-                      ? 'bg-[#00f2fe]/15 border-[#00f2fe] shadow-[0_0_16px_rgba(0,242,254,0.2)]'
-                      : 'bg-[#0d1017] border-white/10 hover:border-white/30'
+                  onClick={() => {
+                    if (!isUndefined) {
+                      setSelectedUserFilter(isSelected ? 'ALL' : u.usuario);
+                    }
+                  }}
+                  className={`p-4 rounded-2xl border transition-colors space-y-3 ${
+                    isUndefined
+                      ? 'bg-[#0d1017]/85 border-amber-500/35 border-dashed cursor-default'
+                      : isSelected
+                      ? 'bg-[#00f2fe]/15 border-[#00f2fe] shadow-[0_0_16px_rgba(0,242,254,0.2)] cursor-pointer'
+                      : 'bg-[#0d1017] border-white/10 hover:border-white/30 cursor-pointer'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-black text-xs flex items-center justify-center">
-                        {idx === 0 && u.totalAcciones > 0 ? <Award className="w-3.5 h-3.5" /> : idx + 1}
+                      <span
+                        className={`w-6 h-6 rounded-full border font-black text-xs flex items-center justify-center ${
+                          isUndefined
+                            ? 'bg-slate-700/40 border-slate-500/50 text-slate-300'
+                            : 'bg-amber-500/20 border-amber-400/40 text-amber-300'
+                        }`}
+                      >
+                        {isUndefined ? '?' : idx === 0 && u.totalAcciones > 0 ? <Award className="w-3.5 h-3.5" /> : idx + 1}
                       </span>
                       <div>
                         <div className="text-xs font-black text-white uppercase flex items-center gap-1.5">
-                          <span>{u.usuario}</span>
-                          {u.estaActivoAhora ? (
+                          <span className={isUndefined ? 'text-amber-300' : 'text-white'}>
+                            {u.usuario}
+                          </span>
+                          {isUndefined ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-400/40 text-[9px] font-mono text-amber-300">
+                              SHEET / SIN SESIÓN
+                            </span>
+                          ) : u.estaActivoAhora ? (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/40 text-[9px] font-mono text-emerald-300">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                               EN VIVO
@@ -1442,13 +1553,13 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                           )}
                         </div>
                         <div className="text-[10px] text-gray-400">
-                          Última actividad: {u.ultimaActividad}
+                          {isUndefined ? u.ultimaActividad : `Última actividad: ${u.ultimaActividad}`}
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <div className="text-base font-black text-[#00f2fe]">
+                      <div className={`text-base font-black ${isUndefined ? 'text-amber-300' : 'text-[#00f2fe]'}`}>
                         {u.totalAcciones.toLocaleString()}
                       </div>
                       <div className="text-[9px] uppercase font-bold text-gray-400">
@@ -1461,31 +1572,38 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                   <div className="grid grid-cols-4 gap-1.5 text-center pt-2 border-t border-white/10">
                     <div className="p-1.5 rounded-lg bg-[#12161f] border border-cyan-500/20">
                       <div className="text-[9px] text-gray-400 font-bold">Digitados</div>
-                      <div className="text-xs font-black text-[#00f2fe]">{u.digitados}</div>
+                      <div className="text-xs font-black text-[#00f2fe]">{u.digitados.toLocaleString()}</div>
                     </div>
                     <div className="p-1.5 rounded-lg bg-[#12161f] border border-rose-500/20">
                       <div className="text-[9px] text-gray-400 font-bold">Cerrados</div>
-                      <div className="text-xs font-black text-rose-400">{u.cerrados}</div>
+                      <div className="text-xs font-black text-rose-400">{u.cerrados.toLocaleString()}</div>
                     </div>
                     <div className="p-1.5 rounded-lg bg-[#12161f] border border-emerald-500/20">
                       <div className="text-[9px] text-gray-400 font-bold">Validados</div>
-                      <div className="text-xs font-black text-emerald-400">{u.validados}</div>
+                      <div className="text-xs font-black text-emerald-400">{u.validados.toLocaleString()}</div>
                     </div>
                     <div className="p-1.5 rounded-lg bg-[#12161f] border border-amber-500/20">
                       <div className="text-[9px] text-gray-400 font-bold">Ediciones</div>
-                      <div className="text-xs font-black text-amber-300">{u.ediciones}</div>
+                      <div className="text-xs font-black text-amber-300">{u.ediciones.toLocaleString()}</div>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-gray-400 pt-1">
                     <span>
-                      SKUs distintos: <strong className="text-white">{u.codigosUnicos.size}</strong>
+                      {isUndefined ? 'SKUs sin operador:' : 'SKUs distintos:'}{' '}
+                      <strong className="text-white">{u.codigosUnicosCount.toLocaleString()}</strong>
                     </span>
                     <span>
-                      Unidades movidas:{' '}
-                      <strong className="text-emerald-300">
-                        {u.unidadesProcesadas.toLocaleString()}
-                      </strong>
+                      {isUndefined ? (
+                        <span className="text-amber-300/80 font-mono text-[10px]">Ajuste cuadre 100%</span>
+                      ) : (
+                        <>
+                          Unidades movidas:{' '}
+                          <strong className="text-emerald-300">
+                            {u.unidadesProcesadas.toLocaleString()}
+                          </strong>
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1516,11 +1634,13 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
               className="bg-[#0d1017] border border-white/15 text-xs text-white rounded-xl px-3 py-1.5 outline-none font-bold cursor-pointer"
             >
               <option value="ALL">Todos los Usuarios</option>
-              {permanentUserSummaries.map((u) => (
-                <option key={u.usuario} value={u.usuario}>
-                  {u.usuario} ({u.totalAcciones})
-                </option>
-              ))}
+              {permanentUserSummaries
+                .filter((u) => !u.isUndefinedBucket)
+                .map((u) => (
+                  <option key={u.usuario} value={u.usuario}>
+                    {u.usuario} ({u.totalAcciones})
+                  </option>
+                ))}
             </select>
 
             <select
@@ -1720,7 +1840,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                           )}
                         </div>
                         <div className="text-[11px] text-gray-400">
-                          Acciones en período: <strong className="text-gray-200">{op.totalAcciones.toLocaleString()}</strong> • Última: {op.ultimaActividad}
+                          Acciones en período: <strong className="text-gray-200">{op.totalAcciones.toLocaleString()}</strong> • {op.ultimaActividad}
                         </div>
                       </div>
 
