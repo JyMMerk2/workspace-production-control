@@ -27,6 +27,37 @@ const SUPABASE_URL = 'https://qpozgkxdzcixjkjblntd.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwb3pna3hkemNpeGpramJsbnRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDAzMjEsImV4cCI6MjEwNDAxNjMyMX0.RYHR0XYeG6-YGI8zmird9FF-KP67_CmVsVpv5gYTS5o';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+const SAVED_NAV_STATE_KEY = 'boombah_active_nav_state_v1';
+
+interface SavedNavState {
+  tab: TabType;
+  subGid?: string;
+  title: string;
+}
+
+function getInitialNavState(): SavedNavState {
+  try {
+    const raw = sessionStorage.getItem(SAVED_NAV_STATE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.tab) {
+        return {
+          tab: parsed.tab as TabType,
+          subGid: parsed.subGid || undefined,
+          title: parsed.title || 'DASHBOARD EN VIVO',
+        };
+      }
+    }
+  } catch {
+    // Ignorar errores de storage
+  }
+  return {
+    tab: 'dashboard-live',
+    subGid: undefined,
+    title: 'DASHBOARD EN VIVO',
+  };
+}
+
 // Blindar las barras superiores para que NO se re-rendericen ni parpadeen con el polling de 5s
 const MemoizedProductionToolbar = React.memo(ProductionControlToolbar);
 const MemoizedFeaturesTicker = React.memo(FeaturesTicker);
@@ -46,13 +77,33 @@ export default function App() {
 
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard-live');
-  const [activeSubTabGid, setActiveSubTabGid] = useState<string | undefined>(undefined);
-  const [currentTabTitle, setCurrentTabTitle] = useState<string>('DASHBOARD EN VIVO');
+  const [initialNav] = useState<SavedNavState>(getInitialNavState);
+  const [activeTab, setActiveTab] = useState<TabType>(initialNav.tab);
+  const [activeSubTabGid, setActiveSubTabGid] = useState<string | undefined>(initialNav.subGid);
+  const [currentTabTitle, setCurrentTabTitle] = useState<string>(initialNav.title);
   const [selectedUpdateTitle, setSelectedUpdateTitle] = useState<string | null>(null);
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [headerVisible, setHeaderVisible] = useState<boolean>(true);
+
+  // Persistir continuamente la vista/sheet embebido activo para restaurarlo tras UPDATE • REINICIAR
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        SAVED_NAV_STATE_KEY,
+        JSON.stringify({
+          tab: activeTab,
+          subGid: activeSubTabGid,
+          title: currentTabTitle,
+        })
+      );
+    } catch {
+      // Ignorar
+    }
+    if (currentTabTitle) {
+      document.title = `${currentTabTitle} - Boombah Workspace`;
+    }
+  }, [activeTab, activeSubTabGid, currentTabTitle]);
 
   // Selector de Temas / Apariencia
   const [currentTheme, setCurrentTheme] = useState<ThemeType>(() => {
@@ -284,6 +335,7 @@ export default function App() {
     sessionStorage.removeItem('authenticated_user');
     sessionStorage.removeItem('authenticated_email');
     sessionStorage.removeItem('authenticated_picture');
+    sessionStorage.removeItem(SAVED_NAV_STATE_KEY);
     localStorage.removeItem('authenticated_user');
     localStorage.removeItem('authenticated_email');
     localStorage.removeItem('authenticated_picture');
