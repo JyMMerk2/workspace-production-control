@@ -85,6 +85,10 @@ export const Header: React.FC<HeaderProps> = ({
   }, [liveAppVersion, loadedAppVersion]);
 
   const appVersion = loadedAppVersion || liveAppVersion;
+  const targetVersionLabel =
+    liveAppVersion && liveAppVersion !== 'v...' && liveAppVersion !== appVersion
+      ? liveAppVersion
+      : '';
 
   // Estado para el menú desplegable de Compartir / Enviar por Correo
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
@@ -305,11 +309,15 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={applyUpdate}
-              title="Hay una nueva versión desplegada. Haz clic para aplicar y reiniciar la vista."
+              title={`Subir de ${appVersion} a ${targetVersionLabel || 'la última versión'} y reiniciar en esta misma vista`}
               className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-emerald-400 to-[#00f2fe] text-[#0b0e14] text-xs font-black uppercase tracking-wide shadow-[0_0_16px_rgba(0,242,254,0.65)] hover:brightness-110 transition-all cursor-pointer animate-pulse"
             >
               <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>Update • Reiniciar</span>
+              <span>
+                {targetVersionLabel
+                  ? `Update ${targetVersionLabel} • Reiniciar`
+                  : 'Update • Reiniciar'}
+              </span>
             </button>
           )}
 
