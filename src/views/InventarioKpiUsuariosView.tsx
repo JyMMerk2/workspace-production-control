@@ -13,6 +13,11 @@ import {
   Edit3,
   Send,
   Radio,
+  Settings,
+  KeyRound,
+  X,
+  UserMinus,
+  UserCheck,
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 import { PaseActiveSession } from './PaseInventarioView';
@@ -56,9 +61,11 @@ const APPS_SCRIPT_URL =
   'https://script.google.com/macros/s/AKfycbwEDMJffjkXLYTPnYpQA3jC51KmyDb8TtNG3haEGv5lYvbzZAMjaAI3Xmy3BF5SQCkL/exec';
 const CSV_URL =
   'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
+const MASTER_PIN = '030621';
 const ACTIVITY_LOG_CACHE_KEY = 'nave6_season_activity_v1';
 const DIGITADO_META_CACHE_KEY = 'nave6_digitado_meta_v1';
 const KNOWN_OPERATORS_CACHE_KEY = 'nave6_known_operators_v1';
+const HIDDEN_OPERATORS_CACHE_KEY = 'nave6_hidden_operators_v1';
 const LOTES_CACHE_KEY = 'nave6_lotes_activos_cache_v1';
 const PASE_SESSIONS_CACHE_KEY = 'nave6_pase_active_sessions_v1';
 const BROADCAST_CHANNEL_NAME = 'nave6_realtime_sync_channel';
@@ -154,7 +161,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     return [];
   });
 
-  // Registro persistente de todos los operadores que han participado en la temporada (nunca se borran)
+  // Registro persistente de todos los operadores que han participado en la temporada
   const [knownOperators, setKnownOperators] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(KNOWN_OPERATORS_CACHE_KEY);
@@ -167,6 +174,27 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     }
     return [];
   });
+
+  // Lista de operadores retirados desde Config (sincronizada en Supabase + localStorage)
+  const [hiddenOperators, setHiddenOperators] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(HIDDEN_OPERATORS_CACHE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.map(normalizeOperatorName);
+      }
+    } catch {
+      // Ignorar
+    }
+    return [];
+  });
+
+  // Estados del modal de Configuración protegido por clave
+  const [isConfigPinModalOpen, setIsConfigPinModalOpen] = useState(false);
+  const [configPinInput, setConfigPinInput] = useState('');
+  const [configPinError, setConfigPinError] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [savingHiddenOps, setSavingHiddenOps] = useState(false);
 
   const [lotesActivos, setLotesActivos] = useState<LoteActivo[]>(() => {
     try {
@@ -221,6 +249,82 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
   const isSheetSyncingRef = useRef(false);
   const lastPaseSignatureRef = useRef<string>('');
 
+  const hiddenOperatorsSet = useMemo(
+    () => new Set(hiddenOperators.map(normalizeOperatorName)),
+    [hiddenOperators]
+  );
+
+  // Guardar operadores retirados en Supabase + localStorage + BroadcastChannel
+  const persistHiddenOperators = useCallback(async (nextHiddenList: string[]) => {
+    const uniqueSorted = Array.from(
+      new Set(nextHiddenList.map(normalizeOperatorName).filter(Boolean))
+    ).sort();
+
+    setHiddenOperators(uniqueSorted);
+    try {
+      localStorage.setItem(HIDDEN_OPERATORS_CACHE_KEY, JSON.stringify(uniqueSorted));
+    } catch {
+      // Ignorar
+    }
+
+    try {
+      const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc.postMessage({ type: 'HIDDEN_OPERATORS_UPDATED', hidden: uniqueSorted });
+      bc.close();
+    } catch {
+      // Ignorar
+    }
+
+    setSavingHiddenOps(true);
+    try {
+      if (supabase) {
+        await supabase.from('boombah_announcements').upsert({
+          id: 'global_nave6_hidden_operators',
+          message: JSON.stringify(uniqueSorted),
+          active: true,
+          priority: 'AVISO',
+          updated_by: authenticatedUser || 'ADMIN',
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } catch {
+      // Silencioso
+    } finally {
+      setSavingHiddenOps(false);
+    }
+  }, [authenticatedUser]);
+
+  const handleOpenConfigButton = () => {
+    setConfigPinInput('');
+    setConfigPinError(false);
+    setIsConfigPinModalOpen(true);
+  };
+
+  const handleVerifyConfigPin = () => {
+    if (configPinInput.trim() === MASTER_PIN) {
+      setIsConfigPinModalOpen(false);
+      setConfigPinInput('');
+      setConfigPinError(false);
+      setIsConfigModalOpen(true);
+    } else {
+      setConfigPinError(true);
+    }
+  };
+
+  const handleToggleHideOperator = (rawUser: string) => {
+    const norm = normalizeOperatorName(rawUser);
+    const isCurrentlyHidden = hiddenOperatorsSet.has(norm);
+    const nextList = isCurrentlyHidden
+      ? hiddenOperators.filter((u) => normalizeOperatorName(u) !== norm)
+      : [...hiddenOperators, norm];
+
+    if (!isCurrentlyHidden && selectedUserFilter === norm) {
+      setSelectedUserFilter('ALL');
+    }
+
+    persistHiddenOperators(nextList);
+  };
+
   const persistKnownOperators = useCallback(async (operatorsList: string[]) => {
     const uniqueSorted = Array.from(
       new Set(operatorsList.map(normalizeOperatorName).filter(Boolean))
@@ -249,7 +353,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     }
   }, []);
 
-  // SINCRONIZACIÓN RÁPIDA EN VIVO (Sesiones individuales pase_session_* + Lotes activos + Bitácora)
+  // SINCRONIZACIÓN RÁPIDA EN VIVO (Sesiones individuales pase_session_* + Lotes activos + Bitácora + Retirados)
   const syncRealtimeActivityAndLotes = useCallback(async () => {
     if (isFastSyncingRef.current) return;
     isFastSyncingRef.current = true;
@@ -261,7 +365,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         discoveredOperators.add(normalizeOperatorName(authenticatedUser));
       }
 
-      // Leer caché local instantánea de lotes
       let localLotes: LoteActivo[] = [];
       try {
         const cachedLotes = localStorage.getItem(LOTES_CACHE_KEY);
@@ -278,7 +381,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         // Ignorar
       }
 
-      // Consultar en paralelo Apps Script (lotes en vivo) + Supabase (eventos, operadores y filas individuales pase_session_*)
       const [lotesRes, supabaseRes] = await Promise.all([
         fetchGAS({ action: 'GET_LOTES' }).catch(() => null),
         supabase
@@ -303,6 +405,11 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 .select('id, message, active, updated_at')
                 .like('id', 'pase_session_%')
                 .eq('active', true),
+              supabase
+                .from('boombah_announcements')
+                .select('message')
+                .eq('id', 'global_nave6_hidden_operators')
+                .maybeSingle(),
             ]).catch(() => null)
           : Promise.resolve(null),
       ]);
@@ -341,9 +448,23 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
 
       if (supabaseRes) {
-        const [{ data }, { data: digData }, { data: opsData }, { data: paseData }] = supabaseRes;
+        const [{ data }, { data: digData }, { data: opsData }, { data: paseData }, { data: hiddenData }] = supabaseRes;
 
-        // Agregar sesiones activas desde las filas individuales pase_session_* sin colisiones
+        if (hiddenData?.message) {
+          try {
+            const parsedHidden = JSON.parse(hiddenData.message);
+            if (Array.isArray(parsedHidden)) {
+              const normHidden = Array.from(
+                new Set(parsedHidden.map(normalizeOperatorName).filter(Boolean))
+              ).sort();
+              setHiddenOperators(normHidden);
+              localStorage.setItem(HIDDEN_OPERATORS_CACHE_KEY, JSON.stringify(normHidden));
+            }
+          } catch {
+            // Ignorar
+          }
+        }
+
         if (Array.isArray(paseData)) {
           const activeRemote: PaseActiveSession[] = [];
           const nextLocalCache: Record<string, PaseActiveSession> = {};
@@ -445,7 +566,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           }
         }
       } else {
-        // Respaldo offline usando caché local
         try {
           const cachedPase = localStorage.getItem(PASE_SESSIONS_CACHE_KEY);
           if (cachedPase) {
@@ -508,7 +628,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     }
   }, [authenticatedUser, knownOperators, persistKnownOperators]);
 
-  // SINCRONIZACIÓN DE TOTALES GLOBALES DESDE GOOGLE SHEETS CSV (37,630 filas)
+  // SINCRONIZACIÓN DE TOTALES GLOBALES DESDE GOOGLE SHEETS CSV
   const syncSheetSummaryStats = useCallback(async (silent = false) => {
     if (isSheetSyncingRef.current) return;
     isSheetSyncingRef.current = true;
@@ -516,7 +636,11 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
 
     try {
       const res = await fetch(`${CSV_URL}&t=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) return;
+
       const csvText = await res.text();
+      if (!csvText || csvText.trim().startsWith('<')) return;
+
       const allRows = parseCSVExact(csvText);
 
       let totalItems = 0;
@@ -569,15 +693,17 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         });
       }
 
-      itemInfoByRowRef.current = nextMap;
-      setSheetStats({
-        totalItems,
-        validados,
-        cerrados,
-        digitados,
-        pendientes,
-        unidadesTotales,
-      });
+      if (totalItems > 0) {
+        itemInfoByRowRef.current = nextMap;
+        setSheetStats({
+          totalItems,
+          validados,
+          cerrados,
+          digitados,
+          pendientes,
+          unidadesTotales,
+        });
+      }
     } catch {
       // Conservar datos previos
     } finally {
@@ -595,17 +721,18 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     [syncRealtimeActivityAndLotes, syncSheetSummaryStats]
   );
 
-  // Efecto de sincronización instantánea (<100ms entre pestañas y 1.5s con servidor)
   useEffect(() => {
     loadAllKpiData(false);
 
-    // 1. Canal instantáneo entre pestañas/ventanas del mismo navegador (0ms de latencia)
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
       bc.onmessage = (msg) => {
         if (msg?.data?.type === 'LOTES_UPDATED' && Array.isArray(msg.data.lotes)) {
           setLotesActivos(msg.data.lotes);
+        }
+        if (msg?.data?.type === 'HIDDEN_OPERATORS_UPDATED' && Array.isArray(msg.data.hidden)) {
+          setHiddenOperators(msg.data.hidden);
         }
         if (msg?.data?.type === 'PASE_PRESENCE_UPDATED' && Array.isArray(msg.data.sessions)) {
           const sorted = [...msg.data.sessions].sort((a: PaseActiveSession, b: PaseActiveSession) =>
@@ -626,20 +753,19 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       // Navegador sin BroadcastChannel
     }
 
-    // 2. Escuchar cambios de localStorage desde otras ventanas al instante
     const onStorage = (e: StorageEvent) => {
       if (
         e.key === ACTIVITY_LOG_CACHE_KEY ||
         e.key === LOTES_CACHE_KEY ||
         e.key === DIGITADO_META_CACHE_KEY ||
-        e.key === PASE_SESSIONS_CACHE_KEY
+        e.key === PASE_SESSIONS_CACHE_KEY ||
+        e.key === HIDDEN_OPERATORS_CACHE_KEY
       ) {
         syncRealtimeActivityAndLotes();
       }
     };
     window.addEventListener('storage', onStorage);
 
-    // 3. Suscripción en tiempo real a Supabase (push inmediato cuando cualquier compañero actúa o entra a Toma/Pase)
     const realtimeChannel = supabase
       ? supabase
           .channel('nave6-kpi-realtime')
@@ -656,6 +782,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                 rowId === 'global_nave6_season_activity' ||
                 rowId === 'global_nave6_digitado_meta' ||
                 rowId === 'global_nave6_season_operators' ||
+                rowId === 'global_nave6_hidden_operators' ||
                 (typeof rowId === 'string' && rowId.startsWith('pase_session_'))
               ) {
                 syncRealtimeActivityAndLotes();
@@ -665,10 +792,9 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           .subscribe()
       : null;
 
-    // 4. Polling rápido (1.5s) para sesiones, lotes activos y acciones, y 12s para el CSV pesado
     const fastInterval = setInterval(() => {
       syncRealtimeActivityAndLotes();
-    }, 1500);
+    }, 2000);
 
     const sheetInterval = setInterval(() => {
       if (!document.hidden) syncSheetSummaryStats(true);
@@ -689,12 +815,12 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     };
   }, [loadAllKpiData, syncRealtimeActivityAndLotes, syncSheetSummaryStats]);
 
-  // Filtrar eventos por rango de fecha (Temporada completa 13 Nov, Hoy, Ayer, Esta Semana)
+  // Filtrar eventos por rango de fecha
   const eventsByDateRange = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-    const dayOfWeek = now.getDay(); // 0 = Domingo
+    const dayOfWeek = now.getDay();
     const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     const startOfWeek = startOfToday - diffToMonday * 24 * 60 * 60 * 1000;
 
@@ -707,10 +833,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     });
   }, [events, dateRangeFilter]);
 
-  // Operadores activos en vivo combinados:
-  // 1) Sesiones abiertas en Toma y Pase de Inventario (filas individuales pase_session_*)
-  // 2) Lotes tomados en Desglose Operativo
-  // 3) Operadores con actividad registrada en los últimos 3 minutos
+  // Operadores activos en vivo (excluye los retirados desde Config)
   const activeLiveOperators = useMemo(() => {
     const now = Date.now();
     const map = new Map<
@@ -723,10 +846,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
     >();
 
-    // 1. Lotes tomados en Desglose Operativo
     for (const l of lotesActivos) {
       if (!l?.usuario) continue;
       const op = normalizeOperatorName(l.usuario);
+      if (hiddenOperatorsSet.has(op)) continue;
       if (!map.has(op)) {
         map.set(op, { usuario: op, lotes: [], hora: l.hora || '' });
       }
@@ -736,11 +859,11 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
     }
 
-    // 2. Sesiones abiertas ahora mismo en Toma y Pase de Inventario
     for (const s of paseSessions) {
       if (!s?.usuario) continue;
       if (now - (s.timestamp || 0) > 35000) continue;
       const op = normalizeOperatorName(s.usuario);
+      if (hiddenOperatorsSet.has(op)) continue;
       if (!map.has(op)) {
         map.set(op, { usuario: op, lotes: [], hora: s.hora || '' });
       }
@@ -753,11 +876,11 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       if (s.hora) entry.hora = s.hora;
     }
 
-    // 3. Actividad reciente en los últimos 3 minutos (conteo en vivo desde cualquier PC)
     for (const ev of events) {
       if (!ev?.usuario) continue;
       if (now - (ev.timestamp || 0) <= 3 * 60 * 1000) {
         const op = normalizeOperatorName(ev.usuario);
+        if (hiddenOperatorsSet.has(op)) continue;
         if (!map.has(op)) {
           map.set(op, {
             usuario: op,
@@ -781,10 +904,10 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     }
 
     return Array.from(map.values()).sort((a, b) => a.usuario.localeCompare(b.usuario));
-  }, [lotesActivos, paseSessions, events]);
+  }, [lotesActivos, paseSessions, events, hiddenOperatorsSet]);
 
-  // Tarjetas Permanentes por Operador (Bloque Medio - NUNCA desaparecen aunque liberen lote o se desconecten)
-  const permanentUserSummaries = useMemo(() => {
+  // Todos los resúmenes de operadores (incluyendo retirados para poder gestionarlos en Config.)
+  const allOperatorSummaries = useMemo(() => {
     const map = new Map<
       string,
       {
@@ -826,7 +949,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       return map.get(user)!;
     };
 
-    // 1. Inicializar primero TODOS los usuarios conocidos de la temporada para que nunca desaparezcan
     for (const op of knownOperators) {
       ensureUser(op);
     }
@@ -834,7 +956,6 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       ensureUser(op);
     }
 
-    // 2. Sumar métricas del rango de fecha seleccionado
     for (const ev of eventsByDateRange) {
       const stat = ensureUser(ev.usuario);
       stat.totalAcciones++;
@@ -859,12 +980,19 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     });
   }, [knownOperators, activeLiveOperators, eventsByDateRange]);
 
+  // Tarjetas visibles de operadores (filtra los retirados en Config.)
+  const permanentUserSummaries = useMemo(
+    () => allOperatorSummaries.filter((u) => !hiddenOperatorsSet.has(u.usuario)),
+    [allOperatorSummaries, hiddenOperatorsSet]
+  );
+
   const filteredEvents = useMemo(() => {
     return eventsByDateRange.filter((ev) => {
-      if (
-        selectedUserFilter !== 'ALL' &&
-        normalizeOperatorName(ev.usuario) !== selectedUserFilter
-      ) {
+      const opNorm = normalizeOperatorName(ev.usuario);
+      if (hiddenOperatorsSet.has(opNorm)) {
+        return false;
+      }
+      if (selectedUserFilter !== 'ALL' && opNorm !== selectedUserFilter) {
         return false;
       }
       if (actionFilter !== 'ALL' && ev.accion !== actionFilter) {
@@ -881,7 +1009,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
       }
       return true;
     });
-  }, [eventsByDateRange, selectedUserFilter, actionFilter, searchTerm]);
+  }, [eventsByDateRange, selectedUserFilter, actionFilter, searchTerm, hiddenOperatorsSet]);
 
   const getActionBadge = (accion: Nave6ActivityEvent['accion']) => {
     switch (accion) {
@@ -920,7 +1048,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
 
   return (
     <div className="space-y-5 pb-12 max-w-[1700px] mx-auto">
-      {/* Cabecera de Temporada + Selector de Período */}
+      {/* Cabecera de Temporada + Selector de Período + Botón Config. con PIN */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-[#12161f] p-4 rounded-2xl border border-white/10 shadow-lg">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-[#00f2fe]/15 border border-[#00f2fe]/40 text-[#00f2fe]">
@@ -1003,6 +1131,22 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#00f2fe]' : ''}`} />
             <span>{loading ? 'Actualizando...' : 'Actualizar KPI'}</span>
           </button>
+
+          {/* Botón Config. protegido por PIN */}
+          <button
+            type="button"
+            onClick={handleOpenConfigButton}
+            title="Configurar y retirar usuarios (requiere clave maestra)"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-black text-xs border border-amber-500/40 transition-all cursor-pointer"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Config.</span>
+            {hiddenOperators.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-100 font-mono text-[10px]">
+                -{hiddenOperators.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -1063,7 +1207,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         </div>
       </div>
 
-      {/* BLOQUE 1 (ARRIBA): OPERADORES ACTIVOS EN VIVO (DESGLOSE + TOMA Y PASE) */}
+      {/* BLOQUE 1 (ARRIBA): OPERADORES ACTIVOS EN VIVO */}
       <div className="bg-[#12161f] border border-emerald-500/25 rounded-2xl p-4 shadow-lg space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1120,7 +1264,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         )}
       </div>
 
-      {/* BLOQUE 2 (PERMANENTE): RENDIMIENTO ACUMULADO POR OPERADOR (NUNCA SE QUITA) */}
+      {/* BLOQUE 2 (PERMANENTE): RENDIMIENTO ACUMULADO POR OPERADOR */}
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-4 shadow-lg space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1228,7 +1372,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           </div>
         ) : (
           <div className="py-8 text-center text-xs text-gray-400 bg-[#0d1017] rounded-xl border border-white/5">
-            Aún no hay operadores registrados en esta temporada.
+            No hay operadores activos visibles. Usa <strong>Config.</strong> si deseas restaurar algún usuario retirado.
           </div>
         )}
       </div>
@@ -1326,6 +1470,181 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           </table>
         </div>
       </div>
+
+      {/* Modal PIN Maestro para entrar a Config. */}
+      {isConfigPinModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#12161f] border border-amber-500/50 rounded-2xl w-full max-w-sm p-6 shadow-[0_0_35px_rgba(245,158,11,0.25)] space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <span className="text-xs font-black uppercase text-amber-400 flex items-center gap-2">
+                <KeyRound className="w-4 h-4" /> Acceso a Config. de Operadores
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfigPinModalOpen(false);
+                  setConfigPinInput('');
+                  setConfigPinError(false);
+                }}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300 text-center">
+              Ingresa la clave maestra para administrar y retirar usuarios del panel de KPI:
+            </p>
+
+            <input
+              type="password"
+              maxLength={6}
+              value={configPinInput}
+              onChange={(e) => {
+                setConfigPinInput(e.target.value);
+                setConfigPinError(false);
+              }}
+              placeholder="••••••"
+              className="w-full text-center text-xl tracking-[0.4em] py-2.5 rounded-xl bg-[#0d1017] border border-amber-500/40 text-white focus:border-amber-400 outline-none font-mono"
+              onKeyDown={(e) => e.key === 'Enter' && handleVerifyConfigPin()}
+              autoFocus
+            />
+
+            {configPinError && (
+              <p className="text-xs text-rose-400 font-bold text-center">
+                Clave incorrecta. Inténtalo de nuevo.
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfigPinModalOpen(false);
+                  setConfigPinInput('');
+                  setConfigPinError(false);
+                }}
+                className="px-4 py-2 rounded-xl border border-white/10 text-xs font-bold text-gray-300 hover:bg-white/5 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleVerifyConfigPin}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl text-xs cursor-pointer"
+              >
+                Entrar a Config.
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Config.: Retirar / Restaurar Operadores */}
+      {isConfigModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col p-5 shadow-[0_0_40px_rgba(0,242,254,0.25)] space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400">
+                  <Settings className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-white tracking-wide flex items-center gap-2">
+                    <span>Config. • Gestión de Operadores KPI</span>
+                    {savingHiddenOps && (
+                      <span className="text-[10px] font-mono text-[#00f2fe]">Guardando...</span>
+                    )}
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    Retira usuarios del tablero y filtros o vuelve a habilitarlos cuando quieras
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsConfigModalOpen(false)}
+                className="p-1.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 custom-scrollbar space-y-2 pr-1">
+              {allOperatorSummaries.length > 0 ? (
+                allOperatorSummaries.map((op) => {
+                  const isHidden = hiddenOperatorsSet.has(op.usuario);
+                  return (
+                    <div
+                      key={op.usuario}
+                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-xs transition-colors ${
+                        isHidden
+                          ? 'bg-rose-500/10 border-rose-500/30 opacity-80'
+                          : 'bg-[#0d1017] border-white/10'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-black text-white uppercase flex items-center gap-2">
+                          <span>{op.usuario}</span>
+                          {isHidden ? (
+                            <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-[9px] font-mono text-rose-300">
+                              RETIRADO
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[9px] font-mono text-emerald-300">
+                              VISIBLE
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-400">
+                          Acciones acumuladas: <strong className="text-gray-200">{op.totalAcciones.toLocaleString()}</strong> • Última: {op.ultimaActividad}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHideOperator(op.usuario)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-black text-xs border transition-all cursor-pointer ${
+                          isHidden
+                            ? 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-black border-emerald-500/40'
+                            : 'bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border-rose-500/40'
+                        }`}
+                      >
+                        {isHidden ? (
+                          <>
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Restaurar</span>
+                          </>
+                        ) : (
+                          <>
+                            <UserMinus className="w-3.5 h-3.5" />
+                            <span>Retirar</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-10 text-center text-xs text-gray-400">
+                  No hay usuarios registrados todavía.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setIsConfigModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-[#00f2fe] hover:bg-[#00f2fe]/85 text-black font-black text-xs cursor-pointer"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
