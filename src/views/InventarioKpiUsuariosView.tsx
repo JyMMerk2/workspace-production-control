@@ -18,6 +18,7 @@ import {
   X,
   UserMinus,
   UserCheck,
+  Activity,
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 import { PaseActiveSession } from './PaseInventarioView';
@@ -833,6 +834,54 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
     });
   }, [events, dateRangeFilter]);
 
+  // Resumen consolidado exacto del período seleccionado (Hoy, Ayer, Esta Semana o Temporada)
+  const periodSummary = useMemo(() => {
+    let totalAcciones = 0;
+    let digitados = 0;
+    let cerrados = 0;
+    let validados = 0;
+    let ediciones = 0;
+    let alertasSlack = 0;
+    let unidadesMovidas = 0;
+    const skusUnicos = new Set<string>();
+
+    for (const ev of eventsByDateRange) {
+      const opNorm = normalizeOperatorName(ev.usuario);
+      if (hiddenOperatorsSet.has(opNorm)) continue;
+
+      totalAcciones++;
+      if (ev.codigo) skusUnicos.add(ev.codigo);
+      unidadesMovidas += Number(ev.cantidad) || 0;
+
+      if (ev.accion === 'DIGITADO') digitados++;
+      else if (ev.accion === 'CERRADO') cerrados++;
+      else if (ev.accion === 'VALIDADO') validados++;
+      else if (ev.accion === 'EDICION') ediciones++;
+      else if (ev.accion === 'SLACK') alertasSlack++;
+    }
+
+    const label =
+      dateRangeFilter === 'TODAY'
+        ? 'Hoy'
+        : dateRangeFilter === 'YESTERDAY'
+        ? 'Ayer'
+        : dateRangeFilter === 'WEEK'
+        ? 'Esta Semana'
+        : 'Temporada (desde 13 Nov)';
+
+    return {
+      label,
+      totalAcciones,
+      skusUnicos: skusUnicos.size,
+      digitados,
+      cerrados,
+      validados,
+      ediciones,
+      alertasSlack,
+      unidadesMovidas,
+    };
+  }, [eventsByDateRange, hiddenOperatorsSet, dateRangeFilter]);
+
   // Operadores activos en vivo (excluye los retirados desde Config)
   const activeLiveOperators = useMemo(() => {
     const now = Date.now();
@@ -1150,14 +1199,14 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
         </div>
       </div>
 
-      {/* Tarjetas Globales de la Temporada */}
+      {/* Tarjetas Globales de la Temporada (Acumulado de la Hoja PROGRESO) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-[#12161f] border border-white/10 rounded-2xl p-3.5">
           <div className="text-[10px] font-black uppercase text-gray-400">Total Artículos</div>
           <div className="text-2xl font-black text-white mt-1">
             {sheetStats.totalItems.toLocaleString()}
           </div>
-          <div className="text-[10px] text-gray-500 mt-0.5">Base Nave 6</div>
+          <div className="text-[10px] text-gray-500 mt-0.5">Base Nave 6 (Acumulado)</div>
         </div>
 
         <div className="bg-[#12161f] border border-emerald-500/30 rounded-2xl p-3.5">
@@ -1167,7 +1216,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           </div>
           <div className="text-[10px] text-emerald-300/70 mt-0.5">
             {sheetStats.totalItems > 0
-              ? `${((sheetStats.validados / sheetStats.totalItems) * 100).toFixed(1)}%`
+              ? `${((sheetStats.validados / sheetStats.totalItems) * 100).toFixed(1)}% total hoja`
               : '0%'}
           </div>
         </div>
@@ -1177,7 +1226,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           <div className="text-2xl font-black text-rose-400 mt-1">
             {sheetStats.cerrados.toLocaleString()}
           </div>
-          <div className="text-[10px] text-rose-300/70 mt-0.5">Col A + Col I</div>
+          <div className="text-[10px] text-rose-300/70 mt-0.5">Col A + Col I (Total)</div>
         </div>
 
         <div className="bg-[#12161f] border border-cyan-500/30 rounded-2xl p-3.5">
@@ -1185,7 +1234,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           <div className="text-2xl font-black text-[#00f2fe] mt-1">
             {sheetStats.digitados.toLocaleString()}
           </div>
-          <div className="text-[10px] text-cyan-300/70 mt-0.5">Columna O marcada</div>
+          <div className="text-[10px] text-cyan-300/70 mt-0.5">Columna O (Total)</div>
         </div>
 
         <div className="bg-[#12161f] border border-amber-500/30 rounded-2xl p-3.5">
@@ -1203,6 +1252,79 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           </div>
           <div className="text-[10px] text-purple-300/70 mt-0.5">
             {activeLiveOperators.length} activo(s) ahora
+          </div>
+        </div>
+      </div>
+
+      {/* RESUMEN EXACTO DEL PERÍODO SELECCIONADO (HOY, AYER, ESTA SEMANA O TEMPORADA) */}
+      <div className="bg-[#12161f] border border-[#00f2fe]/35 rounded-2xl p-4 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-[#00f2fe]" />
+            <h2 className="text-xs font-black uppercase tracking-wider text-white">
+              Resumen de Actividad en App • Período: <span className="text-[#00f2fe]">{periodSummary.label}</span>
+            </h2>
+          </div>
+          <span className="text-[11px] text-gray-400">
+            Total procesado por los operadores en el rango seleccionado
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-[#00f2fe]/40">
+            <div className="text-[10px] font-black uppercase text-[#00f2fe]">Total {periodSummary.label}</div>
+            <div className="text-xl font-black text-white mt-0.5">
+              {periodSummary.totalAcciones.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">Acciones registradas</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-white/10">
+            <div className="text-[10px] font-black uppercase text-gray-300">SKUs Únicos</div>
+            <div className="text-xl font-black text-white mt-0.5">
+              {periodSummary.skusUnicos.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">Artículos distintos</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-cyan-500/25">
+            <div className="text-[10px] font-black uppercase text-cyan-300">Digitados</div>
+            <div className="text-xl font-black text-[#00f2fe] mt-0.5">
+              {periodSummary.digitados.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">En Newsoft (Col O)</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-rose-500/25">
+            <div className="text-[10px] font-black uppercase text-rose-300">Cerrados</div>
+            <div className="text-xl font-black text-rose-400 mt-0.5">
+              {periodSummary.cerrados.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">Candado (Col I)</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-emerald-500/25">
+            <div className="text-[10px] font-black uppercase text-emerald-300">Validados</div>
+            <div className="text-xl font-black text-emerald-400 mt-0.5">
+              {periodSummary.validados.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">Conteo (Col A)</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-amber-500/25">
+            <div className="text-[10px] font-black uppercase text-amber-300">Ediciones</div>
+            <div className="text-xl font-black text-amber-300 mt-0.5">
+              {periodSummary.ediciones.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">Cant. / Ubicación</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#0d1017] border border-emerald-500/25">
+            <div className="text-[10px] font-black uppercase text-emerald-300">Unidades Movidas</div>
+            <div className="text-xl font-black text-emerald-300 mt-0.5">
+              {periodSummary.unidadesMovidas.toLocaleString()}
+            </div>
+            <div className="text-[10px] text-gray-400">Piezas en período</div>
           </div>
         </div>
       </div>
@@ -1270,7 +1392,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-[#00f2fe]" />
             <h2 className="text-xs font-black uppercase tracking-wider text-white">
-              Rendimiento Acumulado por Operador (Qué y qué cantidad hizo cada quien)
+              Rendimiento por Operador • {periodSummary.label} (Qué y qué cantidad hizo cada quien)
             </h2>
           </div>
           {selectedUserFilter !== 'ALL' && (
@@ -1598,7 +1720,7 @@ export const InventarioKpiUsuariosView: React.FC<InventarioKpiUsuariosViewProps>
                           )}
                         </div>
                         <div className="text-[11px] text-gray-400">
-                          Acciones acumuladas: <strong className="text-gray-200">{op.totalAcciones.toLocaleString()}</strong> • Última: {op.ultimaActividad}
+                          Acciones en período: <strong className="text-gray-200">{op.totalAcciones.toLocaleString()}</strong> • Última: {op.ultimaActividad}
                         </div>
                       </div>
 
