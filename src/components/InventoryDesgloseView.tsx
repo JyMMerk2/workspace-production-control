@@ -25,7 +25,8 @@ import {
   Archive,
   Trash2,
   RotateCcw,
-  PackagePlus
+  PackagePlus,
+  Printer
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -99,6 +100,8 @@ interface UserColorTheme {
   badgeBorder: string;
   badgeText: string;
 }
+
+type DesgloseFilterTab = 'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO' | 'NAVE7' | 'ENCERO';
 
 const USER_COLOR_PALETTE: UserColorTheme[] = [
   {
@@ -198,6 +201,14 @@ function getInitials(nombre: string): string {
   if (parts.length === 0) return '??';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function escapeHtml(text: string | number): string {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // Extraer cantidad numérica y ubicación opcional (ej. "14", "Cant. 12 A-11", "12 B-7-2")
@@ -397,7 +408,11 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const [editingCommentValue, setEditingCommentValue] = useState<string>('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDIENTE' | 'OK' | 'REVISION' | 'CERRADO' | 'NAVE7' | 'ENCERO'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<DesgloseFilterTab>('ALL');
+  // Controla la visibilidad del botón contextual de Imprimir debajo de la pestaña activa
+  const [showTabPrintPrompt, setShowTabPrintPrompt] = useState<boolean>(false);
+  const [isTabPrintModalOpen, setIsTabPrintModalOpen] = useState<boolean>(false);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [inputPage, setInputPage] = useState('1');
@@ -461,7 +476,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       unlockTargetRow !== null ||
       archiveZeroTargets !== null ||
       restoringInProgress ||
-      isNewItemModalOpen
+      isNewItemModalOpen ||
+      isTabPrintModalOpen
     );
   }, [
     editingNsRow,
@@ -477,7 +493,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     unlockTargetRow,
     archiveZeroTargets,
     restoringInProgress,
-    isNewItemModalOpen
+    isNewItemModalOpen,
+    isTabPrintModalOpen
   ]);
 
   const GOOGLE_SHEETS_URL =
@@ -2062,6 +2079,201 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     return filteredItems.slice(start, start + pageSize);
   }, [filteredItems, currentPage, pageSize]);
 
+  const handleSelectFilterTab = (tab: DesgloseFilterTab) => {
+    setFilterStatus(tab);
+    setCurrentPage(1);
+    setShowTabPrintPrompt(true);
+  };
+
+  const activeTabLabel = useMemo(() => {
+    switch (filterStatus) {
+      case 'PENDIENTE':
+        return 'Pendientes';
+      case 'OK':
+        return 'Validados OK';
+      case 'REVISION':
+        return 'Revisión';
+      case 'CERRADO':
+        return 'Cerrados';
+      case 'NAVE7':
+        return 'Nave 7';
+      case 'ENCERO':
+        return 'En Cero';
+      default:
+        return 'Todos';
+    }
+  }, [filterStatus]);
+
+  // Imprimir hoja de conteo de la pestaña activa (Página actual vs. Toda la pestaña filtrada)
+  const handlePrintDesgloseTab = (scope: 'CURRENT_PAGE' | 'FULL_TAB') => {
+    setIsTabPrintModalOpen(false);
+
+    const targetRows = scope === 'CURRENT_PAGE' ? paginatedItems : filteredItems;
+
+    if (targetRows.length === 0) {
+      setNotification({
+        type: 'error',
+        text: 'No hay artículos en la vista seleccionada para imprimir.'
+      });
+      return;
+    }
+
+    const scopeLabel =
+      scope === 'CURRENT_PAGE'
+        ? `PÁGINA ${currentPage} DE ${totalPages} (${targetRows.length} ARTÍCULOS)`
+        : `TODA LA PESTAÑA (${targetRows.length.toLocaleString()} ARTÍCULOS)`;
+
+    const searchNote = searchTerm.trim() ? ` • Búsqueda: "${searchTerm.trim()}"` : '';
+
+    const fechaHora = new Date().toLocaleString('es-DO', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const sumNs = targetRows.reduce((acc, r) => acc + (Number(r.ns) || 0), 0);
+    const sumAlm = targetRows.reduce((acc, r) => acc + (Number(r.almacen) || 0), 0);
+    const sumSal = targetRows.reduce((acc, r) => acc + (Number(r.salida) || 0), 0);
+    const sumNav7 = targetRows.reduce((acc, r) => acc + (Number(r.nave7) || 0), 0);
+    const sumNewsoft = targetRows.reduce((acc, r) => acc + (Number(r.newsoft) || 0), 0);
+
+    const rowsHtml = targetRows
+      .map((row, idx) => {
+        const estadoTexto =
+          row.validado && row.candado
+            ? 'CERRADO'
+            : row.enRevision
+            ? 'REVISIÓN'
+            : row.validado
+            ? 'OK'
+            : 'PENDIENTE';
+
+        const difNum = typeof row.dif === 'number' ? row.dif : Number(row.dif);
+        const difColor =
+          !isNaN(difNum) && difNum === 0
+            ? '#047857'
+            : String(row.dif).trim() === '0'
+            ? '#047857'
+            : '#be123c';
+
+        return `
+          <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td style="text-align:center;font-size:9px;font-weight:bold;">${estadoTexto}</td>
+            <td style="text-align:center;font-size:9px;font-weight:bold;">${row.digitado ? 'SÍ' : 'NO'}</td>
+            <td style="font-family:monospace;font-weight:bold;">${escapeHtml(row.codigo)}</td>
+            <td>${escapeHtml(row.item)}</td>
+            <td style="text-align:right;font-weight:bold;">${(Number(row.ns) || 0).toLocaleString()}</td>
+            <td style="text-align:right;font-weight:bold;">${(Number(row.almacen) || 0).toLocaleString()}</td>
+            <td style="text-align:right;">${(Number(row.salida) || 0).toLocaleString()}</td>
+            <td style="text-align:right;">${(Number(row.nave7) || 0).toLocaleString()}</td>
+            <td style="text-align:right;font-weight:bold;">${(Number(row.newsoft) || 0).toLocaleString()}</td>
+            <td style="text-align:center;font-weight:bold;color:${difColor};">${escapeHtml(row.dif)}</td>
+            <td style="text-align:center;font-family:monospace;font-weight:bold;">${escapeHtml(row.ubicacion)}</td>
+            <td style="width:72px;"></td>
+            <td style="font-size:9.5px;">${escapeHtml(row.comentario)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const printWindow = window.open('', '_blank', 'width=1180,height=800');
+    if (!printWindow) {
+      setNotification({
+        type: 'error',
+        text: 'El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes e inténtalo de nuevo.'
+      });
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Desglose Operativo Nave 6 - Pestaña ${escapeHtml(activeTabLabel)}</title>
+        <style>
+          @page { size: letter landscape; margin: 10mm; }
+          body { font-family: Arial, Helvetica, sans-serif; color: #111827; margin: 0; padding: 10px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 10px; }
+          .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.4px; margin: 0; }
+          .subtitle { font-size: 11px; color: #4b5563; margin-top: 3px; }
+          .badge-tab { font-size: 14px; font-weight: 900; border: 2px solid #111827; padding: 4px 12px; border-radius: 6px; background: #f3f4f6; text-align: right; }
+          .badge-scope { display: block; font-size: 10px; color: #b91c1c; margin-top: 2px; }
+          .summary { display: flex; flex-wrap: wrap; gap: 18px; font-size: 11px; margin-bottom: 10px; background: #f9fafb; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          th { background: #111827; color: #ffffff; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.3px; padding: 5px 4px; border: 1px solid #111827; }
+          td { border: 1px solid #9ca3af; padding: 4px; vertical-align: middle; }
+          tr:nth-child(even) { background: #f9fafb; }
+          .signatures { display: flex; justify-content: space-between; gap: 40px; margin-top: 24px; font-size: 11px; }
+          .sig-box { flex: 1; border-top: 1px solid #111827; padding-top: 4px; text-align: center; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">Boombah Workspace • Desglose Operativo de Inventario (Nave 6)</h1>
+            <div class="subtitle">Impreso por: <strong>${escapeHtml(activeUserLabel)}</strong> • ${escapeHtml(fechaHora)}${escapeHtml(searchNote)}</div>
+          </div>
+          <div class="badge-tab">
+            PESTAÑA: ${escapeHtml(activeTabLabel.toUpperCase())}
+            <span class="badge-scope">${escapeHtml(scopeLabel)}</span>
+          </div>
+        </div>
+
+        <div class="summary">
+          <div><strong>Ítems Impresos:</strong> ${targetRows.length.toLocaleString()}</div>
+          <div><strong>Suma NetSuite:</strong> ${sumNs.toLocaleString()}</div>
+          <div><strong>Suma Inv. (Col E):</strong> ${sumAlm.toLocaleString()}</div>
+          <div><strong>Suma Salida (Col G):</strong> ${sumSal.toLocaleString()}</div>
+          <div><strong>Suma Nave 7 (Col N):</strong> ${sumNav7.toLocaleString()}</div>
+          <div><strong>Suma Bal. Newsoft:</strong> ${sumNewsoft.toLocaleString()}</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:26px;">#</th>
+              <th style="width:58px;">Estado</th>
+              <th style="width:36px;">Dig.</th>
+              <th style="width:74px;">Código</th>
+              <th>Item NT/NS Descripción</th>
+              <th style="width:48px;">NS</th>
+              <th style="width:52px;">Inv. (E)</th>
+              <th style="width:44px;">Sal.</th>
+              <th style="width:44px;">Nav.7</th>
+              <th style="width:58px;">Newsoft</th>
+              <th style="width:62px;">Diferencia</th>
+              <th style="width:62px;">Ubicación</th>
+              <th style="width:72px;">Conteo Físico</th>
+              <th style="width:130px;">Comentarios</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div class="signatures">
+          <div class="sig-box">Contado por (Operador)</div>
+          <div class="sig-box">Auditado por (Supervisor)</div>
+          <div class="sig-box">Fecha / Hora de Cierre</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const handlePageJump = () => {
     const pageNum = parseInt(inputPage, 10);
     if (!isNaN(pageNum)) {
@@ -2317,120 +2529,146 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       {/* Tabla Completa */}
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col">
-        {/* Filtros y Buscador */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center bg-[#0d1017] rounded-xl border border-white/10 p-1 text-xs gap-1">
-              <button
-                onClick={() => { setFilterStatus('ALL'); setCurrentPage(1); }}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  filterStatus === 'ALL' ? 'bg-white/15 text-white' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Todos ({items.length.toLocaleString()})
-              </button>
+        {/* Filtros, Botón Contextual de Imprimir Pestaña y Buscador */}
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center bg-[#0d1017] rounded-xl border border-white/10 p-1 text-xs gap-1">
+                <button
+                  onClick={() => handleSelectFilterTab('ALL')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    filterStatus === 'ALL' ? 'bg-white/15 text-white' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Todos ({items.length.toLocaleString()})
+                </button>
 
-              <button
-                onClick={() => { setFilterStatus('PENDIENTE'); setCurrentPage(1); }}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  filterStatus === 'PENDIENTE' ? 'bg-amber-500/20 text-amber-400' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Pendientes ({counts.pendientes.toLocaleString()})
-              </button>
+                <button
+                  onClick={() => handleSelectFilterTab('PENDIENTE')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    filterStatus === 'PENDIENTE' ? 'bg-amber-500/20 text-amber-400' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Pendientes ({counts.pendientes.toLocaleString()})
+                </button>
 
-              <button
-                onClick={() => { setFilterStatus('OK'); setCurrentPage(1); }}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  filterStatus === 'OK' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Validados OK ({counts.validadosOk.toLocaleString()})
-              </button>
+                <button
+                  onClick={() => handleSelectFilterTab('OK')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                    filterStatus === 'OK' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Validados OK ({counts.validadosOk.toLocaleString()})
+                </button>
 
-              <button
-                onClick={() => { setFilterStatus('REVISION'); setCurrentPage(1); }}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  filterStatus === 'REVISION'
-                    ? 'bg-orange-500/25 text-orange-300 border border-orange-500/40'
-                    : counts.revision > 0
-                    ? 'text-orange-400 hover:bg-orange-500/10'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>Revisión ({counts.revision.toLocaleString()})</span>
-              </button>
+                <button
+                  onClick={() => handleSelectFilterTab('REVISION')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    filterStatus === 'REVISION'
+                      ? 'bg-orange-500/25 text-orange-300 border border-orange-500/40'
+                      : counts.revision > 0
+                      ? 'text-orange-400 hover:bg-orange-500/10'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Revisión ({counts.revision.toLocaleString()})</span>
+                </button>
 
-              <button
-                onClick={() => { setFilterStatus('CERRADO'); setCurrentPage(1); }}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  filterStatus === 'CERRADO' ? 'bg-rose-500/20 text-rose-400' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <Lock className="w-3 h-3" />
-                <span>Cerrados ({counts.cerrados.toLocaleString()})</span>
-              </button>
+                <button
+                  onClick={() => handleSelectFilterTab('CERRADO')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    filterStatus === 'CERRADO' ? 'bg-rose-500/20 text-rose-400' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Cerrados ({counts.cerrados.toLocaleString()})</span>
+                </button>
 
-              <button
-                onClick={() => { setFilterStatus('NAVE7'); setCurrentPage(1); }}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  filterStatus === 'NAVE7'
-                    ? 'bg-purple-500/25 text-purple-300 border border-purple-500/40'
-                    : counts.nave7 > 0
-                    ? 'text-purple-400 hover:bg-purple-500/10'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <span>Nave 7 ({counts.nave7.toLocaleString()})</span>
-              </button>
+                <button
+                  onClick={() => handleSelectFilterTab('NAVE7')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    filterStatus === 'NAVE7'
+                      ? 'bg-purple-500/25 text-purple-300 border border-purple-500/40'
+                      : counts.nave7 > 0
+                      ? 'text-purple-400 hover:bg-purple-500/10'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <span>Nave 7 ({counts.nave7.toLocaleString()})</span>
+                </button>
 
-              <button
-                onClick={() => { setFilterStatus('ENCERO'); setCurrentPage(1); }}
-                title="Artículos con NetSuite = 0 y Balance Newsoft = 0"
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  filterStatus === 'ENCERO'
-                    ? 'bg-slate-600/40 text-slate-200 border border-slate-400/50'
-                    : counts.enCero > 0
-                    ? 'text-slate-300 hover:bg-white/10'
-                    : 'text-gray-400 hover:text-white'
-                }`}
+                <button
+                  onClick={() => handleSelectFilterTab('ENCERO')}
+                  title="Artículos con NetSuite = 0 y Balance Newsoft = 0"
+                  className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    filterStatus === 'ENCERO'
+                      ? 'bg-slate-600/40 text-slate-200 border border-slate-400/50'
+                      : counts.enCero > 0
+                      ? 'text-slate-300 hover:bg-white/10'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Archive className="w-3.5 h-3.5 text-slate-300" />
+                  <span>En Cero ({counts.enCero.toLocaleString()})</span>
+                </button>
+              </div>
+
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                className="bg-[#0d1017] border border-white/10 text-xs text-gray-300 rounded-xl px-2.5 py-1.5 outline-none font-bold cursor-pointer"
               >
-                <Archive className="w-3.5 h-3.5 text-slate-300" />
-                <span>En Cero ({counts.enCero.toLocaleString()})</span>
-              </button>
+                <option value={25}>25 por pág.</option>
+                <option value={50}>50 por pág.</option>
+                <option value={100}>100 por pág.</option>
+                <option value={200}>200 por pág.</option>
+              </select>
+
+              {filterStatus === 'ENCERO' && filteredItems.length > 0 && (
+                <button
+                  type="button"
+                  disabled={archivingZeroRows}
+                  onClick={() => handlePromptArchiveZero(filteredItems)}
+                  title={`Seguro activo: mueve máximo ${MAX_ARCHIVE_BATCH} artículos por operación hacia el Google Sheet externo de Papelera`}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40 font-black text-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {archivingZeroRows ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {archivingZeroRows
+                      ? 'Moviendo lote...'
+                      : `Mover lote seguro de ${safeBatchCount} a Papelera (Total: ${filteredItems.length.toLocaleString()})`}
+                  </span>
+                </button>
+              )}
             </div>
 
-            <select
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-              className="bg-[#0d1017] border border-white/10 text-xs text-gray-300 rounded-xl px-2.5 py-1.5 outline-none font-bold cursor-pointer"
-            >
-              <option value={25}>25 por pág.</option>
-              <option value={50}>50 por pág.</option>
-              <option value={100}>100 por pág.</option>
-              <option value={200}>200 por pág.</option>
-            </select>
-
-            {filterStatus === 'ENCERO' && filteredItems.length > 0 && (
-              <button
-                type="button"
-                disabled={archivingZeroRows}
-                onClick={() => handlePromptArchiveZero(filteredItems)}
-                title={`Seguro activo: mueve máximo ${MAX_ARCHIVE_BATCH} artículos por operación hacia el Google Sheet externo de Papelera`}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/40 font-black text-xs transition-all cursor-pointer disabled:opacity-50"
-              >
-                {archivingZeroRows ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="w-3.5 h-3.5" />
-                )}
-                <span>
-                  {archivingZeroRows
-                    ? 'Moviendo lote...'
-                    : `Mover lote seguro de ${safeBatchCount} a Papelera (Total: ${filteredItems.length.toLocaleString()})`}
-                </span>
-              </button>
+            {/* Botón contextual de Imprimir debajo de la pestaña activa (solo visible al tocar una pestaña) */}
+            {showTabPrintPrompt && filteredItems.length > 0 && (
+              <div className="flex items-center gap-2 pl-1">
+                <button
+                  type="button"
+                  onClick={() => setIsTabPrintModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe] text-[#00f2fe] hover:text-[#0b0e14] border border-[#00f2fe]/40 text-[11px] font-black transition-all cursor-pointer shadow-[0_0_12px_rgba(0,242,254,0.18)]"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>
+                    Imprimir {activeTabLabel} ({filteredItems.length.toLocaleString()})
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTabPrintPrompt(false)}
+                  title="Ocultar botón de impresión"
+                  className="p-1 rounded-md text-gray-500 hover:text-gray-300 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -2979,6 +3217,80 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal de Impresión de la Pestaña Activa (Página Actual vs. Toda la Pestaña) */}
+      {isTabPrintModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#12161f] border border-[#00f2fe]/40 rounded-2xl p-5 max-w-md w-full space-y-4 shadow-[0_0_30px_rgba(0,242,254,0.25)]">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <div className="flex items-center gap-2 text-[#00f2fe] font-black text-xs uppercase tracking-wider">
+                <Printer className="w-4 h-4" />
+                <span>Imprimir Pestaña: {activeTabLabel}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTabPrintModalOpen(false)}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300">
+              Selecciona el alcance que deseas imprimir en la hoja de conteo (incluye columna vacía de{' '}
+              <strong className="text-amber-300">Conteo Físico</strong>):
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handlePrintDesgloseTab('CURRENT_PAGE')}
+                disabled={paginatedItems.length === 0}
+                className="w-full p-3 rounded-xl bg-[#0d1017] hover:bg-emerald-500/15 border border-white/10 hover:border-emerald-400/50 flex items-center justify-between text-left transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <div>
+                  <div className="text-xs font-black text-white">Solo la Página Actual</div>
+                  <div className="text-[11px] text-gray-400">
+                    Página {currentPage} de {totalPages} visible en pantalla
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-black text-xs">
+                  {paginatedItems.length.toLocaleString()}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handlePrintDesgloseTab('FULL_TAB')}
+                disabled={filteredItems.length === 0}
+                className="w-full p-3 rounded-xl bg-[#0d1017] hover:bg-[#00f2fe]/15 border border-white/10 hover:border-[#00f2fe]/50 flex items-center justify-between text-left transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <div>
+                  <div className="text-xs font-black text-white">Toda la Pestaña ({activeTabLabel})</div>
+                  <div className="text-[11px] text-gray-400">
+                    {searchTerm.trim()
+                      ? `Todos los resultados filtrados por "${searchTerm.trim()}"`
+                      : 'Listado completo de esta pestaña'}
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-[#00f2fe]/20 text-[#00f2fe] font-mono font-black text-xs">
+                  {filteredItems.length.toLocaleString()}
+                </span>
+              </button>
+            </div>
+
+            <div className="pt-1 text-right">
+              <button
+                type="button"
+                onClick={() => setIsTabPrintModalOpen(false)}
+                className="px-4 py-1.5 rounded-lg border border-white/10 text-xs font-bold text-gray-400 hover:text-white cursor-pointer"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Nuevo Ítem con Validación Anti-Duplicados */}
       {isNewItemModalOpen && (
