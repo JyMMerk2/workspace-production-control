@@ -410,7 +410,11 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<DesgloseFilterTab>('ALL');
-  const [revisionUbicacionFilter, setRevisionUbicacionFilter] = useState<string>('ALL');
+  // Selección múltiple de ubicaciones en la pestaña Revisión
+  const [revisionUbicacionesSelected, setRevisionUbicacionesSelected] = useState<string[]>([]);
+  const [revisionUbiDropdownOpen, setRevisionUbiDropdownOpen] = useState<boolean>(false);
+  const [revisionUbiSearch, setRevisionUbiSearch] = useState<string>('');
+  const revisionUbiDropdownRef = useRef<HTMLDivElement | null>(null);
   // Controla la visibilidad del botón contextual de Imprimir debajo de la pestaña activa
   const [showTabPrintPrompt, setShowTabPrintPrompt] = useState<boolean>(false);
   const [isTabPrintModalOpen, setIsTabPrintModalOpen] = useState<boolean>(false);
@@ -462,6 +466,21 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const isFetchingRef = useRef(false);
   const isFetchingLotesRef = useRef(false);
   const isBusyRef = useRef(false);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        revisionUbiDropdownRef.current &&
+        !revisionUbiDropdownRef.current.contains(e.target as Node)
+      ) {
+        setRevisionUbiDropdownOpen(false);
+      }
+    };
+    if (revisionUbiDropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [revisionUbiDropdownOpen]);
 
   useEffect(() => {
     isBusyRef.current = Boolean(
@@ -685,7 +704,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         setIsNewItemModalOpen(false);
         setHighlightedRowNum(newRowNum);
         setFilterStatus('ALL');
-        setRevisionUbicacionFilter('ALL');
+        setRevisionUbicacionesSelected([]);
         setCurrentPage(1);
 
         recordOperatorActivity(newValidado ? 'VALIDADO' : 'EDICION', createdItem, balNewsoft);
@@ -1996,6 +2015,20 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       .sort((a, b) => a.ubicacion.localeCompare(b.ubicacion));
   }, [items]);
 
+  const filteredRevisionUbicaciones = useMemo(() => {
+    const q = revisionUbiSearch.trim().toUpperCase();
+    if (!q) return revisionUbicaciones;
+    return revisionUbicaciones.filter((u) => u.ubicacion.includes(q));
+  }, [revisionUbicaciones, revisionUbiSearch]);
+
+  const handleToggleRevisionUbicacion = (ubi: string) => {
+    setRevisionUbicacionesSelected((prev) =>
+      prev.includes(ubi) ? prev.filter((item) => item !== ubi) : [...prev, ubi]
+    );
+    setCurrentPage(1);
+    setShowTabPrintPrompt(true);
+  };
+
   const filteredItems = useMemo(() => {
     return items.filter((it) => {
       const matchSearch =
@@ -2009,9 +2042,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       if (filterStatus === 'OK') return it.validado && !it.candado && !it.enRevision;
       if (filterStatus === 'REVISION') {
         if (!it.enRevision) return false;
-        if (revisionUbicacionFilter !== 'ALL') {
+        if (revisionUbicacionesSelected.length > 0) {
           const itemUbi = (it.ubicacion || '-').trim().toUpperCase() || '-';
-          if (itemUbi !== revisionUbicacionFilter) return false;
+          if (!revisionUbicacionesSelected.includes(itemUbi)) return false;
         }
         return true;
       }
@@ -2020,7 +2053,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       if (filterStatus === 'ENCERO') return (Number(it.ns) || 0) === 0 && (Number(it.newsoft) || 0) === 0;
       return true;
     });
-  }, [items, searchTerm, filterStatus, revisionUbicacionFilter]);
+  }, [items, searchTerm, filterStatus, revisionUbicacionesSelected]);
 
   const filteredTrashItems = useMemo(() => {
     const q = trashSearchTerm.trim().toLowerCase();
@@ -2102,11 +2135,20 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const handleSelectFilterTab = (tab: DesgloseFilterTab) => {
     setFilterStatus(tab);
     if (tab !== 'REVISION') {
-      setRevisionUbicacionFilter('ALL');
+      setRevisionUbicacionesSelected([]);
+      setRevisionUbiDropdownOpen(false);
     }
     setCurrentPage(1);
     setShowTabPrintPrompt(true);
   };
+
+  const revisionUbicacionesLabel = useMemo(() => {
+    if (revisionUbicacionesSelected.length === 0) return '';
+    if (revisionUbicacionesSelected.length <= 3) {
+      return revisionUbicacionesSelected.join(', ');
+    }
+    return `${revisionUbicacionesSelected.slice(0, 2).join(', ')} +${revisionUbicacionesSelected.length - 2}`;
+  }, [revisionUbicacionesSelected]);
 
   const activeTabLabel = useMemo(() => {
     switch (filterStatus) {
@@ -2115,8 +2157,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       case 'OK':
         return 'Validados OK';
       case 'REVISION':
-        return revisionUbicacionFilter !== 'ALL'
-          ? `Revisión • ${revisionUbicacionFilter}`
+        return revisionUbicacionesSelected.length > 0
+          ? `Revisión • ${revisionUbicacionesLabel}`
           : 'Revisión';
       case 'CERRADO':
         return 'Cerrados';
@@ -2127,7 +2169,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       default:
         return 'Todos';
     }
-  }, [filterStatus, revisionUbicacionFilter]);
+  }, [filterStatus, revisionUbicacionesSelected, revisionUbicacionesLabel]);
 
   // Imprimir hoja de conteo de la pestaña activa (Página actual vs. Toda la pestaña filtrada)
   const handlePrintDesgloseTab = (scope: 'CURRENT_PAGE' | 'FULL_TAB') => {
@@ -2149,8 +2191,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         : `TODA LA PESTAÑA (${targetRows.length.toLocaleString()} ARTÍCULOS)`;
 
     const ubiNote =
-      filterStatus === 'REVISION' && revisionUbicacionFilter !== 'ALL'
-        ? ` • Ubicación: ${revisionUbicacionFilter}`
+      filterStatus === 'REVISION' && revisionUbicacionesSelected.length > 0
+        ? ` • Ubicaciones: ${revisionUbicacionesSelected.join(', ')}`
         : '';
     const searchNote = searchTerm.trim() ? ` • Búsqueda: "${searchTerm.trim()}"` : '';
 
@@ -2229,7 +2271,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 10px; }
           .title { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.4px; margin: 0; }
           .subtitle { font-size: 11px; color: #4b5563; margin-top: 3px; }
-          .badge-tab { font-size: 14px; font-weight: 900; border: 2px solid #111827; padding: 4px 12px; border-radius: 6px; background: #f3f4f6; text-align: right; }
+          .badge-tab { font-size: 14px; font-weight: 900; border: 2px solid #111827; padding: 4px 12px; border-radius: 6px; background: #f3f4f6; text-align: right; max-width: 460px; }
           .badge-scope { display: block; font-size: 10px; color: #b91c1c; margin-top: 2px; }
           .summary { display: flex; flex-wrap: wrap; gap: 18px; font-size: 11px; margin-bottom: 10px; background: #f9fafb; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; }
           table { width: 100%; border-collapse: collapse; font-size: 10px; }
@@ -2558,7 +2600,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       {/* Tabla Completa */}
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col">
-        {/* Filtros, Filtro por Ubicación en Revisión, Botón Contextual de Imprimir Pestaña y Buscador */}
+        {/* Filtros, Multi-Filtro por Ubicación en Revisión, Botón Contextual de Imprimir Pestaña y Buscador */}
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -2676,50 +2718,116 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               )}
             </div>
 
-            {/* Barra contextual debajo de la pestaña activa: Filtro por Ubicación (en Revisión) + Botón Imprimir */}
+            {/* Barra contextual debajo de la pestaña activa: Multi-Selector de Ubicaciones (en Revisión) + Botón Imprimir */}
             {(filterStatus === 'REVISION' || (showTabPrintPrompt && filteredItems.length > 0)) && (
               <div className="flex flex-wrap items-center gap-2 pl-1">
                 {filterStatus === 'REVISION' && (
-                  <div className="inline-flex items-center gap-1.5 bg-[#0d1017] border border-orange-500/40 rounded-lg px-2.5 py-1 text-[11px]">
-                    <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                    <span className="text-gray-400 font-bold">Ubicación:</span>
-                    <select
-                      value={revisionUbicacionFilter}
-                      onChange={(e) => {
-                        setRevisionUbicacionFilter(e.target.value);
-                        setCurrentPage(1);
-                        setShowTabPrintPrompt(true);
-                      }}
-                      className="bg-transparent text-orange-300 font-mono font-black outline-none cursor-pointer"
+                  <div ref={revisionUbiDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setRevisionUbiDropdownOpen((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 bg-[#0d1017] hover:bg-orange-500/10 border border-orange-500/45 rounded-lg px-2.5 py-1 text-[11px] cursor-pointer transition-colors"
                     >
-                      <option value="ALL" className="bg-[#0d1017] text-white">
-                        Todas ({counts.revision})
-                      </option>
-                      {revisionUbicaciones.map((u) => (
-                        <option
-                          key={u.ubicacion}
-                          value={u.ubicacion}
-                          className="bg-[#0d1017] text-white"
-                        >
-                          {u.ubicacion} ({u.count})
-                        </option>
-                      ))}
-                    </select>
-                    {revisionUbicacionFilter !== 'ALL' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRevisionUbicacionFilter('ALL');
-                          setCurrentPage(1);
-                        }}
-                        title="Ver todas las ubicaciones en Revisión"
-                        className="text-gray-400 hover:text-white cursor-pointer ml-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                      <span className="text-gray-400 font-bold">Ubicaciones:</span>
+                      <span className="text-orange-300 font-mono font-black">
+                        {revisionUbicacionesSelected.length === 0
+                          ? `Todas (${counts.revision})`
+                          : `${revisionUbicacionesSelected.length} sel. (${revisionUbicacionesLabel})`}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 text-orange-300" />
+                    </button>
+
+                    {revisionUbiDropdownOpen && (
+                      <div className="absolute left-0 top-full mt-1.5 w-64 bg-[#0d1017] border border-orange-500/45 rounded-xl shadow-2xl z-40 overflow-hidden">
+                        <div className="p-2 border-b border-white/10 bg-[#12161f] space-y-1.5">
+                          <div className="relative">
+                            <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              placeholder="Filtrar ubicación..."
+                              value={revisionUbiSearch}
+                              onChange={(e) => setRevisionUbiSearch(e.target.value)}
+                              className="w-full pl-7 pr-2 py-1 rounded-lg bg-[#0d1017] border border-white/15 text-[11px] text-white font-mono uppercase placeholder:normal-case placeholder:font-sans focus:border-orange-400 outline-none"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-gray-400 font-bold">
+                              Marca una o varias ubicaciones:
+                            </span>
+                            {revisionUbicacionesSelected.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRevisionUbicacionesSelected([]);
+                                  setCurrentPage(1);
+                                }}
+                                className="text-orange-300 hover:underline font-black cursor-pointer"
+                              >
+                                Limpiar ({revisionUbicacionesSelected.length})
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto custom-scrollbar divide-y divide-white/5">
+                          {filteredRevisionUbicaciones.length > 0 ? (
+                            filteredRevisionUbicaciones.map((u) => {
+                              const checked = revisionUbicacionesSelected.includes(u.ubicacion);
+                              return (
+                                <label
+                                  key={u.ubicacion}
+                                  className={`px-3 py-1.5 text-xs font-mono flex items-center justify-between gap-2 cursor-pointer select-none transition-colors ${
+                                    checked
+                                      ? 'bg-orange-500/20 text-orange-200 font-bold'
+                                      : 'text-gray-300 hover:bg-white/5'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => handleToggleRevisionUbicacion(u.ubicacion)}
+                                      className="w-3.5 h-3.5 accent-orange-400 rounded cursor-pointer shrink-0"
+                                    />
+                                    <span className="truncate">{u.ubicacion}</span>
+                                  </div>
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-gray-300 shrink-0">
+                                    {u.count}
+                                  </span>
+                                </label>
+                              );
+                            })
+                          ) : (
+                            <div className="px-3 py-3 text-center text-[11px] text-gray-500">
+                              Sin coincidencias
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
+
+                {/* Chips individuales de ubicaciones marcadas en Revisión */}
+                {filterStatus === 'REVISION' &&
+                  revisionUbicacionesSelected.map((ubi) => (
+                    <span
+                      key={ubi}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/15 border border-orange-400/40 text-[10px] font-mono font-bold text-orange-300"
+                    >
+                      <span>{ubi}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleRevisionUbicacion(ubi)}
+                        title={`Quitar ${ubi}`}
+                        className="hover:text-white cursor-pointer"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  ))}
 
                 {showTabPrintPrompt && filteredItems.length > 0 && (
                   <>
