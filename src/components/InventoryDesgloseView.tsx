@@ -2002,7 +2002,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     return { pendientes, validadosOk, revision, cerrados, nave7, enCero };
   }, [items]);
 
-  // Ubicaciones disponibles dentro de la pestaña Revisión con su conteo
+  // Ubicaciones disponibles dentro de la pestaña Revisión con su conteo (orden natural)
   const revisionUbicaciones = useMemo(() => {
     const map = new Map<string, number>();
     for (const it of items) {
@@ -2012,7 +2012,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
     return Array.from(map.entries())
       .map(([ubicacion, count]) => ({ ubicacion, count }))
-      .sort((a, b) => a.ubicacion.localeCompare(b.ubicacion));
+      .sort((a, b) =>
+        a.ubicacion.localeCompare(b.ubicacion, undefined, { numeric: true, sensitivity: 'base' })
+      );
   }, [items]);
 
   const filteredRevisionUbicaciones = useMemo(() => {
@@ -2022,15 +2024,19 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   }, [revisionUbicaciones, revisionUbiSearch]);
 
   const handleToggleRevisionUbicacion = (ubi: string) => {
-    setRevisionUbicacionesSelected((prev) =>
-      prev.includes(ubi) ? prev.filter((item) => item !== ubi) : [...prev, ubi]
-    );
+    setRevisionUbicacionesSelected((prev) => {
+      const exists = prev.includes(ubi);
+      const next = exists ? prev.filter((item) => item !== ubi) : [...prev, ubi];
+      return next.sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+      );
+    });
     setCurrentPage(1);
     setShowTabPrintPrompt(true);
   };
 
   const filteredItems = useMemo(() => {
-    return items.filter((it) => {
+    const list = items.filter((it) => {
       const matchSearch =
         it.item.toLowerCase().includes(searchTerm.toLowerCase()) ||
         it.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -2053,6 +2059,19 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       if (filterStatus === 'ENCERO') return (Number(it.ns) || 0) === 0 && (Number(it.newsoft) || 0) === 0;
       return true;
     });
+
+    // Al seleccionar ubicaciones en Revisión, organizar secuencialmente por ubicación (A-1-1, A-1-2, A-1-5...) y luego por código
+    if (filterStatus === 'REVISION' && revisionUbicacionesSelected.length > 0) {
+      return [...list].sort((a, b) => {
+        const ubiA = (a.ubicacion || '-').trim().toUpperCase();
+        const ubiB = (b.ubicacion || '-').trim().toUpperCase();
+        const cmpUbi = ubiA.localeCompare(ubiB, undefined, { numeric: true, sensitivity: 'base' });
+        if (cmpUbi !== 0) return cmpUbi;
+        return a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    return list;
   }, [items, searchTerm, filterStatus, revisionUbicacionesSelected]);
 
   const filteredTrashItems = useMemo(() => {
