@@ -75,6 +75,11 @@ function limpiarEtiquetaRevision(comentario: string): string {
   return comentario.replace(/\[REVISIÓN[^\]]*\]\s*/gi, '').trim();
 }
 
+// Helper para detectar si el artículo ya fue reportado / enviado a Revisión
+function tieneMarcaRevision(comentario: string): boolean {
+  return /\[REVISIÓN/i.test(String(comentario || ''));
+}
+
 function escapeHtml(text: string): string {
   return String(text || '')
     .replace(/&/g, '&amp;')
@@ -1047,6 +1052,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
   const diferenciaCalculada = totalBalanceNewsoft - numNetSuite;
   const cuadranCantidades = totalBalanceNewsoft === numNetSuite;
   const selectedIsEnCero = numNetSuite === 0 && totalBalanceNewsoft === 0;
+  const selectedEnRevision = Boolean(!colI && (tieneMarcaRevision(colL) || tieneMarcaRevision(selectedItem?.colL_Comentario || '')));
 
   const isLocked = Boolean(selectedItem?.isLocked && !isUnlockedByPin);
 
@@ -1637,6 +1643,7 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
               itemsList.map((it) => {
                 const bal = ((Number(it.colE_Newsoft) || 0) - (Number(it.colG_Salida) || 0)) + (Number(it.colN_Nave7) || 0);
                 const dif = bal - (Number(it.colD_NetSuite) || 0);
+                const itemEnRevision = !it.colI_Candado && tieneMarcaRevision(it.colL_Comentario);
 
                 return (
                   <div
@@ -1645,6 +1652,8 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                     className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                       selectedItem?.rowNumber === it.rowNumber
                         ? 'bg-amber-500/15 border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                        : itemEnRevision
+                        ? 'bg-orange-500/5 border-orange-500/30 hover:border-orange-400/50'
                         : 'bg-[#0d1017] border-white/5 hover:border-white/20'
                     }`}
                   >
@@ -1669,6 +1678,15 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {itemEnRevision && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-orange-500/15 border border-orange-500/45 text-orange-300 text-[10px] font-black"
+                          title={`Enviado a Revisión: ${it.colL_Comentario}`}
+                        >
+                          <AlertTriangle className="w-3 h-3 text-orange-400" />
+                          <span>Revisión</span>
+                        </span>
+                      )}
                       {it.colA_Validado && (
                         <span className="p-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-400" title="Validado (Col A)">
                           <Check className="w-3.5 h-3.5" />
@@ -1714,10 +1732,16 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex-1 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-emerald-400 text-xs font-bold">
-                    <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-wrap items-center justify-between gap-2 text-emerald-400 text-xs font-bold">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Unlock className="w-4 h-4" />
                       <span>{isUnlockedByPin ? 'Desbloqueado temporalmente con PIN' : 'Modo Edición Abierto'}</span>
+                      {selectedEnRevision && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500/20 border border-orange-400/50 text-orange-300 text-[10px] font-black uppercase">
+                          <AlertTriangle className="w-3 h-3 text-orange-400" />
+                          <span>Enviado a Revisión</span>
+                        </span>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -1979,15 +2003,31 @@ export const PaseInventarioView: React.FC<PaseInventarioViewProps> = ({
                       type="button"
                       onClick={handleSendSlackAlert}
                       disabled={sendingSlack}
-                      title="Reportar este descuadre en el canal #alerta-inventario-nave-6 de Slack y mover a Revisión"
-                      className="px-5 py-2.5 rounded-xl bg-[#4A154B] hover:bg-[#611f69] text-purple-100 border border-purple-400/40 font-black text-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                      title={
+                        selectedEnRevision
+                          ? 'Este artículo ya fue enviado a Revisión. Haz clic si deseas reenviar la alerta a Slack.'
+                          : 'Reportar este descuadre en el canal #alerta-inventario-nave-6 de Slack y mover a Revisión'
+                      }
+                      className={`px-5 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 border ${
+                        selectedEnRevision
+                          ? 'bg-orange-500/20 hover:bg-[#611f69] text-orange-200 hover:text-white border-orange-400/50 hover:border-purple-400/50'
+                          : 'bg-[#4A154B] hover:bg-[#611f69] text-purple-100 border-purple-400/40'
+                      }`}
                     >
                       {sendingSlack ? (
                         <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : selectedEnRevision ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                       ) : (
                         <AlertTriangle className="w-4 h-4 text-amber-300" />
                       )}
-                      <span>{sendingSlack ? 'Enviando a Slack...' : 'Reportar Descuadre a Slack'}</span>
+                      <span>
+                        {sendingSlack
+                          ? 'Enviando a Slack...'
+                          : selectedEnRevision
+                          ? 'Enviado a Revisión • Reenviar'
+                          : 'Reportar Descuadre a Slack'}
+                      </span>
                     </button>
                   )}
 
