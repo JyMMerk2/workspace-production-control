@@ -2587,9 +2587,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         )}
       </div>
 
-      {/* Barra Flotante Fija (Sticky) con Todas las Píldoras Activas del Equipo — Siempre Visible al Bajar */}
+      {/* Barra Flotante Fija (Sticky) con Todas las Píldoras Activas del Equipo — Siempre Visible debajo del Header Principal */}
       {parsedLotesActivos.length > 0 && (
-        <div className="sticky top-2 z-30 bg-[#0d1017]/95 backdrop-blur-md border border-cyan-500/35 rounded-2xl px-3.5 py-2.5 shadow-[0_8px_25px_rgba(0,0,0,0.65)] flex flex-wrap items-center gap-2">
+        <div className="sticky top-16 z-40 bg-[#0d1017]/95 backdrop-blur-md border border-cyan-500/35 rounded-2xl px-3.5 py-2.5 shadow-[0_8px_25px_rgba(0,0,0,0.65)] flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-[#00f2fe] pr-1">
             <Users className="w-3.5 h-3.5" />
             <span>En Proceso ({parsedLotesActivos.length}):</span>
