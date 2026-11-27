@@ -26,7 +26,8 @@ import {
   Trash2,
   RotateCcw,
   PackagePlus,
-  Printer
+  Printer,
+  MapPin
 } from 'lucide-react';
 import { supabase } from '../data/supabaseClient';
 
@@ -409,6 +410,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<DesgloseFilterTab>('ALL');
+  const [revisionUbicacionFilter, setRevisionUbicacionFilter] = useState<string>('ALL');
   // Controla la visibilidad del botón contextual de Imprimir debajo de la pestaña activa
   const [showTabPrintPrompt, setShowTabPrintPrompt] = useState<boolean>(false);
   const [isTabPrintModalOpen, setIsTabPrintModalOpen] = useState<boolean>(false);
@@ -683,6 +685,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         setIsNewItemModalOpen(false);
         setHighlightedRowNum(newRowNum);
         setFilterStatus('ALL');
+        setRevisionUbicacionFilter('ALL');
         setCurrentPage(1);
 
         recordOperatorActivity(newValidado ? 'VALIDADO' : 'EDICION', createdItem, balNewsoft);
@@ -1029,7 +1032,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       if (!res.ok) return;
 
       const csvText = await res.text();
-      // ESCUDO ANTI-HTML: Si Google devuelve una página HTML de error temporal, conservar los datos actuales
       if (!csvText || csvText.trim().startsWith('<')) {
         return;
       }
@@ -1037,7 +1039,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       const allRows = parseCSVExact(csvText);
       if (allRows.length < 4) return;
 
-      // Verificar que el encabezado de fila 3 corresponda realmente a la tabla de inventario
       const headerLine = (allRows[2] || []).join(' ').toUpperCase();
       if (!headerLine.includes('CODIGO') && !headerLine.includes('VALIDADO') && !headerLine.includes('NETSUITE')) {
         return;
@@ -1045,7 +1046,6 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       const parsedItems: SheetRowItem[] = [];
 
-      // El índice 3 corresponde exactamente a la fila 4 de Google Sheets
       for (let i = 3; i < allRows.length; i++) {
         const cols = allRows[i];
         if (!cols || cols.length < 3) continue;
@@ -1110,7 +1110,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
   }, [CSV_URL]);
 
-  // Carga inicial + Sincronización cada 6s (evita bloqueo 429 de Google Sheets)
+  // Carga inicial + Sincronización cada 6s
   useEffect(() => {
     fetchSheetData(false);
     fetchLotesActivos();
@@ -1983,6 +1983,19 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     return { pendientes, validadosOk, revision, cerrados, nave7, enCero };
   }, [items]);
 
+  // Ubicaciones disponibles dentro de la pestaña Revisión con su conteo
+  const revisionUbicaciones = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const it of items) {
+      if (!it.enRevision) continue;
+      const ubi = (it.ubicacion || '-').trim().toUpperCase() || '-';
+      map.set(ubi, (map.get(ubi) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([ubicacion, count]) => ({ ubicacion, count }))
+      .sort((a, b) => a.ubicacion.localeCompare(b.ubicacion));
+  }, [items]);
+
   const filteredItems = useMemo(() => {
     return items.filter((it) => {
       const matchSearch =
@@ -1994,13 +2007,20 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       if (!matchSearch) return false;
       if (filterStatus === 'PENDIENTE') return !it.validado && !it.candado;
       if (filterStatus === 'OK') return it.validado && !it.candado && !it.enRevision;
-      if (filterStatus === 'REVISION') return it.enRevision;
+      if (filterStatus === 'REVISION') {
+        if (!it.enRevision) return false;
+        if (revisionUbicacionFilter !== 'ALL') {
+          const itemUbi = (it.ubicacion || '-').trim().toUpperCase() || '-';
+          if (itemUbi !== revisionUbicacionFilter) return false;
+        }
+        return true;
+      }
       if (filterStatus === 'CERRADO') return it.validado && it.candado;
       if (filterStatus === 'NAVE7') return (Number(it.nave7) || 0) > 0;
       if (filterStatus === 'ENCERO') return (Number(it.ns) || 0) === 0 && (Number(it.newsoft) || 0) === 0;
       return true;
     });
-  }, [items, searchTerm, filterStatus]);
+  }, [items, searchTerm, filterStatus, revisionUbicacionFilter]);
 
   const filteredTrashItems = useMemo(() => {
     const q = trashSearchTerm.trim().toLowerCase();
@@ -2081,6 +2101,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
   const handleSelectFilterTab = (tab: DesgloseFilterTab) => {
     setFilterStatus(tab);
+    if (tab !== 'REVISION') {
+      setRevisionUbicacionFilter('ALL');
+    }
     setCurrentPage(1);
     setShowTabPrintPrompt(true);
   };
@@ -2092,7 +2115,9 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       case 'OK':
         return 'Validados OK';
       case 'REVISION':
-        return 'Revisión';
+        return revisionUbicacionFilter !== 'ALL'
+          ? `Revisión • ${revisionUbicacionFilter}`
+          : 'Revisión';
       case 'CERRADO':
         return 'Cerrados';
       case 'NAVE7':
@@ -2102,7 +2127,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       default:
         return 'Todos';
     }
-  }, [filterStatus]);
+  }, [filterStatus, revisionUbicacionFilter]);
 
   // Imprimir hoja de conteo de la pestaña activa (Página actual vs. Toda la pestaña filtrada)
   const handlePrintDesgloseTab = (scope: 'CURRENT_PAGE' | 'FULL_TAB') => {
@@ -2123,6 +2148,10 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         ? `PÁGINA ${currentPage} DE ${totalPages} (${targetRows.length} ARTÍCULOS)`
         : `TODA LA PESTAÑA (${targetRows.length.toLocaleString()} ARTÍCULOS)`;
 
+    const ubiNote =
+      filterStatus === 'REVISION' && revisionUbicacionFilter !== 'ALL'
+        ? ` • Ubicación: ${revisionUbicacionFilter}`
+        : '';
     const searchNote = searchTerm.trim() ? ` • Búsqueda: "${searchTerm.trim()}"` : '';
 
     const fechaHora = new Date().toLocaleString('es-DO', {
@@ -2215,7 +2244,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         <div class="header">
           <div>
             <h1 class="title">Boombah Workspace • Desglose Operativo de Inventario (Nave 6)</h1>
-            <div class="subtitle">Impreso por: <strong>${escapeHtml(activeUserLabel)}</strong> • ${escapeHtml(fechaHora)}${escapeHtml(searchNote)}</div>
+            <div class="subtitle">Impreso por: <strong>${escapeHtml(activeUserLabel)}</strong> • ${escapeHtml(fechaHora)}${escapeHtml(ubiNote)}${escapeHtml(searchNote)}</div>
           </div>
           <div class="badge-tab">
             PESTAÑA: ${escapeHtml(activeTabLabel.toUpperCase())}
@@ -2529,7 +2558,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       {/* Tabla Completa */}
       <div className="bg-[#12161f] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col">
-        {/* Filtros, Botón Contextual de Imprimir Pestaña y Buscador */}
+        {/* Filtros, Filtro por Ubicación en Revisión, Botón Contextual de Imprimir Pestaña y Buscador */}
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -2647,27 +2676,73 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               )}
             </div>
 
-            {/* Botón contextual de Imprimir debajo de la pestaña activa (solo visible al tocar una pestaña) */}
-            {showTabPrintPrompt && filteredItems.length > 0 && (
-              <div className="flex items-center gap-2 pl-1">
-                <button
-                  type="button"
-                  onClick={() => setIsTabPrintModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe] text-[#00f2fe] hover:text-[#0b0e14] border border-[#00f2fe]/40 text-[11px] font-black transition-all cursor-pointer shadow-[0_0_12px_rgba(0,242,254,0.18)]"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>
-                    Imprimir {activeTabLabel} ({filteredItems.length.toLocaleString()})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTabPrintPrompt(false)}
-                  title="Ocultar botón de impresión"
-                  className="p-1 rounded-md text-gray-500 hover:text-gray-300 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+            {/* Barra contextual debajo de la pestaña activa: Filtro por Ubicación (en Revisión) + Botón Imprimir */}
+            {(filterStatus === 'REVISION' || (showTabPrintPrompt && filteredItems.length > 0)) && (
+              <div className="flex flex-wrap items-center gap-2 pl-1">
+                {filterStatus === 'REVISION' && (
+                  <div className="inline-flex items-center gap-1.5 bg-[#0d1017] border border-orange-500/40 rounded-lg px-2.5 py-1 text-[11px]">
+                    <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    <span className="text-gray-400 font-bold">Ubicación:</span>
+                    <select
+                      value={revisionUbicacionFilter}
+                      onChange={(e) => {
+                        setRevisionUbicacionFilter(e.target.value);
+                        setCurrentPage(1);
+                        setShowTabPrintPrompt(true);
+                      }}
+                      className="bg-transparent text-orange-300 font-mono font-black outline-none cursor-pointer"
+                    >
+                      <option value="ALL" className="bg-[#0d1017] text-white">
+                        Todas ({counts.revision})
+                      </option>
+                      {revisionUbicaciones.map((u) => (
+                        <option
+                          key={u.ubicacion}
+                          value={u.ubicacion}
+                          className="bg-[#0d1017] text-white"
+                        >
+                          {u.ubicacion} ({u.count})
+                        </option>
+                      ))}
+                    </select>
+                    {revisionUbicacionFilter !== 'ALL' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRevisionUbicacionFilter('ALL');
+                          setCurrentPage(1);
+                        }}
+                        title="Ver todas las ubicaciones en Revisión"
+                        className="text-gray-400 hover:text-white cursor-pointer ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {showTabPrintPrompt && filteredItems.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsTabPrintModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#00f2fe]/15 hover:bg-[#00f2fe] text-[#00f2fe] hover:text-[#0b0e14] border border-[#00f2fe]/40 text-[11px] font-black transition-all cursor-pointer shadow-[0_0_12px_rgba(0,242,254,0.18)]"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>
+                        Imprimir {activeTabLabel} ({filteredItems.length.toLocaleString()})
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowTabPrintPrompt(false)}
+                      title="Ocultar botón de impresión"
+                      className="p-1 rounded-md text-gray-500 hover:text-gray-300 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
