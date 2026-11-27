@@ -2580,80 +2580,87 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           </div>
         </div>
 
-        {/* Lista de Etiquetas de Lotes Activos con Color Único por Usuario y Flechas de Navegación */}
-        {parsedLotesActivos.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
-            {parsedLotesActivos.map((itemLote) => {
-              const isReleasing = releasingLoteId === itemLote.id;
-              const { theme } = itemLote;
-              const currentMatchIdx = Math.min(
-                activeMatchIndices[itemLote.id] ?? 0,
-                Math.max(0, itemLote.matchCount - 1)
-              );
-
-              return (
-                <div
-                  key={itemLote.id}
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs transition-all ${theme.chipBg} ${theme.chipBorder}`}
-                >
-                  <span className={`w-2 h-2 rounded-full ${theme.dotBg} animate-pulse shrink-0`} />
-                  <span className={`font-black ${theme.chipText}`}>
-                    {itemLote.usuario} ({itemLote.initials}):
-                  </span>
-                  <span className="font-black text-white">{itemLote.lote}</span>
-                  {itemLote.targetQty !== null && (
-                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-[10px] font-mono font-black text-emerald-300">
-                      <span>
-                        {itemLote.matchCount > 0
-                          ? `${currentMatchIdx + 1}/${itemLote.matchCount} ${itemLote.matchCount === 1 ? 'ítem' : 'ítems'}`
-                          : '0 ítems'}
-                      </span>
-                      {itemLote.matchCount > 0 && (
-                        <div className="inline-flex items-center border-l border-white/15 pl-1 ml-0.5 gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => handleJumpToMatch(itemLote.id, itemLote.matchedRows, -1)}
-                            title="Ir al ítem anterior de este lote"
-                            className="p-0.5 rounded hover:bg-white/15 text-gray-200 hover:text-white cursor-pointer"
-                          >
-                            <ChevronUp className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleJumpToMatch(itemLote.id, itemLote.matchedRows, 1)}
-                            title="Ir al siguiente ítem de este lote"
-                            className="p-0.5 rounded hover:bg-white/15 text-gray-200 hover:text-white cursor-pointer"
-                          >
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <span className="text-[10px] font-mono text-gray-300/80">({itemLote.hora})</span>
-                  <button
-                    type="button"
-                    disabled={isReleasing}
-                    onClick={() => handleReleaseLote(itemLote.id)}
-                    title="Liberar lote al terminar"
-                    className="ml-0.5 p-0.5 rounded-md text-gray-300 hover:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {isReleasing ? (
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <X className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
+        {parsedLotesActivos.length === 0 && (
           <div className="text-[11px] text-gray-500 pt-1 border-t border-white/5">
             Ningún lote registrado en este momento. Escribe tu nombre y la cantidad fija que estás trabajando para avisar al equipo.
           </div>
         )}
       </div>
+
+      {/* Barra Flotante Fija (Sticky) con Todas las Píldoras Activas del Equipo — Siempre Visible al Bajar */}
+      {parsedLotesActivos.length > 0 && (
+        <div className="sticky top-2 z-30 bg-[#0d1017]/95 backdrop-blur-md border border-cyan-500/35 rounded-2xl px-3.5 py-2.5 shadow-[0_8px_25px_rgba(0,0,0,0.65)] flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-[#00f2fe] pr-1">
+            <Users className="w-3.5 h-3.5" />
+            <span>En Proceso ({parsedLotesActivos.length}):</span>
+          </div>
+
+          {parsedLotesActivos.map((itemLote) => {
+            const isReleasing = releasingLoteId === itemLote.id;
+            const { theme } = itemLote;
+            const currentMatchIdx = Math.min(
+              activeMatchIndices[itemLote.id] ?? 0,
+              Math.max(0, itemLote.matchCount - 1)
+            );
+
+            return (
+              <div
+                key={itemLote.id}
+                className={`inline-flex items-center gap-2 px-3 py-1 rounded-xl border text-xs transition-all ${theme.chipBg} ${theme.chipBorder}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${theme.dotBg} animate-pulse shrink-0`} />
+                <span className={`font-black ${theme.chipText}`}>
+                  {itemLote.usuario} ({itemLote.initials}):
+                </span>
+                <span className="font-black text-white">{itemLote.lote}</span>
+                {itemLote.targetQty !== null && (
+                  <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/40 border border-white/15 text-[10px] font-mono font-black text-emerald-300">
+                    <span>
+                      {itemLote.matchCount > 0
+                        ? `${currentMatchIdx + 1}/${itemLote.matchCount} ${itemLote.matchCount === 1 ? 'ítem' : 'ítems'}`
+                        : '0 ítems'}
+                    </span>
+                    {itemLote.matchCount > 0 && (
+                      <div className="inline-flex items-center border-l border-white/15 pl-1 ml-0.5 gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleJumpToMatch(itemLote.id, itemLote.matchedRows, -1)}
+                          title="Ir al ítem anterior de este lote"
+                          className="p-0.5 rounded hover:bg-white/15 text-gray-200 hover:text-white cursor-pointer"
+                        >
+                          <ChevronUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleJumpToMatch(itemLote.id, itemLote.matchedRows, 1)}
+                          title="Ir al siguiente ítem de este lote"
+                          className="p-0.5 rounded hover:bg-white/15 text-gray-200 hover:text-white cursor-pointer"
+                        >
+                          <ChevronDown className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <span className="text-[10px] font-mono text-gray-300/80">({itemLote.hora})</span>
+                <button
+                  type="button"
+                  disabled={isReleasing}
+                  onClick={() => handleReleaseLote(itemLote.id)}
+                  title="Liberar lote al terminar"
+                  className="ml-0.5 p-0.5 rounded-md text-gray-300 hover:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isReleasing ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <X className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Notificaciones */}
       {notification && (
