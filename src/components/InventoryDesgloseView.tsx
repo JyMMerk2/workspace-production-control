@@ -377,7 +377,15 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
   }, [authenticatedUser, operadorNombre]);
 
-  const activeUserLabel = (authenticatedUser || operadorNombre || 'OPERADOR').trim().toUpperCase();
+  const activeUserLabel = (
+    authenticatedUser ||
+    operadorNombre ||
+    sessionStorage.getItem('authenticated_user') ||
+    localStorage.getItem('authenticated_user') ||
+    'OPERADOR'
+  )
+    .trim()
+    .toUpperCase();
 
   // Navegación rápida entre coincidencias de lotes activos (flechas ▲ / ▼)
   const [activeMatchIndices, setActiveMatchIndices] = useState<Record<string, number>>({});
@@ -523,7 +531,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
   const CSV_URL =
     'https://docs.google.com/spreadsheets/d/1g5SoP8q1u7n05v0tABvwf2e6UPClSMM8b2ah_1-9A3M/export?format=csv&gid=1178501683';
 
-  // Registrar evento de actividad del operador para los KPI de temporada (desde 13 nov 2026)
+  // Registrar evento de actividad del operador para los KPI de temporada (desde 13 nov 2026) con merge seguro
   const recordOperatorActivity = useCallback(
     async (
       accion: Nave6ActivityEvent['accion'],
@@ -531,7 +539,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       cantidadOverride?: number
     ) => {
       const nuevoEvento: Nave6ActivityEvent = {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        id: `${Date.now()}_${activeUserLabel}_${Math.random().toString(36).slice(2, 7)}`,
         usuario: activeUserLabel,
         accion,
         codigo: row.codigo,
@@ -548,17 +556,29 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
         timestamp: Date.now(),
       };
 
-      let listaActual: Nave6ActivityEvent[] = [];
+      const mergeById = (lists: Nave6ActivityEvent[][]): Nave6ActivityEvent[] => {
+        const map = new Map<string, Nave6ActivityEvent>();
+        for (const list of lists) {
+          for (const ev of list) {
+            if (ev && ev.id) map.set(ev.id, ev);
+          }
+        }
+        return Array.from(map.values())
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          .slice(0, 3500);
+      };
+
+      let listaLocal: Nave6ActivityEvent[] = [];
       try {
         const saved = localStorage.getItem(ACTIVITY_LOG_CACHE_KEY);
-        if (saved) listaActual = JSON.parse(saved);
+        if (saved) listaLocal = JSON.parse(saved);
       } catch {
         // Ignorar
       }
 
-      const actualizada = [nuevoEvento, ...listaActual].slice(0, 3000);
+      const actualizadaLocal = mergeById([[nuevoEvento], listaLocal]);
       try {
-        localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(actualizada));
+        localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(actualizadaLocal));
       } catch {
         // Ignorar
       }
@@ -580,7 +600,13 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
             if (Array.isArray(parsed)) remota = parsed;
           }
 
-          const merged = [nuevoEvento, ...remota].slice(0, 3000);
+          const merged = mergeById([[nuevoEvento], remota, listaLocal]);
+          try {
+            localStorage.setItem(ACTIVITY_LOG_CACHE_KEY, JSON.stringify(merged));
+          } catch {
+            // Ignorar
+          }
+
           await supabase.from('boombah_announcements').upsert({
             id: 'global_nave6_season_activity',
             message: JSON.stringify(merged),
@@ -1685,7 +1711,7 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
     }
   };
 
-  // Guardar nuevo Comentario (Col L) en Google Sheets
+  // Guardar nuevo Comentario (Col L) en Google Sheets y fiscalizar en KPI por Usuario
   const handleSaveComment = async (row: SheetRowItem) => {
     setEditingCommentRow(null);
     if (row.candado) return;
@@ -1710,6 +1736,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       if (res && res.success) {
         const sigueEnRevision = row.validado && !row.candado && /\[REVISIÓN/i.test(nuevoComentario);
+        const salioDeRevision = row.enRevision && !sigueEnRevision;
+
         setItems(prev =>
           prev.map(it =>
             it.rowNumber === row.rowNumber
@@ -1717,9 +1745,14 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
               : it
           )
         );
+
+        recordOperatorActivity('EDICION', { ...row, comentario: nuevoComentario });
+
         setNotification({
           type: 'success',
-          text: `Comentario del ítem ${row.codigo} actualizado en Google Sheets.`
+          text: salioDeRevision
+            ? `Comentario del ítem ${row.codigo} actualizado y cerrado de Revisión.`
+            : `Comentario del ítem ${row.codigo} actualizado en Google Sheets.`
         });
       } else {
         setNotification({ type: 'error', text: res?.error || 'No se pudo actualizar el comentario.' });
@@ -1791,6 +1824,10 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
 
       if (res && res.success) {
         const movedCount = Number(res.deletedCount) || targetsToMove.length;
+        for (const movedItem of targetsToMove.slice(0, 10)) {
+          recordOperatorActivity('EDICION', movedItem, 0);
+        }
+
         setNotification({
           type: 'success',
           text: `${movedCount} artículo(s) movido(s) al documento externo de Papelera.`,
@@ -1839,6 +1876,28 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
       });
 
       if (res && res.success) {
+        recordOperatorActivity(
+          'EDICION',
+          {
+            rowNumber: target.filaOriginal,
+            validado: false,
+            candado: false,
+            digitado: false,
+            enRevision: false,
+            codigo: target.codigo,
+            item: target.item,
+            ns: target.ns,
+            almacen: target.almacen,
+            salida: 0,
+            nave7: 0,
+            newsoft: target.almacen,
+            dif: target.almacen - target.ns,
+            ubicacion: target.ubicacion,
+            comentario: target.comentario
+          },
+          target.almacen
+        );
+
         setRestoringTrashItem(null);
         setRestorePinInput('');
         setNotification({
@@ -1942,6 +2001,8 @@ export const InventoryDesgloseView: React.FC<InventoryDesgloseViewProps> = ({
           };
           persistDigitadoMeta(nextMetaMap);
           recordOperatorActivity('CERRADO', row);
+        } else {
+          recordOperatorActivity('EDICION', row);
         }
 
         setNotification({
